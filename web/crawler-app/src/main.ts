@@ -157,7 +157,7 @@ let sketchDrag: { pointerId: number; point: PointRef; handle: SVGCircleElement }
 let stepImportRunning = false;
 let stepSourceRetained = false;
 const performanceEvidence = new PerformanceEvidence();
-let pwaStatus = (): PwaStatus => ({ supported: false, controlled: false, updateAvailable: false, cacheVersion: "crawler-alpha-v1" });
+let pwaStatus = (): PwaStatus => ({ supported: false, controlled: false, updateAvailable: false, cacheVersion: "crawler-alpha-v2" });
 
 function requestFeatureServices(observedTopology?: readonly TopologyReferenceView[]): void {
   if (!worker || !state.selectedFeatureId.startsWith("feature:")) return;

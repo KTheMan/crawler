@@ -1,9 +1,10 @@
 export interface PwaStatus { supported: boolean; controlled: boolean; updateAvailable: boolean; cacheVersion: string }
 
 export async function installPwa(onUpdate: () => void): Promise<() => PwaStatus> {
-  const status: PwaStatus = { supported: "serviceWorker" in navigator, controlled: Boolean(navigator.serviceWorker?.controller), updateAvailable: false, cacheVersion: "crawler-alpha-v1" };
+  const status: PwaStatus = { supported: "serviceWorker" in navigator, controlled: Boolean(navigator.serviceWorker?.controller), updateAvailable: false, cacheVersion: "crawler-alpha-v2" };
   if (!status.supported) return () => ({ ...status });
-  const registration = await navigator.serviceWorker.register("/sw.js", { scope: "/" });
+  const scope = new URL(import.meta.env.BASE_URL, location.origin);
+  const registration = await navigator.serviceWorker.register(new URL("sw.js", scope), { scope: scope.pathname });
   const markWaiting = () => { status.updateAvailable = true; onUpdate(); };
   if (registration.waiting) markWaiting();
   registration.addEventListener("updatefound", () => {

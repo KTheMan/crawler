@@ -91,3 +91,14 @@ exit still requires the representative-device 60 fps/performance run, an
 independent STEP reader result, manual keyboard/screen-reader/accessibility
 passes, and external user sessions recorded in
 [manual alpha validation](docs/manual-alpha-validation.md).
+
+## Hosted alpha
+
+The `alpha` branch is the active integration branch. Its manual **Deploy alpha
+to GitHub Pages** workflow builds and smoke-tests the browser/WASM application
+at the repository subpath before publishing it to:
+
+<https://ktheman.github.io/crawler/>
+
+Run the workflow from the GitHub Actions tab when an accepted alpha revision is
+ready to publish. The deployment job refuses refs other than `alpha`.

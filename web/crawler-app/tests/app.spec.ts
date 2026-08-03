@@ -282,7 +282,7 @@ test("manifest, controlling service worker, and cached runtime support an offlin
   await context.setOffline(true);
   await page.reload();
   await page.waitForFunction(() => Object.values(window.__crawlerApp.readiness()).every((value) => value === "ready"));
-  expect((await page.evaluate(() => window.__crawlerApp.pwaStatus())).cacheVersion).toBe("crawler-alpha-v1");
+  expect((await page.evaluate(() => window.__crawlerApp.pwaStatus())).cacheVersion).toBe("crawler-alpha-v2");
   await context.setOffline(false);
 });
 

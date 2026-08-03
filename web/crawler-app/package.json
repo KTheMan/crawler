@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build",
+    "build:pages": "tsc --noEmit && vite build --mode pages",
     "test": "playwright test",
+    "test:pages": "playwright test --config playwright.pages.config.ts",
     "test:unit": "node --experimental-strip-types --test unit/*.test.ts",
     "test:advanced": "node --experimental-strip-types --test unit/advanced-feature-builder.test.ts",
     "test:sketch": "node --experimental-strip-types --test unit/sketch-editor.test.ts"
