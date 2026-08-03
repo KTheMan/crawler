@@ -1,0 +1,1 @@
+Get-ChildItem -Path 'C:\Program Files' -Filter chrome.exe -Recurse -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName

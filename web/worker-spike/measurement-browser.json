@@ -1,0 +1,62 @@
+{
+  "browser": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/150.0.0.0 Safari/537.36",
+  "device": "Win32; hardwareConcurrency=8",
+  "build_revision": "working-tree",
+  "generated_at": "2026-08-02T03:00:26.338Z",
+  "cold": {
+    "sample_count": 10,
+    "transferred_bytes": 912,
+    "bounds_nm": {
+      "min": [
+        0,
+        0,
+        0
+      ],
+      "max": [
+        10000000,
+        20000000,
+        30000000
+      ]
+    },
+    "qualification": {
+      "vertex_stride_f32": 8,
+      "index_component_type": "uint32",
+      "primitive_topology": "triangle_list",
+      "tolerance_nm": 10000
+    },
+    "serialization_time_ms_p50": 0,
+    "serialization_time_ms_p95": 0.09999990463256836,
+    "kernel_time_ms_p50": 15.5,
+    "kernel_time_ms_p95": 79.09999990463257,
+    "end_to_end_time_ms_p50": 41.69999980926514,
+    "end_to_end_time_ms_p95": 175.90000009536743
+  },
+  "warm": {
+    "sample_count": 10,
+    "transferred_bytes": 912,
+    "bounds_nm": {
+      "min": [
+        0,
+        0,
+        0
+      ],
+      "max": [
+        10000000,
+        20000000,
+        30000000
+      ]
+    },
+    "qualification": {
+      "vertex_stride_f32": 8,
+      "index_component_type": "uint32",
+      "primitive_topology": "triangle_list",
+      "tolerance_nm": 10000
+    },
+    "serialization_time_ms_p50": 0,
+    "serialization_time_ms_p95": 0.10000014305114746,
+    "kernel_time_ms_p50": 0.5999999046325684,
+    "kernel_time_ms_p95": 0.6000001430511475,
+    "end_to_end_time_ms_p50": 1.3000001907348633,
+    "end_to_end_time_ms_p95": 85
+  }
+}

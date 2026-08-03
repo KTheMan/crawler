@@ -1,0 +1,9 @@
+{
+  "name": "@crawler/document-protocol",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --experimental-strip-types --test test/*.test.ts"
+  },
+  "exports": "./src/index.ts"
+}
