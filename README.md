@@ -98,7 +98,7 @@ The `alpha` branch is the active integration branch. Its manual **Deploy alpha
 to GitHub Pages** workflow builds and smoke-tests the browser/WASM application
 at the repository subpath before publishing it to:
 
-<https://ktheman.github.io/crawler/>
+<https://gh.knnygrdn.com/crawler/>
 
 Run the workflow from the GitHub Actions tab when an accepted alpha revision is
 ready to publish. The deployment job refuses refs other than `alpha`.
