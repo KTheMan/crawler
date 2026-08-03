@@ -1,0 +1,10 @@
+/target/
+/target-agent-*/
+node_modules/
+.pnpm-store/
+dist/
+playwright-report/
+test-results/
+/CODEXSAVER_SMOKE_TEST.md
+/spikes/e00-s03-renderer/pnpm-local.exe
+spikes/e00-s03-renderer/src/generated/packet/crawler_render_packet.wasm

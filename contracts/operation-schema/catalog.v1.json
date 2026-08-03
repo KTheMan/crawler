@@ -1,0 +1,1402 @@
+{
+  "catalog_version": 1,
+  "capabilities": [
+    {
+      "id": "sketch.line",
+      "state": "qualified",
+      "reason": null
+    },
+    {
+      "id": "sketch.circle",
+      "state": "qualified",
+      "reason": null
+    },
+    {
+      "id": "sketch.arc",
+      "state": "qualified",
+      "reason": null
+    },
+    {
+      "id": "sketch.rectangle",
+      "state": "qualified",
+      "reason": null
+    },
+    {
+      "id": "sketch.trim",
+      "state": "qualified",
+      "reason": null
+    },
+    {
+      "id": "sketch.construction",
+      "state": "qualified",
+      "reason": null
+    },
+    {
+      "id": "part.extrude",
+      "state": "qualified",
+      "reason": null
+    },
+    {
+      "id": "part.revolve",
+      "state": "qualified",
+      "reason": null
+    },
+    {
+      "id": "part.boolean.union",
+      "state": "qualified",
+      "reason": null
+    },
+    {
+      "id": "part.boolean.cut",
+      "state": "qualified",
+      "reason": null
+    },
+    {
+      "id": "part.boolean.intersect",
+      "state": "qualified",
+      "reason": null
+    },
+    {
+      "id": "part.fillet",
+      "state": "qualified",
+      "reason": null
+    },
+    {
+      "id": "part.chamfer",
+      "state": "qualified",
+      "reason": null
+    },
+    {
+      "id": "part.shell",
+      "state": "qualified",
+      "reason": null
+    },
+    {
+      "id": "part.mirror",
+      "state": "qualified",
+      "reason": null
+    },
+    {
+      "id": "part.transform",
+      "state": "qualified",
+      "reason": null
+    },
+    {
+      "id": "part.pattern.linear",
+      "state": "qualified",
+      "reason": null
+    },
+    {
+      "id": "part.pattern.circular",
+      "state": "qualified",
+      "reason": null
+    }
+  ],
+  "operations": [
+    {
+      "schema_version": 1,
+      "id": "crawler.sketch.line",
+      "label": "Line",
+      "group": "sketch",
+      "output_kind": "sketch",
+      "input_slots": [],
+      "parameters": [
+        {
+          "key": "start_x",
+          "label": "Start X",
+          "value_kind": "length_nanometers",
+          "default": {
+            "kind": "length_nanometers",
+            "value": 0
+          },
+          "bounds": null,
+          "choices": [],
+          "advanced_group": null
+        },
+        {
+          "key": "start_y",
+          "label": "Start Y",
+          "value_kind": "length_nanometers",
+          "default": {
+            "kind": "length_nanometers",
+            "value": 0
+          },
+          "bounds": null,
+          "choices": [],
+          "advanced_group": null
+        },
+        {
+          "key": "end_x",
+          "label": "End X",
+          "value_kind": "length_nanometers",
+          "default": {
+            "kind": "length_nanometers",
+            "value": 10000000
+          },
+          "bounds": null,
+          "choices": [],
+          "advanced_group": null
+        },
+        {
+          "key": "end_y",
+          "label": "End Y",
+          "value_kind": "length_nanometers",
+          "default": {
+            "kind": "length_nanometers",
+            "value": 0
+          },
+          "bounds": null,
+          "choices": [],
+          "advanced_group": null
+        }
+      ],
+      "preview": {
+        "strategy": "debounced",
+        "debounce_milliseconds": 75,
+        "cancellation": "replace_older_preview"
+      },
+      "lifecycle": {
+        "stage": "alpha",
+        "supports_preview": true,
+        "supports_edit": true,
+        "supports_suppression": true
+      },
+      "enablement": {
+        "state": "enabled",
+        "capability": "sketch.line",
+        "reason": null
+      }
+    },
+    {
+      "schema_version": 1,
+      "id": "crawler.sketch.circle",
+      "label": "Circle",
+      "group": "sketch",
+      "output_kind": "sketch",
+      "input_slots": [],
+      "parameters": [
+        {
+          "key": "center_x",
+          "label": "Center X",
+          "value_kind": "length_nanometers",
+          "default": {
+            "kind": "length_nanometers",
+            "value": 0
+          },
+          "bounds": null,
+          "choices": [],
+          "advanced_group": null
+        },
+        {
+          "key": "center_y",
+          "label": "Center Y",
+          "value_kind": "length_nanometers",
+          "default": {
+            "kind": "length_nanometers",
+            "value": 0
+          },
+          "bounds": null,
+          "choices": [],
+          "advanced_group": null
+        },
+        {
+          "key": "radius",
+          "label": "Radius",
+          "value_kind": "length_nanometers",
+          "default": {
+            "kind": "length_nanometers",
+            "value": 5000000
+          },
+          "bounds": {
+            "minimum": 1000,
+            "maximum": 1000000000000
+          },
+          "choices": [],
+          "advanced_group": null
+        }
+      ],
+      "preview": {
+        "strategy": "debounced",
+        "debounce_milliseconds": 75,
+        "cancellation": "replace_older_preview"
+      },
+      "lifecycle": {
+        "stage": "alpha",
+        "supports_preview": true,
+        "supports_edit": true,
+        "supports_suppression": true
+      },
+      "enablement": {
+        "state": "enabled",
+        "capability": "sketch.circle",
+        "reason": null
+      }
+    },
+    {
+      "schema_version": 1,
+      "id": "crawler.sketch.arc",
+      "label": "Arc",
+      "group": "sketch",
+      "output_kind": "sketch",
+      "input_slots": [],
+      "parameters": [
+        {
+          "key": "center_x",
+          "label": "Center X",
+          "value_kind": "length_nanometers",
+          "default": {
+            "kind": "length_nanometers",
+            "value": 0
+          },
+          "bounds": null,
+          "choices": [],
+          "advanced_group": null
+        },
+        {
+          "key": "center_y",
+          "label": "Center Y",
+          "value_kind": "length_nanometers",
+          "default": {
+            "kind": "length_nanometers",
+            "value": 0
+          },
+          "bounds": null,
+          "choices": [],
+          "advanced_group": null
+        },
+        {
+          "key": "radius",
+          "label": "Radius",
+          "value_kind": "length_nanometers",
+          "default": {
+            "kind": "length_nanometers",
+            "value": 5000000
+          },
+          "bounds": {
+            "minimum": 1000,
+            "maximum": 1000000000000
+          },
+          "choices": [],
+          "advanced_group": null
+        },
+        {
+          "key": "start_angle",
+          "label": "Start angle",
+          "value_kind": "angle_microdegrees",
+          "default": {
+            "kind": "angle_microdegrees",
+            "value": 0
+          },
+          "bounds": {
+            "minimum": -360000000,
+            "maximum": 360000000
+          },
+          "choices": [],
+          "advanced_group": null
+        },
+        {
+          "key": "end_angle",
+          "label": "End angle",
+          "value_kind": "angle_microdegrees",
+          "default": {
+            "kind": "angle_microdegrees",
+            "value": 90000000
+          },
+          "bounds": {
+            "minimum": -360000000,
+            "maximum": 360000000
+          },
+          "choices": [],
+          "advanced_group": null
+        }
+      ],
+      "preview": {
+        "strategy": "debounced",
+        "debounce_milliseconds": 75,
+        "cancellation": "replace_older_preview"
+      },
+      "lifecycle": {
+        "stage": "alpha",
+        "supports_preview": true,
+        "supports_edit": true,
+        "supports_suppression": true
+      },
+      "enablement": {
+        "state": "enabled",
+        "capability": "sketch.arc",
+        "reason": null
+      }
+    },
+    {
+      "schema_version": 1,
+      "id": "crawler.sketch.rectangle",
+      "label": "Rectangle",
+      "group": "sketch",
+      "output_kind": "sketch",
+      "input_slots": [],
+      "parameters": [
+        {
+          "key": "width",
+          "label": "Width",
+          "value_kind": "length_nanometers",
+          "default": {
+            "kind": "length_nanometers",
+            "value": 10000000
+          },
+          "bounds": {
+            "minimum": 1000,
+            "maximum": 1000000000000
+          },
+          "choices": [],
+          "advanced_group": null
+        },
+        {
+          "key": "height",
+          "label": "Height",
+          "value_kind": "length_nanometers",
+          "default": {
+            "kind": "length_nanometers",
+            "value": 10000000
+          },
+          "bounds": {
+            "minimum": 1000,
+            "maximum": 1000000000000
+          },
+          "choices": [],
+          "advanced_group": null
+        },
+        {
+          "key": "center_x",
+          "label": "Center X",
+          "value_kind": "length_nanometers",
+          "default": {
+            "kind": "length_nanometers",
+            "value": 0
+          },
+          "bounds": null,
+          "choices": [],
+          "advanced_group": null
+        },
+        {
+          "key": "center_y",
+          "label": "Center Y",
+          "value_kind": "length_nanometers",
+          "default": {
+            "kind": "length_nanometers",
+            "value": 0
+          },
+          "bounds": null,
+          "choices": [],
+          "advanced_group": null
+        },
+        {
+          "key": "centered",
+          "label": "Centered",
+          "value_kind": "boolean",
+          "default": {
+            "kind": "boolean",
+            "value": true
+          },
+          "bounds": null,
+          "choices": [],
+          "advanced_group": null
+        }
+      ],
+      "preview": {
+        "strategy": "debounced",
+        "debounce_milliseconds": 75,
+        "cancellation": "replace_older_preview"
+      },
+      "lifecycle": {
+        "stage": "alpha",
+        "supports_preview": true,
+        "supports_edit": true,
+        "supports_suppression": true
+      },
+      "enablement": {
+        "state": "enabled",
+        "capability": "sketch.rectangle",
+        "reason": null
+      }
+    },
+    {
+      "schema_version": 1,
+      "id": "crawler.sketch.trim",
+      "label": "Trim",
+      "group": "sketch",
+      "output_kind": "sketch",
+      "input_slots": [
+        {
+          "key": "curve",
+          "label": "Curve",
+          "allowed_kinds": [
+            "sketch_curve"
+          ],
+          "minimum_count": 1,
+          "maximum_count": 1
+        }
+      ],
+      "parameters": [
+        {
+          "key": "pick_parameter",
+          "label": "Pick position",
+          "value_kind": "scalar_millionths",
+          "default": {
+            "kind": "scalar_millionths",
+            "value": 500000
+          },
+          "bounds": {
+            "minimum": 0,
+            "maximum": 1000000
+          },
+          "choices": [],
+          "advanced_group": null
+        }
+      ],
+      "preview": {
+        "strategy": "debounced",
+        "debounce_milliseconds": 75,
+        "cancellation": "replace_older_preview"
+      },
+      "lifecycle": {
+        "stage": "alpha",
+        "supports_preview": true,
+        "supports_edit": true,
+        "supports_suppression": true
+      },
+      "enablement": {
+        "state": "enabled",
+        "capability": "sketch.trim",
+        "reason": null
+      }
+    },
+    {
+      "schema_version": 1,
+      "id": "crawler.sketch.construction",
+      "label": "Construction geometry",
+      "group": "sketch",
+      "output_kind": "sketch",
+      "input_slots": [
+        {
+          "key": "entities",
+          "label": "Sketch entities",
+          "allowed_kinds": [
+            "sketch_entity",
+            "sketch_curve",
+            "sketch_point"
+          ],
+          "minimum_count": 1,
+          "maximum_count": null
+        }
+      ],
+      "parameters": [
+        {
+          "key": "construction",
+          "label": "Construction",
+          "value_kind": "boolean",
+          "default": {
+            "kind": "boolean",
+            "value": true
+          },
+          "bounds": null,
+          "choices": [],
+          "advanced_group": null
+        }
+      ],
+      "preview": {
+        "strategy": "debounced",
+        "debounce_milliseconds": 75,
+        "cancellation": "replace_older_preview"
+      },
+      "lifecycle": {
+        "stage": "alpha",
+        "supports_preview": true,
+        "supports_edit": true,
+        "supports_suppression": true
+      },
+      "enablement": {
+        "state": "enabled",
+        "capability": "sketch.construction",
+        "reason": null
+      }
+    },
+    {
+      "schema_version": 1,
+      "id": "crawler.part.extrude",
+      "label": "Extrude",
+      "group": "part_design",
+      "output_kind": "body",
+      "input_slots": [
+        {
+          "key": "profile",
+          "label": "Profile",
+          "allowed_kinds": [
+            "sketch_profile",
+            "face"
+          ],
+          "minimum_count": 1,
+          "maximum_count": 1
+        }
+      ],
+      "parameters": [
+        {
+          "key": "distance",
+          "label": "Distance",
+          "value_kind": "length_nanometers",
+          "default": {
+            "kind": "length_nanometers",
+            "value": 10000000
+          },
+          "bounds": {
+            "minimum": 1000,
+            "maximum": 1000000000000
+          },
+          "choices": [],
+          "advanced_group": null
+        },
+        {
+          "key": "extent",
+          "label": "Extent",
+          "value_kind": "text",
+          "default": {
+            "kind": "text",
+            "value": "one_sided"
+          },
+          "bounds": null,
+          "choices": [
+            "one_sided",
+            "symmetric"
+          ],
+          "advanced_group": null
+        },
+        {
+          "key": "draft_angle",
+          "label": "Draft angle",
+          "value_kind": "angle_microdegrees",
+          "default": {
+            "kind": "angle_microdegrees",
+            "value": 0
+          },
+          "bounds": {
+            "minimum": -89000000,
+            "maximum": 89000000
+          },
+          "choices": [],
+          "advanced_group": "Advanced"
+        },
+        {
+          "key": "reverse",
+          "label": "Reverse direction",
+          "value_kind": "boolean",
+          "default": {
+            "kind": "boolean",
+            "value": false
+          },
+          "bounds": null,
+          "choices": [],
+          "advanced_group": "Advanced"
+        }
+      ],
+      "preview": {
+        "strategy": "debounced",
+        "debounce_milliseconds": 75,
+        "cancellation": "replace_older_preview"
+      },
+      "lifecycle": {
+        "stage": "alpha",
+        "supports_preview": true,
+        "supports_edit": true,
+        "supports_suppression": true
+      },
+      "enablement": {
+        "state": "enabled",
+        "capability": "part.extrude",
+        "reason": null
+      }
+    },
+    {
+      "schema_version": 1,
+      "id": "crawler.part.revolve",
+      "label": "Revolve",
+      "group": "part_design",
+      "output_kind": "body",
+      "input_slots": [
+        {
+          "key": "profile",
+          "label": "Profile",
+          "allowed_kinds": [
+            "sketch_profile",
+            "face"
+          ],
+          "minimum_count": 1,
+          "maximum_count": 1
+        },
+        {
+          "key": "axis",
+          "label": "Axis",
+          "allowed_kinds": [
+            "axis",
+            "edge"
+          ],
+          "minimum_count": 1,
+          "maximum_count": 1
+        }
+      ],
+      "parameters": [
+        {
+          "key": "angle",
+          "label": "Angle",
+          "value_kind": "angle_microdegrees",
+          "default": {
+            "kind": "angle_microdegrees",
+            "value": 360000000
+          },
+          "bounds": {
+            "minimum": -360000000,
+            "maximum": 360000000
+          },
+          "choices": [],
+          "advanced_group": null
+        },
+        {
+          "key": "operation",
+          "label": "Operation",
+          "value_kind": "text",
+          "default": {
+            "kind": "text",
+            "value": "new_body"
+          },
+          "bounds": null,
+          "choices": [
+            "new_body",
+            "union",
+            "cut",
+            "intersect"
+          ],
+          "advanced_group": null
+        },
+        {
+          "key": "reverse",
+          "label": "Reverse direction",
+          "value_kind": "boolean",
+          "default": {
+            "kind": "boolean",
+            "value": false
+          },
+          "bounds": null,
+          "choices": [],
+          "advanced_group": null
+        }
+      ],
+      "preview": {
+        "strategy": "debounced",
+        "debounce_milliseconds": 75,
+        "cancellation": "replace_older_preview"
+      },
+      "lifecycle": {
+        "stage": "alpha",
+        "supports_preview": true,
+        "supports_edit": true,
+        "supports_suppression": true
+      },
+      "enablement": {
+        "state": "enabled",
+        "capability": "part.revolve",
+        "reason": null
+      }
+    },
+    {
+      "schema_version": 1,
+      "id": "crawler.part.boolean.union",
+      "label": "Boolean union",
+      "group": "part_design",
+      "output_kind": "body",
+      "input_slots": [
+        {
+          "key": "target",
+          "label": "Target body",
+          "allowed_kinds": [
+            "body"
+          ],
+          "minimum_count": 1,
+          "maximum_count": 1
+        },
+        {
+          "key": "tools",
+          "label": "Tool bodies",
+          "allowed_kinds": [
+            "body"
+          ],
+          "minimum_count": 1,
+          "maximum_count": null
+        }
+      ],
+      "parameters": [
+        {
+          "key": "tolerance",
+          "label": "Tolerance",
+          "value_kind": "length_nanometers",
+          "default": {
+            "kind": "length_nanometers",
+            "value": 10000
+          },
+          "bounds": {
+            "minimum": 1,
+            "maximum": 1000000
+          },
+          "choices": [],
+          "advanced_group": null
+        },
+        {
+          "key": "keep_tools",
+          "label": "Keep tools visible",
+          "value_kind": "boolean",
+          "default": {
+            "kind": "boolean",
+            "value": false
+          },
+          "bounds": null,
+          "choices": [],
+          "advanced_group": null
+        }
+      ],
+      "preview": {
+        "strategy": "debounced",
+        "debounce_milliseconds": 75,
+        "cancellation": "replace_older_preview"
+      },
+      "lifecycle": {
+        "stage": "alpha",
+        "supports_preview": true,
+        "supports_edit": true,
+        "supports_suppression": true
+      },
+      "enablement": {
+        "state": "enabled",
+        "capability": "part.boolean.union",
+        "reason": null
+      }
+    },
+    {
+      "schema_version": 1,
+      "id": "crawler.part.boolean.cut",
+      "label": "Boolean cut",
+      "group": "part_design",
+      "output_kind": "body",
+      "input_slots": [
+        {
+          "key": "target",
+          "label": "Target body",
+          "allowed_kinds": [
+            "body"
+          ],
+          "minimum_count": 1,
+          "maximum_count": 1
+        },
+        {
+          "key": "tools",
+          "label": "Tool bodies",
+          "allowed_kinds": [
+            "body"
+          ],
+          "minimum_count": 1,
+          "maximum_count": null
+        }
+      ],
+      "parameters": [
+        {
+          "key": "tolerance",
+          "label": "Tolerance",
+          "value_kind": "length_nanometers",
+          "default": {
+            "kind": "length_nanometers",
+            "value": 10000
+          },
+          "bounds": {
+            "minimum": 1,
+            "maximum": 1000000
+          },
+          "choices": [],
+          "advanced_group": null
+        },
+        {
+          "key": "keep_tools",
+          "label": "Keep tools visible",
+          "value_kind": "boolean",
+          "default": {
+            "kind": "boolean",
+            "value": false
+          },
+          "bounds": null,
+          "choices": [],
+          "advanced_group": null
+        }
+      ],
+      "preview": {
+        "strategy": "debounced",
+        "debounce_milliseconds": 75,
+        "cancellation": "replace_older_preview"
+      },
+      "lifecycle": {
+        "stage": "alpha",
+        "supports_preview": true,
+        "supports_edit": true,
+        "supports_suppression": true
+      },
+      "enablement": {
+        "state": "enabled",
+        "capability": "part.boolean.cut",
+        "reason": null
+      }
+    },
+    {
+      "schema_version": 1,
+      "id": "crawler.part.boolean.intersect",
+      "label": "Boolean intersect",
+      "group": "part_design",
+      "output_kind": "body",
+      "input_slots": [
+        {
+          "key": "target",
+          "label": "Target body",
+          "allowed_kinds": [
+            "body"
+          ],
+          "minimum_count": 1,
+          "maximum_count": 1
+        },
+        {
+          "key": "tools",
+          "label": "Tool bodies",
+          "allowed_kinds": [
+            "body"
+          ],
+          "minimum_count": 1,
+          "maximum_count": null
+        }
+      ],
+      "parameters": [
+        {
+          "key": "tolerance",
+          "label": "Tolerance",
+          "value_kind": "length_nanometers",
+          "default": {
+            "kind": "length_nanometers",
+            "value": 10000
+          },
+          "bounds": {
+            "minimum": 1,
+            "maximum": 1000000
+          },
+          "choices": [],
+          "advanced_group": null
+        },
+        {
+          "key": "keep_tools",
+          "label": "Keep tools visible",
+          "value_kind": "boolean",
+          "default": {
+            "kind": "boolean",
+            "value": false
+          },
+          "bounds": null,
+          "choices": [],
+          "advanced_group": null
+        }
+      ],
+      "preview": {
+        "strategy": "debounced",
+        "debounce_milliseconds": 75,
+        "cancellation": "replace_older_preview"
+      },
+      "lifecycle": {
+        "stage": "alpha",
+        "supports_preview": true,
+        "supports_edit": true,
+        "supports_suppression": true
+      },
+      "enablement": {
+        "state": "enabled",
+        "capability": "part.boolean.intersect",
+        "reason": null
+      }
+    },
+    {
+      "schema_version": 1,
+      "id": "crawler.part.fillet",
+      "label": "Fillet",
+      "group": "part_design",
+      "output_kind": "body",
+      "input_slots": [
+        {
+          "key": "body",
+          "label": "Body",
+          "allowed_kinds": [
+            "body"
+          ],
+          "minimum_count": 1,
+          "maximum_count": 1
+        },
+        {
+          "key": "edges",
+          "label": "Edges",
+          "allowed_kinds": [
+            "edge"
+          ],
+          "minimum_count": 1,
+          "maximum_count": null
+        }
+      ],
+      "parameters": [
+        {
+          "key": "radius",
+          "label": "Radius",
+          "value_kind": "length_nanometers",
+          "default": {
+            "kind": "length_nanometers",
+            "value": 1000000
+          },
+          "bounds": {
+            "minimum": 1000,
+            "maximum": 1000000000000
+          },
+          "choices": [],
+          "advanced_group": null
+        }
+      ],
+      "preview": {
+        "strategy": "debounced",
+        "debounce_milliseconds": 75,
+        "cancellation": "replace_older_preview"
+      },
+      "lifecycle": {
+        "stage": "alpha",
+        "supports_preview": true,
+        "supports_edit": true,
+        "supports_suppression": true
+      },
+      "enablement": {
+        "state": "enabled",
+        "capability": "part.fillet",
+        "reason": null
+      }
+    },
+    {
+      "schema_version": 1,
+      "id": "crawler.part.chamfer",
+      "label": "Chamfer",
+      "group": "part_design",
+      "output_kind": "body",
+      "input_slots": [
+        {
+          "key": "body",
+          "label": "Body",
+          "allowed_kinds": [
+            "body"
+          ],
+          "minimum_count": 1,
+          "maximum_count": 1
+        },
+        {
+          "key": "edges",
+          "label": "Edges",
+          "allowed_kinds": [
+            "edge"
+          ],
+          "minimum_count": 1,
+          "maximum_count": null
+        }
+      ],
+      "parameters": [
+        {
+          "key": "distance",
+          "label": "Distance",
+          "value_kind": "length_nanometers",
+          "default": {
+            "kind": "length_nanometers",
+            "value": 1000000
+          },
+          "bounds": {
+            "minimum": 1000,
+            "maximum": 1000000000000
+          },
+          "choices": [],
+          "advanced_group": null
+        }
+      ],
+      "preview": {
+        "strategy": "debounced",
+        "debounce_milliseconds": 75,
+        "cancellation": "replace_older_preview"
+      },
+      "lifecycle": {
+        "stage": "alpha",
+        "supports_preview": true,
+        "supports_edit": true,
+        "supports_suppression": true
+      },
+      "enablement": {
+        "state": "enabled",
+        "capability": "part.chamfer",
+        "reason": null
+      }
+    },
+    {
+      "schema_version": 1,
+      "id": "crawler.part.mirror",
+      "label": "Mirror",
+      "group": "transform",
+      "output_kind": "bodies",
+      "input_slots": [
+        {
+          "key": "source",
+          "label": "Source",
+          "allowed_kinds": [
+            "body",
+            "feature"
+          ],
+          "minimum_count": 1,
+          "maximum_count": null
+        },
+        {
+          "key": "plane",
+          "label": "Mirror plane",
+          "allowed_kinds": [
+            "plane",
+            "face"
+          ],
+          "minimum_count": 1,
+          "maximum_count": 1
+        }
+      ],
+      "parameters": [
+        {
+          "key": "merge",
+          "label": "Merge result",
+          "value_kind": "boolean",
+          "default": {
+            "kind": "boolean",
+            "value": false
+          },
+          "bounds": null,
+          "choices": [],
+          "advanced_group": null
+        }
+      ],
+      "preview": {
+        "strategy": "debounced",
+        "debounce_milliseconds": 75,
+        "cancellation": "replace_older_preview"
+      },
+      "lifecycle": {
+        "stage": "alpha",
+        "supports_preview": true,
+        "supports_edit": true,
+        "supports_suppression": true
+      },
+      "enablement": {
+        "state": "enabled",
+        "capability": "part.mirror",
+        "reason": null
+      }
+    },
+    {
+      "schema_version": 1,
+      "id": "crawler.part.transform",
+      "label": "Transform",
+      "group": "transform",
+      "output_kind": "body",
+      "input_slots": [
+        {
+          "key": "source",
+          "label": "Source body",
+          "allowed_kinds": [
+            "body"
+          ],
+          "minimum_count": 1,
+          "maximum_count": 1
+        }
+      ],
+      "parameters": [
+        {
+          "key": "x",
+          "label": "X translation",
+          "value_kind": "length_nanometers",
+          "default": {
+            "kind": "length_nanometers",
+            "value": 0
+          },
+          "bounds": null,
+          "choices": [],
+          "advanced_group": null
+        },
+        {
+          "key": "y",
+          "label": "Y translation",
+          "value_kind": "length_nanometers",
+          "default": {
+            "kind": "length_nanometers",
+            "value": 0
+          },
+          "bounds": null,
+          "choices": [],
+          "advanced_group": null
+        },
+        {
+          "key": "z",
+          "label": "Z translation",
+          "value_kind": "length_nanometers",
+          "default": {
+            "kind": "length_nanometers",
+            "value": 10000000
+          },
+          "bounds": null,
+          "choices": [],
+          "advanced_group": null
+        }
+      ],
+      "preview": {
+        "strategy": "debounced",
+        "debounce_milliseconds": 75,
+        "cancellation": "replace_older_preview"
+      },
+      "lifecycle": {
+        "stage": "alpha",
+        "supports_preview": true,
+        "supports_edit": true,
+        "supports_suppression": true
+      },
+      "enablement": {
+        "state": "enabled",
+        "capability": "part.transform",
+        "reason": null
+      }
+    },
+    {
+      "schema_version": 1,
+      "id": "crawler.part.pattern.linear",
+      "label": "Linear pattern",
+      "group": "transform",
+      "output_kind": "bodies",
+      "input_slots": [
+        {
+          "key": "source",
+          "label": "Source",
+          "allowed_kinds": [
+            "body",
+            "feature"
+          ],
+          "minimum_count": 1,
+          "maximum_count": null
+        },
+        {
+          "key": "direction",
+          "label": "Direction",
+          "allowed_kinds": [
+            "axis",
+            "edge"
+          ],
+          "minimum_count": 1,
+          "maximum_count": 1
+        }
+      ],
+      "parameters": [
+        {
+          "key": "count",
+          "label": "Count",
+          "value_kind": "count",
+          "default": {
+            "kind": "count",
+            "value": 2
+          },
+          "bounds": {
+            "minimum": 2,
+            "maximum": 10000
+          },
+          "choices": [],
+          "advanced_group": null
+        },
+        {
+          "key": "spacing",
+          "label": "Spacing",
+          "value_kind": "length_nanometers",
+          "default": {
+            "kind": "length_nanometers",
+            "value": 10000000
+          },
+          "bounds": {
+            "minimum": 1000,
+            "maximum": 1000000000000
+          },
+          "choices": [],
+          "advanced_group": null
+        },
+        {
+          "key": "symmetric",
+          "label": "Symmetric",
+          "value_kind": "boolean",
+          "default": {
+            "kind": "boolean",
+            "value": false
+          },
+          "bounds": null,
+          "choices": [],
+          "advanced_group": null
+        }
+      ],
+      "preview": {
+        "strategy": "debounced",
+        "debounce_milliseconds": 75,
+        "cancellation": "replace_older_preview"
+      },
+      "lifecycle": {
+        "stage": "alpha",
+        "supports_preview": true,
+        "supports_edit": true,
+        "supports_suppression": true
+      },
+      "enablement": {
+        "state": "enabled",
+        "capability": "part.pattern.linear",
+        "reason": null
+      }
+    },
+    {
+      "schema_version": 1,
+      "id": "crawler.part.pattern.circular",
+      "label": "Circular pattern",
+      "group": "transform",
+      "output_kind": "bodies",
+      "input_slots": [
+        {
+          "key": "source",
+          "label": "Source",
+          "allowed_kinds": [
+            "body",
+            "feature"
+          ],
+          "minimum_count": 1,
+          "maximum_count": null
+        },
+        {
+          "key": "axis",
+          "label": "Axis",
+          "allowed_kinds": [
+            "axis",
+            "edge"
+          ],
+          "minimum_count": 1,
+          "maximum_count": 1
+        }
+      ],
+      "parameters": [
+        {
+          "key": "count",
+          "label": "Count",
+          "value_kind": "count",
+          "default": {
+            "kind": "count",
+            "value": 4
+          },
+          "bounds": {
+            "minimum": 2,
+            "maximum": 10000
+          },
+          "choices": [],
+          "advanced_group": null
+        },
+        {
+          "key": "angle",
+          "label": "Total angle",
+          "value_kind": "angle_microdegrees",
+          "default": {
+            "kind": "angle_microdegrees",
+            "value": 360000000
+          },
+          "bounds": {
+            "minimum": -360000000,
+            "maximum": 360000000
+          },
+          "choices": [],
+          "advanced_group": null
+        }
+      ],
+      "preview": {
+        "strategy": "debounced",
+        "debounce_milliseconds": 75,
+        "cancellation": "replace_older_preview"
+      },
+      "lifecycle": {
+        "stage": "alpha",
+        "supports_preview": true,
+        "supports_edit": true,
+        "supports_suppression": true
+      },
+      "enablement": {
+        "state": "enabled",
+        "capability": "part.pattern.circular",
+        "reason": null
+      }
+    },
+    {
+      "schema_version": 1,
+      "id": "crawler.part.shell",
+      "label": "Shell",
+      "group": "part_design",
+      "output_kind": "body",
+      "input_slots": [
+        {
+          "key": "body",
+          "label": "Body",
+          "allowed_kinds": [
+            "body"
+          ],
+          "minimum_count": 1,
+          "maximum_count": 1
+        },
+        {
+          "key": "remove_faces",
+          "label": "Faces to remove",
+          "allowed_kinds": [
+            "face"
+          ],
+          "minimum_count": 1,
+          "maximum_count": 1
+        }
+      ],
+      "parameters": [
+        {
+          "key": "thickness",
+          "label": "Wall thickness",
+          "value_kind": "length_nanometers",
+          "default": {
+            "kind": "length_nanometers",
+            "value": 1000000
+          },
+          "bounds": {
+            "minimum": 1000,
+            "maximum": 1000000000000
+          },
+          "choices": [],
+          "advanced_group": null
+        }
+      ],
+      "preview": {
+        "strategy": "debounced",
+        "debounce_milliseconds": 75,
+        "cancellation": "replace_older_preview"
+      },
+      "lifecycle": {
+        "stage": "alpha",
+        "supports_preview": true,
+        "supports_edit": true,
+        "supports_suppression": true
+      },
+      "enablement": {
+        "state": "enabled",
+        "capability": "part.shell",
+        "reason": null
+      }
+    }
+  ]
+}

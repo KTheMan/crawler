@@ -1,0 +1,26 @@
+{
+  "name": "crawler-e00-s03-renderer-spike",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "wasm:packet": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-packet.ps1",
+    "wasm:wgpu": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-wgpu-probe.ps1",
+    "wasm:dev": "pnpm wasm:packet && pnpm wasm:wgpu",
+    "dev": "vite --host 127.0.0.1",
+    "build": "tsc --noEmit && vite build && node scripts/measure-build.mjs",
+    "test": "playwright test",
+    "bench": "playwright test tests/metrics.spec.ts",
+    "report": "node scripts/report.mjs"
+  },
+  "dependencies": {
+    "three": "^0.185.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1",
+    "@types/node": "^26.1.2",
+    "@types/three": "^0.185.3",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.0"
+  }
+}

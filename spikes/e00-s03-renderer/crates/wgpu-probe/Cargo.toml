@@ -1,0 +1,17 @@
+[package]
+name = "crawler-wgpu-probe"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+monstertruck-gpu = { path = "../../../../vendor/monstertruck/monstertruck-gpu", features = ["webgl"] }
+monstertruck-render = { path = "../../../../vendor/monstertruck/monstertruck-render", features = ["webgl"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2"
+
+[workspace]

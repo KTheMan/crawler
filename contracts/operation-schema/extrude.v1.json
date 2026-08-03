@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "id": "crawler.part.extrude",
+  "label": "Extrude",
+  "group": "part_design",
+  "output_kind": "body",
+  "input_slots": [
+    {
+      "key": "profile",
+      "label": "Profile",
+      "allowed_kinds": ["sketch_profile", "face"],
+      "minimum_count": 1,
+      "maximum_count": 1
+    }
+  ],
+  "parameters": [
+    {
+      "key": "distance",
+      "label": "Distance",
+      "value_kind": "length_nanometers",
+      "default": { "kind": "length_nanometers", "value": 10000000 },
+      "bounds": { "minimum": 1000, "maximum": 1000000000000 },
+      "choices": [],
+      "advanced_group": null
+    },
+    {
+      "key": "extent",
+      "label": "Extent",
+      "value_kind": "text",
+      "default": { "kind": "text", "value": "one_sided" },
+      "bounds": null,
+      "choices": ["one_sided", "symmetric"],
+      "advanced_group": null
+    },
+    {
+      "key": "draft_angle",
+      "label": "Draft angle",
+      "value_kind": "angle_microdegrees",
+      "default": { "kind": "angle_microdegrees", "value": 0 },
+      "bounds": { "minimum": -89000000, "maximum": 89000000 },
+      "choices": [],
+      "advanced_group": "Advanced"
+    },
+    {
+      "key": "reverse",
+      "label": "Reverse direction",
+      "value_kind": "boolean",
+      "default": { "kind": "boolean", "value": false },
+      "bounds": null,
+      "choices": [],
+      "advanced_group": "Advanced"
+    }
+  ],
+  "preview": {
+    "strategy": "debounced",
+    "debounce_milliseconds": 75,
+    "cancellation": "replace_older_preview"
+  }
+}

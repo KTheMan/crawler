@@ -1,0 +1,3 @@
+[submodule "vendor/monstertruck"]
+	path = vendor/monstertruck
+	url = https://github.com/KTheMan/monstertruck.git

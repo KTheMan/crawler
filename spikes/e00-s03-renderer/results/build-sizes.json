@@ -1,0 +1,47 @@
+{
+  "measuredAt": "2026-08-03T00:15:27.436Z",
+  "files": [
+    {
+      "file": "dist/assets/crawler_render_packet_bg-C4oK6T86.wasm",
+      "rawBytes": 295192,
+      "gzipBytes": 87546,
+      "brotliBytes": 68887
+    },
+    {
+      "file": "dist/assets/index-CxMDvzR4.js",
+      "rawBytes": 529924,
+      "gzipBytes": 131862,
+      "brotliBytes": 107835
+    },
+    {
+      "file": "dist/assets/index-iOTC2f_O.css",
+      "rawBytes": 436,
+      "gzipBytes": 307,
+      "brotliBytes": 225
+    },
+    {
+      "file": "dist/assets/packet.worker-I2t-YlY6.js",
+      "rawBytes": 5502,
+      "gzipBytes": 1891,
+      "brotliBytes": 1661
+    },
+    {
+      "file": "src/generated/packet/crawler_render_packet.js",
+      "rawBytes": 11524,
+      "gzipBytes": 2560,
+      "brotliBytes": 2252
+    },
+    {
+      "file": "src/generated/packet/crawler_render_packet.wasm",
+      "rawBytes": 51257900,
+      "gzipBytes": 9129449,
+      "brotliBytes": 6080094
+    },
+    {
+      "file": "src/generated/packet/crawler_render_packet_bg.wasm",
+      "rawBytes": 295192,
+      "gzipBytes": 87546,
+      "brotliBytes": 68887
+    }
+  ]
+}
