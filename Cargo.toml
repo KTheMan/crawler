@@ -1,0 +1,25 @@
+[workspace]
+members = [
+    "contracts/kernel-baseline",
+    "crates/crawler-alpha-reference",
+    "crates/crawler-document",
+    "crates/crawler-feature-graph",
+    "crates/crawler-feature-kernel",
+    "crates/crawler-history",
+    "crates/crawler-interchange",
+    "crates/crawler-kernel-worker",
+    "crates/crawler-operation-schema",
+    "crates/crawler-package",
+    "crates/crawler-part-engine",
+    "crates/crawler-part-runtime",
+    "crates/crawler-parameters",
+    "crates/crawler-quantity",
+    "crates/crawler-reference-fixtures",
+    "crates/crawler-render-packet",
+    "crates/crawler-sketch",
+    "crates/crawler-storage",
+    "crates/crawler-topology-repair",
+    "crates/crawler-versioning",
+]
+exclude = ["vendor/monstertruck"]
+resolver = "2"

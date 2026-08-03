@@ -1,0 +1,19 @@
+[package]
+name = "crawler-kernel-worker"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+crawler-interchange = { path = "../crawler-interchange" }
+monstertruck-modeling = { path = "../../vendor/monstertruck/monstertruck-modeling" }
+monstertruck-wasm = { path = "../../vendor/monstertruck/monstertruck-wasm" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2"

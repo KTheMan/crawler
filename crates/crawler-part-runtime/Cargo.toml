@@ -1,0 +1,28 @@
+[package]
+name = "crawler-part-runtime"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+crawler-document = { path = "../crawler-document" }
+crawler-feature-kernel = { path = "../crawler-feature-kernel" }
+crawler-feature-graph = { path = "../crawler-feature-graph" }
+crawler-interchange = { path = "../crawler-interchange" }
+crawler-package = { path = "../crawler-package" }
+crawler-parameters = { path = "../crawler-parameters" }
+crawler-part-engine = { path = "../crawler-part-engine" }
+crawler-quantity = { path = "../crawler-quantity" }
+crawler-render-packet = { path = "../crawler-render-packet" }
+crawler-sketch = { path = "../crawler-sketch" }
+crawler-topology-repair = { path = "../crawler-topology-repair" }
+crawler-versioning = { path = "../crawler-versioning" }
+monstertruck-modeling = { path = "../../vendor/monstertruck/monstertruck-modeling" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2"

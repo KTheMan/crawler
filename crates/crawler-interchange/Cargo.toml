@@ -1,0 +1,22 @@
+[package]
+name = "crawler-interchange"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+crawler-feature-kernel = { path = "../crawler-feature-kernel" }
+crawler-part-engine = { path = "../crawler-part-engine" }
+crawler-render-packet = { path = "../crawler-render-packet" }
+monstertruck-meshing = { path = "../../vendor/monstertruck/monstertruck-meshing" }
+monstertruck-mesh = { path = "../../vendor/monstertruck/monstertruck-mesh" }
+monstertruck-modeling = { path = "../../vendor/monstertruck/monstertruck-modeling" }
+monstertruck-step = { path = "../../vendor/monstertruck/monstertruck-step" }
+monstertruck-topology = { path = "../../vendor/monstertruck/monstertruck-topology" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+thiserror = "2"
+
+[lints.rust]
+unsafe_code = "forbid"

@@ -1,0 +1,177 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://crawler.invalid/schemas/measurement-record-v1.json",
+  "title": "Crawler reference measurement record version 1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "protocol_version",
+    "recorded_at_utc",
+    "fixture",
+    "revision",
+    "device_class",
+    "environment",
+    "run_state",
+    "metrics",
+    "failures"
+  ],
+  "properties": {
+    "protocol_version": { "const": 1 },
+    "recorded_at_utc": { "type": "string", "format": "date-time" },
+    "fixture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "fixture_format_version",
+        "document_sha256",
+        "document_revision",
+        "license_spdx",
+        "creator",
+        "created",
+        "source",
+        "generator"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "fixture_format_version": { "type": "integer", "minimum": 1 },
+        "document_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "document_revision": { "type": "integer", "minimum": 0 },
+        "license_spdx": { "type": "string", "minLength": 1 },
+        "creator": { "type": "string", "minLength": 1 },
+        "created": { "type": "string", "format": "date" },
+        "source": { "type": "string", "minLength": 1 },
+        "generator": { "type": "string", "minLength": 1 }
+      }
+    },
+    "revision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_commit",
+        "worktree_dirty",
+        "application_revision",
+        "build_profile",
+        "rustc",
+        "benchmark_harness_revision"
+      ],
+      "properties": {
+        "source_commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "worktree_dirty": { "type": "boolean" },
+        "application_revision": { "type": "string", "minLength": 1 },
+        "build_profile": { "type": "string", "minLength": 1 },
+        "rustc": { "type": "string", "minLength": 1 },
+        "benchmark_harness_revision": { "type": "string", "minLength": 1 }
+      }
+    },
+    "device_class": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "cpu",
+        "logical_cores",
+        "memory_gib",
+        "gpu",
+        "gpu_driver",
+        "operating_system",
+        "browser",
+        "wasm_runtime",
+        "wasm_threads",
+        "display",
+        "device_scale_factor"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "cpu": { "type": "string", "minLength": 1 },
+        "logical_cores": { "type": "integer", "minimum": 1 },
+        "memory_gib": { "type": "number", "exclusiveMinimum": 0 },
+        "gpu": { "type": "string", "minLength": 1 },
+        "gpu_driver": { "type": "string", "minLength": 1 },
+        "operating_system": { "type": "string", "minLength": 1 },
+        "browser": { "type": "string", "minLength": 1 },
+        "wasm_runtime": { "type": "string", "minLength": 1 },
+        "wasm_threads": { "type": "boolean" },
+        "display": { "type": "string", "minLength": 1 },
+        "device_scale_factor": { "type": "number", "exclusiveMinimum": 0 }
+      }
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["power_profile", "power_source", "background_load", "os_cache_state"],
+      "properties": {
+        "power_profile": { "type": "string", "minLength": 1 },
+        "power_source": { "enum": ["ac", "battery", "unknown"] },
+        "background_load": { "type": "string", "minLength": 1 },
+        "os_cache_state": { "type": "string", "minLength": 1 }
+      }
+    },
+    "run_state": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "quality", "preparation", "warmup_iterations", "sample_count"],
+      "properties": {
+        "kind": { "enum": ["cold", "warm"] },
+        "quality": { "enum": ["budget", "exploratory"] },
+        "preparation": { "type": "string", "minLength": 1 },
+        "warmup_iterations": { "type": "integer", "minimum": 0 },
+        "sample_count": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "metrics": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "unit", "samples", "summary"],
+        "properties": {
+          "name": {
+            "enum": [
+              "input_feedback",
+              "preview_latency",
+              "recompute_latency",
+              "frame_time",
+              "document_load",
+              "resident_memory"
+            ]
+          },
+          "unit": { "enum": ["millisecond", "mebibyte"] },
+          "samples": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "number", "minimum": 0 }
+          },
+          "summary": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["count", "min", "p50", "p95", "p99", "max", "method"],
+            "properties": {
+              "count": { "type": "integer", "minimum": 1 },
+              "min": { "type": "number", "minimum": 0 },
+              "p50": { "type": "number", "minimum": 0 },
+              "p95": { "type": "number", "minimum": 0 },
+              "p99": { "type": "number", "minimum": 0 },
+              "max": { "type": "number", "minimum": 0 },
+              "method": { "const": "nearest_rank" }
+            }
+          }
+        }
+      }
+    },
+    "failures": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["sample_index", "kind", "detail"],
+        "properties": {
+          "sample_index": { "type": "integer", "minimum": 0 },
+          "kind": { "enum": ["cancelled", "timeout", "crash", "invalid"] },
+          "detail": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}
