@@ -1,0 +1,2 @@
+# Kernel worker bindings are checked in so a clean static-site build does not
+# require the Rust and wasm-bindgen toolchains.
