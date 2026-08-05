@@ -1,6 +1,6 @@
 # ADR 0001: Monstertruck kernel baseline
 
-- Status: Accepted
+- Status: Superseded by [ADR 0008](0008-monstertruck-git-dependencies.md)
 - Date: 2026-07-31
 - Story: E00-S01
 

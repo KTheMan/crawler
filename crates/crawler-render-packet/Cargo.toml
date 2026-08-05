@@ -8,8 +8,8 @@ publish = false
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-monstertruck-meshing = { path = "../../vendor/monstertruck/monstertruck-meshing" }
-monstertruck-modeling = { path = "../../vendor/monstertruck/monstertruck-modeling" }
+monstertruck-meshing = { workspace = true }
+monstertruck-modeling = { workspace = true }
 serde = { version = "1", features = ["derive"] }
 thiserror = "2"
 

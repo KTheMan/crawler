@@ -6,9 +6,9 @@ publish = false
 
 [dependencies]
 crawler-render-packet = { path = "../crawler-render-packet" }
-monstertruck-meshing = { path = "../../vendor/monstertruck/monstertruck-meshing" }
-monstertruck-modeling = { path = "../../vendor/monstertruck/monstertruck-modeling", features = ["fillet"] }
-monstertruck-solid = { path = "../../vendor/monstertruck/monstertruck-solid" }
+monstertruck-meshing = { workspace = true }
+monstertruck-modeling = { workspace = true, features = ["fillet"] }
+monstertruck-solid = { workspace = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
