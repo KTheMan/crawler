@@ -27,8 +27,8 @@ use crawler_part_engine::{
     WIDTH_PARAMETER_ID,
 };
 use crawler_sketch::{
-    Constraint, ConstraintId, DeclarativeSolver, Geometry, GeometryEntity, Line, Point2, PointRef,
-    Sketch, SketchCommand, SketchSolver,
+    Constraint, ConstraintId, EzpzSolver, Geometry, GeometryEntity, Line, Point2, PointRef, Sketch,
+    SketchCommand, SketchSolver,
 };
 use crawler_topology_repair::{
     CandidateSelection, apply_rebind, apply_undo as undo_rebind, canonical_document_hash,
@@ -660,7 +660,7 @@ fn qualify_sketch(
             .after;
     }
     let profile = sketch.profile_report();
-    let solve = DeclarativeSolver.solve(&sketch).map_err(display_error)?;
+    let solve = EzpzSolver.solve(&sketch).map_err(display_error)?;
     Ok(SketchEvidence {
         canonical_hash: sketch.canonical_hash().map_err(display_error)?,
         closed_profile_count: profile.closed_profiles.len(),

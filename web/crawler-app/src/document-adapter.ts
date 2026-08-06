@@ -75,21 +75,19 @@ export interface PartRuntimePort {
 
 const fixture: DurableDocumentSnapshot = Object.freeze({
   schemaVersion: 1,
-  documentId: "document:part-alpha-001",
-  name: "Bracket",
+  documentId: "document:blank",
+  name: "Untitled Part",
   features: Object.freeze([
     Object.freeze({ id: "origin", type: "origin", name: "Origin", status: "complete", parameters: Object.freeze({ planes: "XY, XZ, YZ" }) }),
-    Object.freeze({ id: "feature:rectangle-sketch", type: "sketch", name: "Constrained Rectangle", status: "complete", parameters: Object.freeze({ profile: "4 elements", constraints: 5 }) }),
-    Object.freeze({ id: "feature:extrude", type: "pad", name: "Extrude", status: "complete", parameters: Object.freeze({ distance: 12, width: 40, height: 28 }) }),
   ]),
   components: Object.freeze([
     Object.freeze({
       id: "component:root",
-      name: "Bracket",
+      name: "Untitled Part",
       childComponentIds: Object.freeze([]),
-      bodies: Object.freeze([Object.freeze({ id: "body:part", name: "Part Body", generatedBy: "feature:extrude", visibility: "visible", status: "complete" })]),
-      sketches: Object.freeze([Object.freeze({ id: "sketch:rectangle", name: "Rectangle", support: "XY", featureId: "feature:rectangle-sketch" })]),
-      featureIds: Object.freeze(["feature:rectangle-sketch", "feature:extrude"]),
+      bodies: Object.freeze([]),
+      sketches: Object.freeze([]),
+      featureIds: Object.freeze([]),
       originPlanes: Object.freeze([
         Object.freeze({ id: "origin-plane:xy", name: "XY plane" }),
         Object.freeze({ id: "origin-plane:xz", name: "XZ plane" }),
@@ -109,6 +107,7 @@ interface SemanticFeature {
   id?: string;
   display_name?: string;
   operation?: { schema_id?: string };
+  inputs?: Record<string, { kind?: string; id?: string }>;
   parameters?: Record<string, string>;
   suppressed?: boolean;
   component?: string;
@@ -195,7 +194,14 @@ function orderedFeatureIds(document: SemanticDocument): string[] {
 }
 
 export class DocumentAdapter {
-  constructor(private readonly snapshot: DurableDocumentSnapshot = fixture, private readonly semanticHash = JSON.stringify(snapshot), private readonly semanticDocument: unknown = snapshot) {}
+  private readonly snapshot: DurableDocumentSnapshot;
+  private readonly semanticHash: string;
+  private readonly semanticDocument: unknown;
+  constructor(snapshot: DurableDocumentSnapshot = fixture, semanticHash = JSON.stringify(snapshot), semanticDocument: unknown = snapshot) {
+    this.snapshot = snapshot;
+    this.semanticHash = semanticHash;
+    this.semanticDocument = semanticDocument;
+  }
   getSnapshot(): DurableDocumentSnapshot { return this.snapshot; }
   findFeature(id: string): DurableFeature | undefined { return this.snapshot.features.find((feature) => feature.id === id); }
   findBody(id: string): DurableBody | undefined { return this.snapshot.components.flatMap((component) => component.bodies).find((body) => body.id === id); }
@@ -256,30 +262,68 @@ export function adapterFromWorkerSnapshot(documentJson: string, semanticHash: st
 
   const selected = Object.freeze(features.map((feature) => Object.freeze({ ...feature, parameters: Object.freeze(feature.parameters) })));
   const featureById = new Map(selected.map((feature) => [feature.id, feature]));
+  const outputBodiesByFeature = new Map<string, Set<string>>();
+  for (const [bodyId, body] of Object.entries(document.bodies ?? {})) {
+    if (!body.generated_by) continue;
+    const outputs = outputBodiesByFeature.get(body.generated_by) ?? new Set<string>();
+    outputs.add(body.id ?? bodyId);
+    outputBodiesByFeature.set(body.generated_by, outputs);
+  }
+  const supersededBodyIds = new Set<string>();
+  const predecessorByBody = new Map<string, string>();
+  for (const [featureId, feature] of Object.entries(document.features ?? {})) {
+    const outputs = outputBodiesByFeature.get(featureId);
+    if (!outputs?.size) continue;
+    const bodyInputs = Object.values(feature.inputs ?? {}).filter((input) => input.kind === "body" && input.id).map((input) => input.id!);
+    const primaryInput = feature.inputs?.source?.id ?? feature.inputs?.target?.id ?? bodyInputs[0];
+    for (const input of bodyInputs) {
+      if (!outputs.has(input)) supersededBodyIds.add(input);
+    }
+    if (primaryInput) {
+      for (const output of outputs) {
+        if (output !== primaryInput) predecessorByBody.set(output, primaryInput);
+      }
+    }
+  }
+  const logicalBodyName = (bodyId: string, fallback: string): string => {
+    const visited = new Set<string>();
+    let current = bodyId;
+    while (predecessorByBody.has(current) && !visited.has(current)) {
+      visited.add(current);
+      current = predecessorByBody.get(current)!;
+    }
+    return document.bodies?.[current]?.display_name ?? fallback;
+  };
   const componentRecords = document.components ?? {};
+  const sketchFeatureBySketchId = new Map<string, string>();
+  for (const [featureId, feature] of Object.entries(document.features ?? {})) {
+    for (const input of Object.values(feature.inputs ?? {})) {
+      if (input.kind === "sketch" && input.id) sketchFeatureBySketchId.set(input.id, featureId);
+    }
+  }
   const components = Object.entries(componentRecords).map(([componentId, component]) => {
-    const orderedBodyIds = [...(component.body_order ?? []), ...Object.keys(document.bodies ?? {}).filter((id) => document.bodies?.[id]?.component === componentId && !(component.body_order ?? []).includes(id)).sort()];
+    const orderedBodyIds = [...(component.body_order ?? []), ...Object.keys(document.bodies ?? {}).filter((id) => document.bodies?.[id]?.component === componentId && !(component.body_order ?? []).includes(id)).sort()]
+      .filter((bodyId) => !supersededBodyIds.has(bodyId));
     const orderedSketchIds = [...(component.sketch_order ?? []), ...Object.keys(sketches).filter((id) => sketches[id]?.component === componentId && !(component.sketch_order ?? []).includes(id)).sort()];
     const featureIds = [...(component.feature_order ?? []), ...Object.keys(document.features ?? {}).filter((id) => document.features?.[id]?.component === componentId && !(component.feature_order ?? []).includes(id)).sort()];
-    const sketchFeatureIds = featureIds.filter((id) => featureById.get(id)?.type === "sketch");
     const bodies = orderedBodyIds.flatMap((bodyId) => {
       const body = document.bodies?.[bodyId];
       if (!body) return [];
       const producer = body.generated_by ?? "";
       return [{
         id: body.id ?? bodyId,
-        name: body.display_name ?? bodyId,
+        name: logicalBodyName(body.id ?? bodyId, body.display_name ?? bodyId),
         generatedBy: producer,
         visibility: body.visibility === "hidden" ? "hidden" as const : "visible" as const,
         status: producer ? (featureById.get(producer)?.status ?? "stale") : "stale" as const,
       }];
     });
-    const componentSketches = orderedSketchIds.flatMap((sketchId, index) => {
+    const componentSketches = orderedSketchIds.flatMap((sketchId) => {
       const sketch = sketches[sketchId];
       if (!sketch) return [];
       const support = sketch.support?.plane;
       const supportName = support ? document.origin_planes?.[support]?.plane?.toUpperCase() ?? support : sketch.support?.kind ?? "unbound";
-      return [{ id: sketch.id ?? sketchId, name: sketch.display_name ?? sketchId, support: supportName, featureId: sketchFeatureIds[index] }];
+      return [{ id: sketch.id ?? sketchId, name: sketch.display_name ?? sketchId, support: supportName, featureId: sketchFeatureBySketchId.get(sketch.id ?? sketchId) }];
     });
     const originPlanes = Object.entries(document.origin_planes ?? {}).filter(([, plane]) => plane.component === componentId).map(([planeId, plane]) => ({
       id: plane.id ?? planeId,

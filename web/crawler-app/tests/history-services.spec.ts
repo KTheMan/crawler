@@ -34,7 +34,7 @@ async function workerTraffic(page: import("@playwright/test").Page): Promise<Wor
 }
 
 async function ready(page: import("@playwright/test").Page) {
-  await page.goto("/");
+  await page.goto("/?qualificationReferencePart=1");
   await expect(page.locator('[data-stage="renderer"]')).toHaveAttribute("data-status", "ready", { timeout: 30_000 });
 }
 
@@ -131,7 +131,7 @@ test("worker-ranked topology churn requires an explicit durable rebind and remai
       replacement: { id: "topology:repair-candidate" },
     },
   });
-  await page.locator("#undo").click();
+  await page.keyboard.press("Control+z");
   await expect.poll(() => page.evaluate(() => window.__crawlerApp.durableChecksum())).toBe(beforeRepair);
 });
 

@@ -61,6 +61,7 @@ macro_rules! stable_id {
 stable_id!(DocumentId);
 stable_id!(ComponentId);
 stable_id!(OriginPlaneId);
+stable_id!(ConstructionPlaneId);
 stable_id!(BodyId);
 stable_id!(SketchId);
 stable_id!(FeatureId);
@@ -168,14 +169,77 @@ pub struct Sketch {
     pub elements: Vec<SketchElement>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub constraints: Vec<SketchConstraint>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub dimension_positions: BTreeMap<String, [i64; 2]>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub recipes: BTreeMap<String, SketchRecipe>,
+    /// Canonical crawler-sketch operation records are retained verbatim so
+    /// new associative modifiers can round-trip without duplicating their
+    /// geometric contract in the document crate.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub operations: BTreeMap<String, serde_json::Value>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum SketchRecipe {
+    Polygon {
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        mode: String,
+        center_nanometers: [i64; 2],
+        radius_nanometers: i64,
+        sides: u32,
+        orientation_microdegrees: i64,
+        geometry: Vec<String>,
+    },
+    Slot {
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        mode: String,
+        first_nanometers: [i64; 2],
+        second_nanometers: [i64; 2],
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        center_arc_nanometers: Option<[i64; 2]>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        through_nanometers: Option<[i64; 2]>,
+        radius_nanometers: i64,
+        geometry: Vec<String>,
+    },
+    Text {
+        text: String,
+        origin_nanometers: [i64; 2],
+        height_nanometers: i64,
+        rotation_microdegrees: i64,
+        tracking_millionths: i64,
+        horizontal_alignment: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+        #[serde(default)]
+        path_start_millionths: u32,
+        #[serde(default)]
+        reversed: bool,
+        geometry: Vec<String>,
+    },
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum SketchSupport {
-    OriginPlane { plane: OriginPlane },
-    OriginPlaneReference { plane: OriginPlaneId },
-    Topology { reference: TopologyReferenceId },
+    OriginPlane {
+        plane: OriginPlane,
+    },
+    OriginPlaneReference {
+        plane: OriginPlaneId,
+    },
+    Topology {
+        reference: TopologyReferenceId,
+    },
+    /// Stable reference reserved for document-owned construction plane
+    /// definitions (offset, angled, tangent, and future datum forms). The
+    /// referenced definition is resolved by the modeling/kernel layer rather
+    /// than by the strictly two-dimensional sketch solver.
+    ConstructionPlaneReference {
+        plane: ConstructionPlaneId,
+    },
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -223,6 +287,55 @@ pub enum SketchElement {
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         construction: bool,
     },
+    ControlPointSpline {
+        id: String,
+        degree: u8,
+        control_points_nanometers: Vec<[i64; 2]>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        knots_millionths: Vec<u32>,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        construction: bool,
+    },
+    FitPointSpline {
+        id: String,
+        fit_points_nanometers: Vec<[i64; 2]>,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        construction: bool,
+    },
+    Ellipse {
+        id: String,
+        center_nanometers: [i64; 2],
+        major_nanometers: [i64; 2],
+        minor_nanometers: [i64; 2],
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        construction: bool,
+    },
+    EllipticalArc {
+        id: String,
+        center_nanometers: [i64; 2],
+        major_nanometers: [i64; 2],
+        minor_nanometers: [i64; 2],
+        start_nanometers: [i64; 2],
+        end_nanometers: [i64; 2],
+        clockwise: bool,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        construction: bool,
+    },
+    Conic {
+        id: String,
+        start_nanometers: [i64; 2],
+        control_nanometers: [i64; 2],
+        end_nanometers: [i64; 2],
+        weight_millionths: i64,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        construction: bool,
+    },
+    SketchPoint {
+        id: String,
+        position_nanometers: [i64; 2],
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        construction: bool,
+    },
     ConstructionLine {
         id: String,
         start_nanometers: [i64; 2],
@@ -235,6 +348,14 @@ pub enum SketchElement {
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         construction: bool,
     },
+    ExternalLine {
+        id: String,
+        start_nanometers: [i64; 2],
+        end_nanometers: [i64; 2],
+        body: BodyId,
+        #[serde(with = "decimal_u64")]
+        stable_kernel_id: u64,
+    },
 }
 
 /// Exact declarative sketch intent. Constraint IDs and element IDs are stable
@@ -243,6 +364,10 @@ pub enum SketchElement {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum SketchConstraint {
+    Suppressed {
+        id: String,
+        constraint: Box<SketchConstraint>,
+    },
     Coincident {
         id: String,
         first_point: String,
@@ -255,6 +380,32 @@ pub enum SketchConstraint {
     Vertical {
         id: String,
         line: String,
+    },
+    HorizontalPoints {
+        id: String,
+        first_point: String,
+        second_point: String,
+    },
+    VerticalPoints {
+        id: String,
+        first_point: String,
+        second_point: String,
+    },
+    Collinear {
+        id: String,
+        point: String,
+        line: String,
+    },
+    Symmetry {
+        id: String,
+        first_point: String,
+        second_point: String,
+        axis: String,
+    },
+    CurvatureContinuous {
+        id: String,
+        first: String,
+        second: String,
     },
     DistanceX {
         id: String,
@@ -272,6 +423,29 @@ pub enum SketchConstraint {
         id: String,
         point: String,
     },
+    Fixed {
+        id: String,
+        point: String,
+    },
+    FixedGeometry {
+        id: String,
+        geometry: String,
+    },
+    Midpoint {
+        id: String,
+        point: String,
+        line: String,
+    },
+    Concentric {
+        id: String,
+        first: String,
+        second: String,
+    },
+    PointOnObject {
+        id: String,
+        point: String,
+        geometry: String,
+    },
     Parallel {
         id: String,
         first: String,
@@ -286,6 +460,10 @@ pub enum SketchConstraint {
         id: String,
         first: String,
         second: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        first_parameter_millionths: Option<u32>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        second_parameter_millionths: Option<u32>,
     },
     Equal {
         id: String,
@@ -298,9 +476,40 @@ pub enum SketchConstraint {
         second: String,
         parameter: ParameterId,
     },
+    PointLineDistance {
+        id: String,
+        point: String,
+        line: String,
+        parameter: ParameterId,
+    },
+    LineDistance {
+        id: String,
+        first: String,
+        second: String,
+        parameter: ParameterId,
+    },
+    OffsetDistance {
+        id: String,
+        source: String,
+        offset: String,
+        source_start_millionths: u32,
+        source_end_millionths: u32,
+        parameter: ParameterId,
+    },
     Radius {
         id: String,
         geometry: String,
+        parameter: ParameterId,
+    },
+    Diameter {
+        id: String,
+        geometry: String,
+        parameter: ParameterId,
+    },
+    EllipseRadius {
+        id: String,
+        geometry: String,
+        axis: String,
         parameter: ParameterId,
     },
     Angle {
@@ -309,10 +518,48 @@ pub enum SketchConstraint {
         second: String,
         parameter: ParameterId,
     },
+    AngleToAxis {
+        id: String,
+        line: String,
+        axis: String,
+        parameter: ParameterId,
+    },
     DistanceLiteral {
         id: String,
         first: String,
         second: String,
+        distance_nanometers: i64,
+    },
+    DistanceXLiteral {
+        id: String,
+        first: String,
+        second: String,
+        distance_nanometers: i64,
+    },
+    DistanceYLiteral {
+        id: String,
+        first: String,
+        second: String,
+        distance_nanometers: i64,
+    },
+    PointLineDistanceLiteral {
+        id: String,
+        point: String,
+        line: String,
+        distance_nanometers: i64,
+    },
+    LineDistanceLiteral {
+        id: String,
+        first: String,
+        second: String,
+        distance_nanometers: i64,
+    },
+    OffsetDistanceLiteral {
+        id: String,
+        source: String,
+        offset: String,
+        source_start_millionths: u32,
+        source_end_millionths: u32,
         distance_nanometers: i64,
     },
     RadiusLiteral {
@@ -320,10 +567,27 @@ pub enum SketchConstraint {
         geometry: String,
         radius_nanometers: i64,
     },
+    DiameterLiteral {
+        id: String,
+        geometry: String,
+        diameter_nanometers: i64,
+    },
+    EllipseRadiusLiteral {
+        id: String,
+        geometry: String,
+        axis: String,
+        radius_nanometers: i64,
+    },
     AngleLiteral {
         id: String,
         first: String,
         second: String,
+        angle_microdegrees: i64,
+    },
+    AngleToAxisLiteral {
+        id: String,
+        line: String,
+        axis: String,
         angle_microdegrees: i64,
     },
 }
@@ -408,11 +672,43 @@ pub struct TopologyReference {
     pub producer: FeatureId,
     pub kind: TopologyKind,
     /// Kernel-assigned identity persisted across serialization, never an array index.
+    #[serde(with = "decimal_u64")]
     pub stable_kernel_id: u64,
     /// Semantic identity assigned by the feature's topology-naming policy.
     pub stable_token: String,
     /// Deterministic geometric evidence used only to diagnose and repair a missing identity.
     pub fallback_signature: TopologySignature,
+}
+
+/// JSON has no lossless unsigned 64-bit numeric representation in JavaScript.
+/// Emit kernel identities as decimal strings while continuing to accept legacy
+/// numeric documents whose values were already in range.
+mod decimal_u64 {
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Repr {
+        Decimal(String),
+        Legacy(u64),
+    }
+
+    pub fn serialize<S>(value: &u64, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&value.to_string())
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<u64, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        match Repr::deserialize(deserializer)? {
+            Repr::Decimal(value) => value.parse().map_err(serde::de::Error::custom),
+            Repr::Legacy(value) => Ok(value),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -510,6 +806,9 @@ pub enum DocumentChange {
     SetBodyVisibility {
         body: BodyId,
         visibility: ModelVisibility,
+    },
+    UpsertTopologyReference {
+        reference: TopologyReference,
     },
     SetParameterExpression {
         parameter: ParameterId,
@@ -611,5 +910,55 @@ mod tests {
             .reverse();
         assert!(document.features.contains_key(&id));
         assert_eq!(document.features[&id].id, id);
+    }
+
+    #[test]
+    fn construction_plane_sketch_support_is_a_stable_reference_contract() {
+        let support = SketchSupport::ConstructionPlaneReference {
+            plane: ConstructionPlaneId::from("construction-plane:offset-1"),
+        };
+        let json = serde_json::to_string(&support).unwrap();
+        assert_eq!(
+            json,
+            r#"{"kind":"construction_plane_reference","plane":"construction-plane:offset-1"}"#
+        );
+        assert_eq!(
+            serde_json::from_str::<SketchSupport>(&json).unwrap(),
+            support
+        );
+    }
+
+    #[test]
+    fn topology_kernel_ids_cross_json_as_lossless_decimal_u64_strings() {
+        let reference = TopologyReference {
+            id: TopologyReferenceId::from("topology:max-face"),
+            body: BodyId::from("body:max-face"),
+            producer: FeatureId::from("feature:max-face"),
+            kind: TopologyKind::Face,
+            stable_kernel_id: u64::MAX - 1,
+            stable_token: "face:max".into(),
+            fallback_signature: TopologySignature::Face {
+                centroid_nanometers: [0, 0, 0],
+                normal_millionths: [0, 0, 1_000_000],
+                area_square_nanometers: 1,
+            },
+        };
+        let json = serde_json::to_string(&reference).unwrap();
+        assert!(json.contains(r#""stable_kernel_id":"18446744073709551614""#));
+        assert_eq!(
+            serde_json::from_str::<TopologyReference>(&json).unwrap(),
+            reference
+        );
+
+        let legacy = json.replace(
+            r#""stable_kernel_id":"18446744073709551614""#,
+            r#""stable_kernel_id":42"#,
+        );
+        assert_eq!(
+            serde_json::from_str::<TopologyReference>(&legacy)
+                .unwrap()
+                .stable_kernel_id,
+            42
+        );
     }
 }

@@ -2,7 +2,7 @@
 
 use crawler_document::{
     Document, DocumentChange, DocumentTransaction, EntityId, FeatureId, FeatureInput,
-    FeatureRecomputeState, ParameterExpression, ParameterId, TransactionId,
+    FeatureRecomputeState, ParameterExpression, ParameterId, SketchSupport, TransactionId,
 };
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
@@ -366,6 +366,16 @@ fn apply_change(
                 .visibility = *visibility;
             affected.push(EntityId::Body(body.clone()));
         }
+        DocumentChange::UpsertTopologyReference { reference } => {
+            if !document.bodies.contains_key(&reference.body)
+                || !document.features.contains_key(&reference.producer)
+            {
+                return Err(TransactionError::InvalidTopologyTarget);
+            }
+            document
+                .topology_references
+                .insert(reference.id.clone(), reference.clone());
+        }
         DocumentChange::SetParameterExpression {
             parameter,
             expression,
@@ -403,23 +413,68 @@ fn apply_change(
             {
                 return Err(TransactionError::InvalidTopologyTarget);
             }
+            let owned_sketch = {
+                let target = document
+                    .features
+                    .get(feature)
+                    .ok_or_else(|| TransactionError::MissingEntity(feature.0.clone()))?;
+                match target.inputs.get(input_name) {
+                    Some(FeatureInput::Topology(current)) if current == from_reference => {}
+                    _ => return Err(TransactionError::InvalidTopologyTarget),
+                }
+                if input_name == "support" {
+                    match target.inputs.get("sketch") {
+                        Some(FeatureInput::Sketch(sketch)) => {
+                            let owned = document
+                                .sketches
+                                .get(sketch)
+                                .ok_or_else(|| TransactionError::MissingEntity(sketch.0.clone()))?;
+                            if !matches!(
+                                &owned.support,
+                                SketchSupport::Topology { reference } if reference == from_reference
+                            ) {
+                                return Err(TransactionError::InvalidTopologyTarget);
+                            }
+                            Some(sketch.clone())
+                        }
+                        _ => None,
+                    }
+                } else {
+                    None
+                }
+            };
             document
                 .topology_references
                 .insert(replacement.id.clone(), replacement.clone());
             let target = document
                 .features
                 .get_mut(feature)
-                .ok_or_else(|| TransactionError::MissingEntity(feature.0.clone()))?;
-            match target.inputs.get(input_name) {
-                Some(FeatureInput::Topology(current)) if current == from_reference => {}
-                _ => return Err(TransactionError::InvalidTopologyTarget),
-            }
+                .expect("feature and input were validated before mutation");
             target.inputs.insert(
                 input_name.clone(),
                 FeatureInput::Topology(replacement.id.clone()),
             );
             affected.push(EntityId::Feature(feature.clone()));
             dirty.insert(feature.clone());
+            if let Some(sketch_id) = owned_sketch {
+                document
+                    .sketches
+                    .get_mut(&sketch_id)
+                    .expect("owned sketch was validated before mutation")
+                    .support = SketchSupport::Topology {
+                    reference: replacement.id.clone(),
+                };
+                affected.push(EntityId::Sketch(sketch_id.clone()));
+                for (candidate_id, candidate) in &document.features {
+                    if candidate
+                        .inputs
+                        .values()
+                        .any(|input| input == &FeatureInput::Sketch(sketch_id.clone()))
+                    {
+                        dirty.insert(candidate_id.clone());
+                    }
+                }
+            }
         }
         DocumentChange::AcceptFeatureResult {
             feature,
@@ -665,13 +720,45 @@ pub enum HistoryError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crawler_document::{DocumentChange, ParameterId, ParameterValue};
+    use crawler_document::{
+        DocumentChange, ParameterId, ParameterValue, SketchId, TopologyReference,
+        TopologyReferenceId,
+    };
 
     fn fixture() -> Document {
         serde_json::from_str(include_str!(
             "../../crawler-document/tests/fixtures/parametric-block.json"
         ))
         .unwrap()
+    }
+
+    fn explicit_sketch_support_fixture() -> (
+        Document,
+        FeatureId,
+        SketchId,
+        TopologyReferenceId,
+        TopologyReference,
+    ) {
+        let mut document = fixture();
+        let feature_id = FeatureId::from("feature:sketch");
+        let sketch_id = SketchId::from("sketch:base");
+        let from_reference = TopologyReferenceId::from("topology:top-face");
+        let mut replacement = document.topology_references[&from_reference].clone();
+        replacement.id = TopologyReferenceId::from("topology:replacement-face");
+        replacement.stable_kernel_id = 7;
+        replacement.stable_token = "replacement:face".into();
+        let feature = document.features.get_mut(&feature_id).unwrap();
+        feature.inputs.insert(
+            "support".into(),
+            FeatureInput::Topology(from_reference.clone()),
+        );
+        feature
+            .inputs
+            .insert("sketch".into(), FeatureInput::Sketch(sketch_id.clone()));
+        document.sketches.get_mut(&sketch_id).unwrap().support = SketchSupport::Topology {
+            reference: from_reference.clone(),
+        };
+        (document, feature_id, sketch_id, from_reference, replacement)
     }
 
     #[test]
@@ -746,5 +833,192 @@ mod tests {
             .unwrap();
         assert!(!history.can_redo());
         assert_eq!(history.accepted().display_name, "Branch");
+    }
+
+    #[test]
+    fn explicit_sketch_support_rebind_updates_feature_and_owned_sketch_atomically() {
+        let (document, feature_id, sketch_id, from_reference, replacement) =
+            explicit_sketch_support_fixture();
+        let replacement_id = replacement.id.clone();
+        let mut history = DocumentHistory::new(document);
+
+        let event = history
+            .commit(
+                TransactionId::from("transaction:rebind-sketch-support"),
+                vec![DocumentChange::RebindTopology {
+                    feature: feature_id.clone(),
+                    input_name: "support".into(),
+                    from_reference,
+                    replacement,
+                }],
+            )
+            .unwrap();
+
+        assert_eq!(
+            history.accepted().features[&feature_id].inputs["support"],
+            FeatureInput::Topology(replacement_id.clone())
+        );
+        assert_eq!(
+            history.accepted().sketches[&sketch_id].support,
+            SketchSupport::Topology {
+                reference: replacement_id
+            }
+        );
+        assert!(
+            event
+                .affected_entities
+                .contains(&EntityId::Feature(feature_id.clone()))
+        );
+        assert!(
+            event
+                .affected_entities
+                .contains(&EntityId::Sketch(sketch_id))
+        );
+        assert!(event.dirty_roots.contains(&feature_id));
+    }
+
+    #[test]
+    fn unrelated_topology_rebind_does_not_mutate_owned_sketch_support() {
+        let (mut document, feature_id, sketch_id, from_reference, replacement) =
+            explicit_sketch_support_fixture();
+        let feature = document.features.get_mut(&feature_id).unwrap();
+        feature.inputs.insert(
+            "reference".into(),
+            FeatureInput::Topology(from_reference.clone()),
+        );
+        let original_support = document.sketches[&sketch_id].support.clone();
+        let mut history = DocumentHistory::new(document);
+
+        let event = history
+            .commit(
+                TransactionId::from("transaction:rebind-unrelated-input"),
+                vec![DocumentChange::RebindTopology {
+                    feature: feature_id,
+                    input_name: "reference".into(),
+                    from_reference,
+                    replacement,
+                }],
+            )
+            .unwrap();
+
+        assert_eq!(
+            history.accepted().sketches[&sketch_id].support,
+            original_support
+        );
+        assert!(
+            !event
+                .affected_entities
+                .contains(&EntityId::Sketch(sketch_id))
+        );
+    }
+
+    #[test]
+    fn support_rebind_without_explicit_sketch_input_updates_only_the_feature() {
+        let (mut document, feature_id, sketch_id, from_reference, replacement) =
+            explicit_sketch_support_fixture();
+        document
+            .features
+            .get_mut(&feature_id)
+            .unwrap()
+            .inputs
+            .remove("sketch");
+        let replacement_id = replacement.id.clone();
+        let original_sketch = document.sketches[&sketch_id].clone();
+        let mut history = DocumentHistory::new(document);
+
+        let event = history
+            .commit(
+                TransactionId::from("transaction:rebind-feature-only-support"),
+                vec![DocumentChange::RebindTopology {
+                    feature: feature_id.clone(),
+                    input_name: "support".into(),
+                    from_reference,
+                    replacement,
+                }],
+            )
+            .unwrap();
+
+        assert_eq!(
+            history.accepted().features[&feature_id].inputs["support"],
+            FeatureInput::Topology(replacement_id)
+        );
+        assert_eq!(history.accepted().sketches[&sketch_id], original_sketch);
+        assert!(
+            !event
+                .affected_entities
+                .contains(&EntityId::Sketch(sketch_id))
+        );
+    }
+
+    #[test]
+    fn mismatched_explicit_sketch_support_rebind_fails_atomically() {
+        let (mut document, feature_id, sketch_id, from_reference, replacement) =
+            explicit_sketch_support_fixture();
+        document.sketches.get_mut(&sketch_id).unwrap().support = SketchSupport::OriginPlane {
+            plane: crawler_document::OriginPlane::Xy,
+        };
+        let mut history = DocumentHistory::new(document);
+        let initial_hash = history.accepted_hash();
+        let original_feature = history.accepted().features[&feature_id].clone();
+        let original_sketch = history.accepted().sketches[&sketch_id].clone();
+
+        let error = history
+            .commit(
+                TransactionId::from("transaction:mismatched-owned-sketch-support"),
+                vec![
+                    DocumentChange::RenameEntity {
+                        entity: EntityId::Document(history.accepted().id.clone()),
+                        display_name: "Must Roll Back".into(),
+                    },
+                    DocumentChange::RebindTopology {
+                        feature: feature_id.clone(),
+                        input_name: "support".into(),
+                        from_reference,
+                        replacement,
+                    },
+                ],
+            )
+            .unwrap_err();
+
+        assert_eq!(error, TransactionError::InvalidTopologyTarget);
+        assert_eq!(history.accepted_hash(), initial_hash);
+        assert_eq!(history.accepted().features[&feature_id], original_feature);
+        assert_eq!(history.accepted().sketches[&sketch_id], original_sketch);
+        assert!(!history.can_undo());
+    }
+
+    #[test]
+    fn failed_explicit_sketch_support_rebind_preserves_all_accepted_state() {
+        let (document, feature_id, sketch_id, from_reference, mut replacement) =
+            explicit_sketch_support_fixture();
+        replacement.producer = FeatureId::from("feature:missing");
+        let mut history = DocumentHistory::new(document);
+        let initial_hash = history.accepted_hash();
+        let original_feature = history.accepted().features[&feature_id].clone();
+        let original_sketch = history.accepted().sketches[&sketch_id].clone();
+
+        let error = history
+            .commit(
+                TransactionId::from("transaction:failed-sketch-rebind"),
+                vec![
+                    DocumentChange::RenameEntity {
+                        entity: EntityId::Document(history.accepted().id.clone()),
+                        display_name: "Must Roll Back".into(),
+                    },
+                    DocumentChange::RebindTopology {
+                        feature: feature_id.clone(),
+                        input_name: "support".into(),
+                        from_reference,
+                        replacement,
+                    },
+                ],
+            )
+            .unwrap_err();
+
+        assert_eq!(error, TransactionError::InvalidTopologyTarget);
+        assert_eq!(history.accepted_hash(), initial_hash);
+        assert_eq!(history.accepted().features[&feature_id], original_feature);
+        assert_eq!(history.accepted().sketches[&sketch_id], original_sketch);
+        assert!(!history.can_undo());
     }
 }

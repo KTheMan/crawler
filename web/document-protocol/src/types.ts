@@ -82,6 +82,53 @@ export type SketchElement =
       id: string;
       start_element: string;
       end_element: string;
+    }
+  | {
+      kind: "control_point_spline";
+      id: string;
+      degree: JsonInteger;
+      control_points_nanometers: [JsonInteger, JsonInteger][];
+      construction?: boolean;
+    }
+  | {
+      kind: "fit_point_spline";
+      id: string;
+      fit_points_nanometers: [JsonInteger, JsonInteger][];
+      construction?: boolean;
+    }
+  | {
+      kind: "ellipse";
+      id: string;
+      center_nanometers: [JsonInteger, JsonInteger];
+      major_nanometers: [JsonInteger, JsonInteger];
+      minor_nanometers: [JsonInteger, JsonInteger];
+      construction?: boolean;
+    }
+  | {
+      kind: "elliptical_arc";
+      id: string;
+      center_nanometers: [JsonInteger, JsonInteger];
+      major_nanometers: [JsonInteger, JsonInteger];
+      minor_nanometers: [JsonInteger, JsonInteger];
+      start_nanometers: [JsonInteger, JsonInteger];
+      end_nanometers: [JsonInteger, JsonInteger];
+      clockwise: boolean;
+      construction?: boolean;
+    }
+  | {
+      kind: "conic";
+      id: string;
+      start_nanometers: [JsonInteger, JsonInteger];
+      control_nanometers: [JsonInteger, JsonInteger];
+      end_nanometers: [JsonInteger, JsonInteger];
+      weight_millionths: JsonInteger;
+      construction?: boolean;
+    }
+  | {
+      kind: "sketch_point";
+      id: string;
+      position_nanometers: [JsonInteger, JsonInteger];
+      construction?: boolean;
     };
 
 export interface Feature {
@@ -124,7 +171,8 @@ export interface TopologyReference {
   body: BodyId;
   producer: FeatureId;
   kind: TopologyKind;
-  stable_kernel_id: JsonInteger;
+  /** Decimal u64; JSON numbers cannot represent every kernel identity. */
+  stable_kernel_id: string;
   stable_token: string;
   fallback_signature: TopologySignature;
 }
