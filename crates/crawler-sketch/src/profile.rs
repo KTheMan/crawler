@@ -35,7 +35,7 @@ impl Sketch {
                 continue;
             }
             match &entity.geometry {
-                Geometry::Circle(_) | Geometry::Rectangle(_) => {
+                Geometry::Circle(_) | Geometry::Ellipse(_) | Geometry::Rectangle(_) => {
                     report.closed_profiles.push(vec![id.clone()]);
                 }
                 Geometry::Line(line) => {
@@ -48,12 +48,42 @@ impl Sketch {
                     endpoints.entry(arc.end).or_default().push(id.clone());
                     edge_ids.insert(id.clone());
                 }
+                Geometry::ControlPointSpline(spline) => {
+                    if let (Some(start), Some(end)) =
+                        (spline.control_points.first(), spline.control_points.last())
+                    {
+                        endpoints.entry(*start).or_default().push(id.clone());
+                        endpoints.entry(*end).or_default().push(id.clone());
+                        edge_ids.insert(id.clone());
+                    }
+                }
+                Geometry::FitPointSpline(spline) => {
+                    if let (Some(start), Some(end)) =
+                        (spline.fit_points.first(), spline.fit_points.last())
+                    {
+                        endpoints.entry(*start).or_default().push(id.clone());
+                        endpoints.entry(*end).or_default().push(id.clone());
+                        edge_ids.insert(id.clone());
+                    }
+                }
+                Geometry::Conic(conic) => {
+                    endpoints.entry(conic.start).or_default().push(id.clone());
+                    endpoints.entry(conic.end).or_default().push(id.clone());
+                    edge_ids.insert(id.clone());
+                }
+                Geometry::EllipticalArc(arc) => {
+                    endpoints.entry(arc.start).or_default().push(id.clone());
+                    endpoints.entry(arc.end).or_default().push(id.clone());
+                    edge_ids.insert(id.clone());
+                }
+                Geometry::SketchPoint(_) => {}
             }
         }
 
         for geometry in endpoints.values_mut() {
             geometry.sort();
         }
+        let mut non_manifold_edges = BTreeSet::new();
         for (point, geometry) in &endpoints {
             match geometry.len() {
                 1 => report.diagnostics.push(ProfileDiagnostic::OpenEndpoint {
@@ -65,6 +95,9 @@ impl Sketch {
                     point: *point,
                     geometry: geometry.clone(),
                 }),
+            }
+            if geometry.len() != 2 {
+                non_manifold_edges.extend(geometry.iter().cloned());
             }
         }
 
@@ -95,11 +128,11 @@ impl Sketch {
                 }
             }
             component.sort();
-            let component_set: BTreeSet<_> = component.iter().cloned().collect();
-            let closed = endpoints.values().all(|ids| {
-                let degree = ids.iter().filter(|id| component_set.contains(*id)).count();
-                degree == 0 || degree == 2
-            });
+            // Endpoint adjacency already guarantees that every edge sharing a
+            // point belongs to this component. A component is therefore closed
+            // exactly when none of its edges touched a degree-1 or degree>2
+            // endpoint; do not rescan every endpoint for every component.
+            let closed = component.iter().all(|id| !non_manifold_edges.contains(id));
             if closed {
                 report.closed_profiles.push(component);
             }

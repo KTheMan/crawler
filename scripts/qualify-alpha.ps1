@@ -6,7 +6,6 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$expectedKernel = 'e9024ba7d6bff2b8407cd382dd584f784bfa7abe'
 $previousTarget = $env:CARGO_TARGET_DIR
 $env:CARGO_TARGET_DIR = Join-Path $root 'target\alpha-qualification'
 
@@ -25,15 +24,8 @@ function Invoke-Step {
 try {
     Push-Location $root
 
-    Invoke-Step 'Verify pinned kernel and clean vendor worktree' {
-        $actual = (git -C vendor/monstertruck rev-parse HEAD).Trim()
-        if ($actual -ne $expectedKernel) {
-            throw "Monstertruck pin differs: expected $expectedKernel, got $actual"
-        }
-        $vendorStatus = git -C vendor/monstertruck status --porcelain
-        if ($vendorStatus) {
-            throw "Monstertruck worktree is not clean:`n$vendorStatus"
-        }
+    Invoke-Step 'Verify locked Monstertruck Git dependencies' {
+        & (Join-Path $PSScriptRoot 'test-monstertruck-dependency.ps1')
     }
 
     Invoke-Step 'Run native workspace contracts' {
