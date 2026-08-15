@@ -3,6 +3,11 @@ export type ExportFormat = "step" | "stl" | "obj";
 
 export type AdvancedFeatureOperationId =
   | "crawler.part.revolve"
+  | "crawler.part.loft"
+  | "crawler.part.sweep"
+  | "crawler.part.extrude.cut"
+  | "crawler.part.revolve.cut"
+  | "crawler.part.draft"
   | "crawler.part.boolean.union"
   | "crawler.part.boolean.cut"
   | "crawler.part.boolean.intersect"
@@ -16,7 +21,7 @@ export type AdvancedFeatureOperationId =
 
 export type PrincipalAxis = "x" | "y" | "z";
 
-import type { SketchPreview, SolveResult } from "./sketch-editor";
+import type { Sketch, SketchPreview, SolveResult } from "./sketch-editor";
 import type { GeometryEvidence, StepImportMeasurements } from "./step-import-controller";
 
 /**
@@ -24,11 +29,12 @@ import type { GeometryEvidence, StepImportMeasurements } from "./step-import-con
  * nanometers and angles are exact microdegrees.
  */
 export interface AdvancedFeatureCommand {
-  type: "execute-advanced-feature" | "edit-advanced-feature";
+  type: "execute-advanced-feature" | "edit-advanced-feature" | "preview-advanced-feature" | "preview-advanced-feature-edit";
   operationId: AdvancedFeatureOperationId;
   displayName?: string;
   featureId?: string;
   outputBodyId?: string;
+  previewRequestId?: number;
   parameters?: Readonly<Record<string, number | boolean | string>>;
   selection?: {
     sourceBodyId?: string;
@@ -40,6 +46,20 @@ export interface AdvancedFeatureCommand {
     axis?: PrincipalAxis;
     originNanometers?: readonly [number, number, number];
     directionSign?: 1 | -1;
+    profileSources?: readonly {
+      sketch: Sketch;
+      support: import("./sketch-editor").SketchSupport;
+      featureId: string;
+    }[];
+    pathSource?: {
+      sketch: Sketch;
+      support: import("./sketch-editor").SketchSupport;
+      featureId: string;
+    };
+    axisOriginNanometers?: readonly [number, number, number];
+    axisDirectionNanometers?: readonly [number, number, number];
+    neutralPlaneOriginNanometers?: readonly [number, number, number];
+    draftFaceStableIds?: readonly string[];
   };
 }
 
@@ -87,7 +107,8 @@ export interface TopologyReferenceView {
   body: string;
   producer: string;
   kind: "vertex" | "edge" | "face" | "shell" | "solid";
-  stable_kernel_id: number;
+  /** Decimal u64 transported losslessly through JSON. */
+  stable_kernel_id: string;
   stable_token: string;
   fallback_signature: Record<string, unknown>;
 }
@@ -117,22 +138,30 @@ export type WorkerResponse =
   | { type: "extrude-preview"; requestId: number; distanceNanometers: number; semanticHash: string; bodyId: string; packet: RenderPacket; transferredBytes: number }
   | { type: "document"; documentJson: string; semanticHash: string; dimensionsJson: string; parameters: readonly NamedParameterView[]; transaction?: AcceptedTransaction; recompute?: RecomputeReport; historyAction?: "undo" | "redo" | "hydrate" | "new" | "open" }
   | { type: "export"; format: ExportFormat; content: string; semanticHash: string }
+  | { type: "export-error"; format: ExportFormat; message: string }
   | { type: "portable-package"; bytes: Uint8Array; semanticHash: string }
   | { type: "imported-step-source"; sourceSha256: string; bytes: Uint8Array }
   | { type: "step-import-progress"; requestId: string; phase: string; percent: number }
   | { type: "step-import-cancelled"; requestId: string; cancellationMode: "worker_restart"; sourceRetained: boolean }
   | { type: "step-imported"; bodyId: string; provenance: { source_sha256: string; source_bytes: number; shell_count: number; face_count: number; triangle_count: number }; kernelTimeMs: number; measurements: StepImportMeasurements; evidence: GeometryEvidence }
   | { type: "advanced-feature-completed"; operationId: AdvancedFeatureOperationId; featureId: string; bodyId: string; semanticHash: string }
+  | { type: "advanced-feature-preview"; requestId: number; operationId: AdvancedFeatureOperationId; featureId: string; bodyId: string; semanticHash: string; packet: RenderPacket; transferredBytes: number }
+  | { type: "advanced-feature-preview-cancelled"; semanticHash: string }
   | { type: "timeline-rollback"; rollback: { kind: "before_first" | "after" | "end"; feature?: string } }
   | { type: "feature-services"; selected: string; services: FeatureServicesView; repair: RepairInspectionView; observedTopology: readonly TopologyReferenceView[] }
   | { type: "recompute-from-here"; accepted: boolean; plan: { requested_from: string; required_inputs: readonly string[]; evaluation_order: readonly string[] }; diagnostics?: FeatureServicesView["diagnostics"]; error?: AdvancedFeatureError; semanticHash: string }
   | { type: "repair-committed"; selected: string; transaction: AcceptedTransaction; semanticHash: string }
   | { type: "parameter-error"; diagnostic: ParameterDiagnostic; semanticHash: string }
   | { type: "parameter-action-completed"; label: string; semanticHash: string }
-  | { type: "sketch-command-preview"; requestId: string; preview: SketchPreview }
+  | { type: "sketch-command-preview"; requestId: string; preview: SketchPreview; performance?: { runtimeMs: number; responseParseMs: number; wasmBoundaryAndSerializeMs?: number; enginePhases?: NonNullable<SketchPreview["runtime_performance"]> } }
+  | { type: "sketch-error"; requestId: string; message: string }
   | { type: "sketch-drag-preview"; requestId: string; preview: { drag: { accepted: boolean; sketch: import("./sketch-editor").Sketch; resolved: import("./sketch-editor").Point2; solve: SolveResult }; profile: import("./sketch-editor").ProfileReport } }
   | { type: "sketch-commit"; requestId: string; accepted: boolean; solve: SolveResult; semanticHash: string }
-  | { type: "operation-error"; code: string; message: string; recovery?: string; category?: AdvancedFeatureError["category"]; field?: string; operationId?: AdvancedFeatureOperationId; featureId?: string; semanticHash?: string }
+  | { type: "sketch-contract"; requestId: string; contract: import("./sketch-editor").SketchSolverContract }
+  | { type: "sketch-decomposition"; requestId: string; decomposition: import("./sketch-editor").SketchDecomposition }
+  | { type: "sketch-dxf-export"; requestId: string; dxf: string }
+  | { type: "sketch-dxf-import"; requestId: string; sketch: import("./sketch-editor").Sketch; decomposition: import("./sketch-editor").SketchDecomposition }
+  | { type: "operation-error"; code: string; message: string; recovery?: string; category?: AdvancedFeatureError["category"]; field?: string; operationId?: AdvancedFeatureOperationId; featureId?: string; requestId?: number; semanticHash?: string }
   | { type: "error"; message: string };
 
 export interface RecomputeReport {

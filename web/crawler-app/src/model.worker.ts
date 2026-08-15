@@ -3,8 +3,9 @@
 import type { AcceptedTransaction, AdvancedFeatureCommand, AdvancedFeatureError, FeatureServicesView, NamedParameterView, ParameterDiagnostic, RecomputeReport, RenderPacket, RepairInspectionView, TopologyReferenceView, WorkerResponse } from "./protocol";
 import { AdvancedFeatureBuildError, buildAdvancedFeatureEditEnvelope, buildAdvancedFeatureEnvelope, serializeAdvancedFeatureEnvelope } from "./advanced-feature-builder";
 import initRuntime, { WasmPartRuntime } from "./generated/runtime/crawler_part_runtime.js";
-import type { Sketch, SketchCommand } from "./sketch-editor";
+import type { Sketch, SketchCommand, SketchSupport } from "./sketch-editor";
 import { StepImportController, type StepImportMeasurements, type StepImportPayload as ControllerStepImportPayload } from "./step-import-controller";
+import { resolveSketchReferences, type ParameterReferenceDocument } from "./parameter-references";
 
 const scope = self as DedicatedWorkerGlobalScope;
 let runtime: WasmPartRuntime | undefined;
@@ -13,7 +14,7 @@ let stepImportController: StepImportController | undefined;
 let retainedStepDisplayName = "Imported STEP";
 
 interface RuntimePacketJson {
-  body_id: string;
+  body_id: string | null;
   packet: {
     version: number;
     positions: number[];
@@ -82,6 +83,58 @@ interface AdvancedFeatureOutcome {
   error?: AdvancedFeatureError;
 }
 
+interface AdvancedFeaturePreviewOutcome extends AdvancedFeatureOutcome {
+  render: RuntimePacketJson;
+}
+
+interface PendingAdvancedFeature {
+  command: AdvancedFeatureCommand;
+  envelopeJson: string;
+  editing: boolean;
+  acceptedHash: string;
+  featureId: string;
+  bodyId: string;
+}
+
+let pendingAdvancedFeature: PendingAdvancedFeature | undefined;
+
+const sketchPreparedOperationIds = new Set<AdvancedFeatureCommand["operationId"]>([
+  "crawler.part.revolve",
+  "crawler.part.loft",
+  "crawler.part.sweep",
+  "crawler.part.extrude.cut",
+  "crawler.part.revolve.cut",
+]);
+
+function principalAxisVector(axis: "x" | "y" | "z" | undefined): [number, number, number] {
+  return axis === "x" ? [1_000_000, 0, 0] : axis === "y" ? [0, 1_000_000, 0] : [0, 0, 1_000_000];
+}
+
+function prepareSketchFeatureEnvelope(runtimeView: WasmPartRuntime, command: AdvancedFeatureCommand, nonce: string): string | undefined {
+  if (!sketchPreparedOperationIds.has(command.operationId) || command.type === "edit-advanced-feature") return undefined;
+  const selection = command.selection ?? {};
+  const parameters = command.parameters ?? {};
+  const rawDirection = selection.axisDirectionNanometers ?? principalAxisVector(selection.axis);
+  const axisDirection = rawDirection.map((value) => Math.round(value)) as [number, number, number];
+  const operationId = command.operationId === "crawler.part.revolve" ? "profile_revolve" : command.operationId.replace("crawler.part.", "").replaceAll(".", "_");
+  return runtimeView.prepareSketchFeatureEnvelopeJson(JSON.stringify({
+    transaction_id: `transaction:${nonce}:${operationId}`,
+    feature_id: command.featureId,
+    body_id: command.outputBodyId,
+    operation_id: operationId,
+    profile_sources: (selection.profileSources ?? []).map(({ sketch, support }) => ({ sketch, support })),
+    tolerance_nanometers: Number(parameters.tolerance ?? 10_000),
+    ...(selection.pathSource ? { path_source: { sketch: selection.pathSource.sketch, support: selection.pathSource.support } } : {}),
+    ...(selection.targetBodyId ? { target_body_id: selection.targetBodyId } : {}),
+    axis_origin_nanometers: selection.axisOriginNanometers ?? selection.originNanometers ?? [0, 0, 0],
+    axis_direction_nanometers: axisDirection,
+    reverse: parameters.reverse === true,
+    ...(parameters.distance !== undefined ? { distance_nanometers: Number(parameters.distance) } : {}),
+    ...((parameters.angle !== undefined || command.operationId.includes("revolve")) ? { sweep_microdegrees: Math.abs(Number(parameters.angle ?? 360_000_000)) } : {}),
+    divisions: Number(parameters.divisions ?? 32),
+  }));
+}
+
 interface ParameterOutcome {
   accepted: boolean;
   document_hash: string;
@@ -123,7 +176,7 @@ function acceptedPacket(): { bodyId: string; packet: RenderPacket } {
 
 function runtimePacket(source: RuntimePacketJson): { bodyId: string; packet: RenderPacket } {
   const packet = source.packet;
-  return { bodyId: source.body_id, packet: {
+  return { bodyId: source.body_id ?? "", packet: {
     version: packet.version,
     positions: new Float32Array(packet.positions),
     normals: new Float32Array(packet.normals),
@@ -203,9 +256,47 @@ function postPacket(): void {
   scope.postMessage({ type: "packet", bodyId: source.bodyId, packet, transferredBytes, semanticHash: runtime!.semanticHash() } satisfies WorkerResponse, transfer);
 }
 
-function postExtrudePreview(requestId: number, distanceNanometers: number): void {
+interface SketchExtrudeSource {
+  sketch: Sketch;
+  support: SketchSupport;
+  featureId: string;
+  bodyId: string;
+  transactionId?: string;
+}
+
+function postExtrudePreview(requestId: number, distanceNanometers: number, source?: SketchExtrudeSource): void {
   if (!runtime) throw new Error("part runtime is not initialized");
   const acceptedHash = runtime.semanticHash();
+  if (source) {
+    const preview = JSON.parse(runtime.previewSketchExtrudeJson(JSON.stringify({
+      sketch: source.sketch,
+      support: source.support,
+      distance_nanometers: distanceNanometers,
+      feature_id: source.featureId,
+      body_id: source.bodyId,
+      tolerance: 0.01,
+    }))) as {
+      accepted_document_hash: string;
+      distance_nanometers: number;
+      render: RuntimePacketJson;
+    };
+    if (runtime.semanticHash() !== acceptedHash || preview.accepted_document_hash !== acceptedHash) {
+      throw new Error("Sketch Extrude preview mutated the accepted document");
+    }
+    const rendered = runtimePacket(preview.render);
+    const packet = rendered.packet;
+    const transfer = Object.values(packet).filter((value): value is ArrayBufferView => ArrayBuffer.isView(value)).map((value) => value.buffer);
+    scope.postMessage({
+      type: "extrude-preview",
+      requestId,
+      distanceNanometers: preview.distance_nanometers,
+      semanticHash: acceptedHash,
+      bodyId: rendered.bodyId,
+      packet,
+      transferredBytes: transfer.reduce((total, buffer) => total + buffer.byteLength, 0),
+    } satisfies WorkerResponse, transfer);
+    return;
+  }
   const acceptedDimensions = JSON.parse(runtime.dimensionsJson()) as { distance_nanometers: number };
   if (distanceNanometers === acceptedDimensions.distance_nanometers) {
     const source = acceptedPacket();
@@ -231,8 +322,8 @@ function postExtrudePreview(requestId: number, distanceNanometers: number): void
   if (runtime.semanticHash() !== acceptedHash || preview.accepted_document_hash !== acceptedHash) {
     throw new Error("Extrude preview mutated the accepted document");
   }
-  const source = runtimePacket(preview.render);
-  const packet = source.packet;
+  const rendered = runtimePacket(preview.render);
+  const packet = rendered.packet;
   const transfer = Object.values(packet).filter((value): value is ArrayBufferView => ArrayBuffer.isView(value)).map((value) => value.buffer);
   const transferredBytes = transfer.reduce((total, buffer) => total + buffer.byteLength, 0);
   scope.postMessage({
@@ -240,7 +331,7 @@ function postExtrudePreview(requestId: number, distanceNanometers: number): void
     requestId,
     distanceNanometers: preview.distance_nanometers,
     semanticHash: acceptedHash,
-    bodyId: source.bodyId,
+    bodyId: rendered.bodyId,
     packet,
     transferredBytes,
   } satisfies WorkerResponse, transfer);
@@ -276,7 +367,9 @@ scope.addEventListener("message", async (event) => {
     if (event.data?.type === "initialize") {
       if (event.data.fail) throw new Error("diagnostic worker startup failure");
       await initRuntime();
-      runtime = new WasmPartRuntime("document:part-alpha-001", "Bracket", 40_000_000n, 28_000_000n, 12_000_000n);
+      runtime = event.data.qualificationReferencePart
+        ? WasmPartRuntime.newValidationRectangularPart("document:part-alpha-001", "Bracket", 40_000_000n, 28_000_000n, 12_000_000n)
+        : new WasmPartRuntime(`document:${crypto.randomUUID()}`, "Untitled Part");
       scope.postMessage({ type: "wasm-ready", detail: "crawler-part-runtime ready" } satisfies WorkerResponse);
       postDocument(); postPacket();
     }
@@ -302,12 +395,34 @@ scope.addEventListener("message", async (event) => {
     if (event.data?.type === "new-document") {
       resetStepImportController();
       runtime?.free();
-      runtime = new WasmPartRuntime(event.data.documentId, "Untitled Part", 40_000_000n, 28_000_000n, 12_000_000n);
+      runtime = new WasmPartRuntime(event.data.documentId, "Untitled Part");
       importedPacket = undefined;
       postDocument({ historyAction: "new" }); postPacket();
     }
     if (event.data?.type === "commit-pad") {
       if (!runtime) throw new Error("part runtime is not initialized");
+      if (event.data.source) {
+        const source = event.data.source as SketchExtrudeSource;
+        const before = JSON.parse(runtime.documentJson()) as RuntimeDocumentJournal;
+        const outcome = JSON.parse(runtime.commitSketchExtrudeJson(JSON.stringify({
+          sketch: source.sketch,
+          support: source.support,
+          distance_nanometers: event.data.valueNanometers,
+          feature_id: source.featureId,
+          body_id: source.bodyId,
+          tolerance: 0.01,
+          transaction_id: source.transactionId,
+        }))) as AdvancedFeatureOutcome;
+        if (!outcome.accepted) {
+          scope.postMessage({ type: "operation-error", code: "extrude_refused", message: outcome.error?.message ?? "Extrude was refused", recovery: outcome.error?.recovery, semanticHash: outcome.document_hash } satisfies WorkerResponse);
+          return;
+        }
+        const transaction = acceptedTransactionAfter(before.revision);
+        if (!transaction) throw new Error("accepted Extrude has no durable transaction");
+        postDocument({ transaction, recompute: { dirtyRoots: [source.featureId], evaluationOrder: [source.featureId] } });
+        postPacket();
+        return;
+      }
       const outcome = JSON.parse(runtime.commitLength("parameter:distance", BigInt(event.data.valueNanometers))) as { base_revision: number; result_revision: number; dirty_roots: string[]; evaluation_order: string[] };
       postDocument({
         transaction: { id: `transaction:${outcome.result_revision}`, base_revision: outcome.base_revision, result_revision: outcome.result_revision, changes: [{ kind: "set_parameter_value", parameter: "parameter:distance", value: { kind: "length_nanometers", value: event.data.valueNanometers } }] },
@@ -316,7 +431,17 @@ scope.addEventListener("message", async (event) => {
       postPacket();
     }
     if (event.data?.type === "preview-extrude") {
-      postExtrudePreview(event.data.requestId, event.data.valueNanometers);
+      try {
+        postExtrudePreview(event.data.requestId, event.data.valueNanometers, event.data.source);
+      } catch (error) {
+        scope.postMessage({
+          type: "operation-error",
+          code: "extrude_preview_refused",
+          message: error instanceof Error ? error.message : String(error),
+          recovery: "Select one closed profile and retry",
+          semanticHash: runtime?.semanticHash(),
+        } satisfies WorkerResponse);
+      }
     }
     if (event.data?.type === "restore-accepted-packet") {
       postPacket();
@@ -344,12 +469,12 @@ scope.addEventListener("message", async (event) => {
     if (event.data?.type === "set-parameter-expression") {
       if (!runtime) throw new Error("part runtime is not initialized");
       const beforeHash = runtime.semanticHash();
-      const document = JSON.parse(runtime.documentJson()) as RuntimeDocumentJournal;
+      const document = JSON.parse(runtime.documentJson()) as ParameterReferenceDocument;
       const outcome = JSON.parse(runtime.setFieldExpressionJson(JSON.stringify({
         transaction_id: `transaction:${document.revision + 1}:parameter-expression`,
         feature: event.data.feature,
         field: event.data.field,
-        source: event.data.source,
+        source: resolveSketchReferences(event.data.source, document),
       }))) as ParameterOutcome;
       if (!outcome.accepted) { postParameterRefusal(outcome, beforeHash); return; }
       const transaction = acceptedTransactionAfter(document.revision);
@@ -404,6 +529,49 @@ scope.addEventListener("message", async (event) => {
       if (runtime.semanticHash() !== beforeHash || preview.document_hash !== beforeHash) throw new Error("sketch preview mutated the accepted document");
       scope.postMessage({ type: "sketch-command-preview", requestId: event.data.requestId, preview } satisfies WorkerResponse);
     }
+    if (event.data?.type === "sketch-contract") {
+      if (!runtime) throw new Error("part runtime is not initialized");
+      const contract = JSON.parse(runtime.sketchSolverContractJson());
+      scope.postMessage({ type: "sketch-contract", requestId: event.data.requestId, contract } satisfies WorkerResponse);
+    }
+    if (event.data?.type === "decompose-sketch") {
+      if (!runtime) throw new Error("part runtime is not initialized");
+      const decomposition = JSON.parse(runtime.decomposeSketchJson(JSON.stringify({ sketch: event.data.sketch })));
+      scope.postMessage({ type: "sketch-decomposition", requestId: event.data.requestId, decomposition } satisfies WorkerResponse);
+    }
+    if (event.data?.type === "export-sketch-dxf") {
+      if (!runtime) throw new Error("part runtime is not initialized");
+      const { dxf } = JSON.parse(runtime.exportSketchDxfJson(JSON.stringify({ sketch: event.data.sketch })));
+      scope.postMessage({ type: "sketch-dxf-export", requestId: event.data.requestId, dxf } satisfies WorkerResponse);
+    }
+    if (event.data?.type === "import-sketch-dxf") {
+      if (!runtime) throw new Error("part runtime is not initialized");
+      const imported = JSON.parse(runtime.importSketchDxfJson(JSON.stringify({ sketch_id: event.data.sketchId, dxf: event.data.dxf })));
+      scope.postMessage({ type: "sketch-dxf-import", requestId: event.data.requestId, sketch: imported.sketch, decomposition: imported.decomposition } satisfies WorkerResponse);
+    }
+    if (event.data?.type === "apply-sketch-commands") {
+      if (!runtime) throw new Error("part runtime is not initialized");
+      const beforeHash = runtime.semanticHash();
+      const requestJson = typeof event.data.requestJson === "string"
+        ? event.data.requestJson
+        : JSON.stringify({
+          sketch: event.data.sketch as Sketch,
+          commands: event.data.commands as SketchCommand[],
+        });
+      const runtimeStartedAt = performance.now();
+      const previewJson = runtime.applySketchCommandsJson(requestJson);
+      const runtimeMs = performance.now() - runtimeStartedAt;
+      const responseParseStartedAt = performance.now();
+      const preview = JSON.parse(previewJson);
+      const responseParseMs = performance.now() - responseParseStartedAt;
+      const enginePhases = preview.runtime_performance;
+      const measuredEngineMs = enginePhases
+        ? Object.values(enginePhases as Record<string, unknown>).reduce<number>((total, value) => total + (typeof value === "number" ? value : 0), 0)
+        : 0;
+      const wasmBoundaryAndSerializeMs = Math.max(0, runtimeMs - measuredEngineMs);
+      if (runtime.semanticHash() !== beforeHash || preview.document_hash !== beforeHash) throw new Error("sketch batch preview mutated the accepted document");
+      scope.postMessage({ type: "sketch-command-preview", requestId: event.data.requestId, preview, performance: { runtimeMs, responseParseMs, wasmBoundaryAndSerializeMs, ...(enginePhases ? { enginePhases } : {}) } } satisfies WorkerResponse);
+    }
     if (event.data?.type === "drag-sketch") {
       if (!runtime) throw new Error("part runtime is not initialized");
       const beforeHash = runtime.semanticHash();
@@ -415,16 +583,141 @@ scope.addEventListener("message", async (event) => {
       if (!runtime) throw new Error("part runtime is not initialized");
       const beforeHash = runtime.semanticHash();
       const document = JSON.parse(runtime.documentJson()) as RuntimeDocumentJournal;
-      const outcome = JSON.parse(runtime.solveSketchJson(JSON.stringify({ transaction_id: event.data.transactionId, sketch: event.data.sketch, support: event.data.support })));
+      const outcome = JSON.parse(runtime.solveSketchJson(JSON.stringify({ transaction_id: event.data.transactionId, sketch: event.data.sketch, support: event.data.support, ...(event.data.supportReference ? { support_reference: event.data.supportReference } : {}) })));
       if (!outcome.accepted) {
         if (runtime.semanticHash() !== beforeHash || outcome.document_hash !== beforeHash) throw new Error("refused sketch solve mutated the accepted document");
       } else {
         const transaction = acceptedTransactionAfter(document.revision);
         if (!transaction) throw new Error("accepted sketch solve has no durable transaction");
-        postDocument({ transaction, recompute: { dirtyRoots: ["feature:rectangle-sketch"], evaluationOrder: ["feature:rectangle-sketch", "feature:extrude"] } });
+        const baseSketch = event.data.sketch.id === "sketch:rectangle";
+        postDocument({ transaction, recompute: baseSketch ? { dirtyRoots: ["feature:rectangle-sketch"], evaluationOrder: ["feature:rectangle-sketch", "feature:extrude"] } : { dirtyRoots: [], evaluationOrder: [] } });
         postPacket();
       }
       scope.postMessage({ type: "sketch-commit", requestId: event.data.requestId, accepted: outcome.accepted, solve: outcome.solve, semanticHash: runtime.semanticHash() } satisfies WorkerResponse);
+    }
+    if (event.data?.type === "preview-advanced-feature" || event.data?.type === "preview-advanced-feature-edit") {
+      if (!runtime) throw new Error("part runtime is not initialized");
+      const beforeHash = runtime.semanticHash();
+      const incoming = event.data as AdvancedFeatureCommand;
+      const editing = incoming.type === "preview-advanced-feature-edit";
+      const operationSlug = incoming.operationId.replace("crawler.part.", "").replaceAll(".", "-");
+      const nonce = crypto.randomUUID();
+      const command: AdvancedFeatureCommand = {
+        ...incoming,
+        type: editing ? "edit-advanced-feature" : "execute-advanced-feature",
+        featureId: editing ? incoming.featureId : incoming.featureId || `feature:${operationSlug}:${nonce}`,
+        outputBodyId: editing ? incoming.outputBodyId : incoming.outputBodyId || `body:${operationSlug}:${nonce}`,
+      };
+      try {
+        const preparedEnvelopeJson = editing ? undefined : prepareSketchFeatureEnvelope(runtime, command, nonce);
+        const envelope = preparedEnvelopeJson
+          ? JSON.parse(preparedEnvelopeJson) as ReturnType<typeof buildAdvancedFeatureEnvelope>
+          : editing ? buildAdvancedFeatureEditEnvelope(runtime, command) : buildAdvancedFeatureEnvelope(runtime, command);
+        const envelopeJson = preparedEnvelopeJson ?? serializeAdvancedFeatureEnvelope(envelope);
+        const outcome = JSON.parse(runtime.previewFeatureJson(envelopeJson)) as AdvancedFeaturePreviewOutcome;
+        if (runtime.semanticHash() !== beforeHash || outcome.document_hash !== beforeHash) throw new Error("advanced feature preview mutated the accepted document");
+        if (!outcome.accepted || !outcome.result) {
+          pendingAdvancedFeature = undefined;
+          const detail = outcome.error ?? { category: "invalid_input", message: "feature preview was refused", recovery: "correct the feature inputs and retry" };
+          scope.postMessage({
+            type: "operation-error",
+            code: `advanced_feature_${detail.category}`,
+            category: detail.category,
+            field: detail.field,
+            message: detail.message,
+            recovery: detail.recovery,
+            operationId: command.operationId,
+            featureId: command.featureId,
+            requestId: command.previewRequestId,
+            semanticHash: beforeHash,
+          } satisfies WorkerResponse);
+          return;
+        }
+        const rendered = runtimePacket(outcome.render);
+        pendingAdvancedFeature = {
+          command,
+          envelopeJson,
+          editing,
+          acceptedHash: beforeHash,
+          featureId: envelope.feature.id,
+          bodyId: outcome.result.output.body_id,
+        };
+        const packet = rendered.packet;
+        const transfer = Object.values(packet).filter((value): value is ArrayBufferView => ArrayBuffer.isView(value)).map((value) => value.buffer);
+        scope.postMessage({
+          type: "advanced-feature-preview",
+          requestId: command.previewRequestId ?? 0,
+          operationId: command.operationId,
+          featureId: envelope.feature.id,
+          bodyId: rendered.bodyId || outcome.result.output.body_id,
+          semanticHash: beforeHash,
+          packet,
+          transferredBytes: transfer.reduce((total, buffer) => total + buffer.byteLength, 0),
+        } satisfies WorkerResponse, transfer);
+      } catch (error) {
+        pendingAdvancedFeature = undefined;
+        if (error instanceof AdvancedFeatureBuildError) {
+          if (runtime.semanticHash() !== beforeHash) throw new Error("advanced feature validation mutated the accepted document");
+          scope.postMessage({
+            type: "operation-error",
+            code: `advanced_feature_${error.detail.category}`,
+            category: error.detail.category,
+            field: error.detail.field,
+            message: error.detail.message,
+            recovery: error.detail.recovery,
+            operationId: command.operationId,
+            featureId: command.featureId,
+            requestId: command.previewRequestId,
+            semanticHash: beforeHash,
+          } satisfies WorkerResponse);
+          return;
+        }
+        if (runtime.semanticHash() !== beforeHash) throw new Error("advanced feature preparation failure mutated the accepted document");
+        scope.postMessage({
+          type: "operation-error",
+          code: "advanced_feature_invalid_input",
+          category: "invalid_input",
+          message: error instanceof Error ? error.message : String(error),
+          recovery: "correct the feature inputs and preview again",
+          operationId: command.operationId,
+          featureId: command.featureId,
+          requestId: command.previewRequestId,
+          semanticHash: beforeHash,
+        } satisfies WorkerResponse);
+        return;
+      }
+    }
+    if (event.data?.type === "apply-advanced-feature") {
+      if (!runtime) throw new Error("part runtime is not initialized");
+      const pending = pendingAdvancedFeature;
+      if (!pending) throw new Error("no accepted advanced feature preview is available to apply");
+      if (runtime.semanticHash() !== pending.acceptedHash) throw new Error("the document changed after preview; preview the feature again");
+      const envelope = JSON.parse(pending.envelopeJson) as { transaction_id: string; feature: { id: string } };
+      const outcome = JSON.parse(pending.editing
+        ? runtime.executeFeatureJson(pending.envelopeJson)
+        : runtime.executeNewFeatureJson(pending.envelopeJson)) as AdvancedFeatureOutcome;
+      if (!outcome.accepted || !outcome.result || outcome.before_hash !== pending.acceptedHash || outcome.document_hash !== runtime.semanticHash()) {
+        throw new Error(outcome.error?.message ?? "advanced feature apply returned inconsistent acceptance evidence");
+      }
+      const document = JSON.parse(runtime.documentJson()) as { transactions: { id: string; base_revision: number; result_revision: number; changes: AcceptedTransaction["changes"] }[] };
+      const accepted = document.transactions.at(-1);
+      if (!accepted || accepted.id !== envelope.transaction_id) throw new Error("accepted advanced feature transaction is missing from the document");
+      pendingAdvancedFeature = undefined;
+      restoreImportedPacket();
+      postDocument({
+        transaction: accepted,
+        ...(pending.editing && outcome.recomputed?.length
+          ? { recompute: { dirtyRoots: [envelope.feature.id], evaluationOrder: [envelope.feature.id, ...outcome.recomputed.map((item) => item.feature)] } }
+          : {}),
+      });
+      postPacket();
+      scope.postMessage({ type: "advanced-feature-completed", operationId: pending.command.operationId, featureId: pending.featureId, bodyId: outcome.result.output.body_id, semanticHash: outcome.document_hash } satisfies WorkerResponse);
+    }
+    if (event.data?.type === "cancel-advanced-feature") {
+      if (!runtime) throw new Error("part runtime is not initialized");
+      pendingAdvancedFeature = undefined;
+      postPacket();
+      scope.postMessage({ type: "advanced-feature-preview-cancelled", semanticHash: runtime.semanticHash() } satisfies WorkerResponse);
     }
     if (event.data?.type === "execute-advanced-feature" || event.data?.type === "edit-advanced-feature") {
       if (!runtime) throw new Error("part runtime is not initialized");
@@ -589,6 +882,25 @@ scope.addEventListener("message", async (event) => {
       scope.postMessage({ type: "portable-package", bytes, semanticHash: after } satisfies WorkerResponse, [bytes.buffer]);
     }
   } catch (error) {
-    scope.postMessage({ type: "error", message: error instanceof Error ? error.message : String(error) } satisfies WorkerResponse);
+    const message = error instanceof Error ? error.message : String(error);
+    if (event.data?.type === "export") {
+      scope.postMessage({ type: "export-error", format: event.data.format, message } satisfies WorkerResponse);
+      return;
+    }
+    const recoverableSketchRequests = new Set([
+      "apply-sketch-command",
+      "apply-sketch-commands",
+      "drag-sketch",
+      "solve-sketch",
+      "sketch-contract",
+      "decompose-sketch",
+      "export-sketch-dxf",
+      "import-sketch-dxf",
+    ]);
+    if (recoverableSketchRequests.has(event.data?.type) && typeof event.data?.requestId === "string") {
+      scope.postMessage({ type: "sketch-error", requestId: event.data.requestId, message } satisfies WorkerResponse);
+    } else {
+      scope.postMessage({ type: "error", message } satisfies WorkerResponse);
+    }
   }
 });
