@@ -1,12 +1,22 @@
 use crawler_operation_schema::{
-    alpha_operation_catalog, CapabilityState, EnablementState, ErrorCode, InputSelection,
-    OperationCatalog, OperationInvocation, OperationSchema, ParameterValue, ParameterValueKind,
-    Recoverability, SelectionKind,
+    CapabilityState, EnablementState, ErrorCode, InputSelection, OperationCatalog,
+    OperationInvocation, OperationSchema, ParameterValue, ParameterValueKind, Recoverability,
+    SelectionKind, alpha_operation_catalog,
 };
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 fn schema_json() -> &'static str {
     include_str!("../../../contracts/operation-schema/extrude.v1.json")
+}
+
+#[test]
+fn standalone_extrude_contract_matches_the_catalog_exactly() {
+    let standalone: OperationSchema = serde_json::from_str(schema_json()).unwrap();
+    let catalog = alpha_operation_catalog();
+    assert_eq!(
+        serde_json::to_value(&standalone).unwrap(),
+        serde_json::to_value(catalog.operation("crawler.part.extrude").unwrap()).unwrap(),
+    );
 }
 
 fn schema() -> OperationSchema {
@@ -82,9 +92,11 @@ fn unknown_schema_versions_fail_closed() {
     let incompatible = schema_json().replacen("\"schema_version\": 1", "\"schema_version\": 99", 1);
     let error = serde_json::from_str::<OperationSchema>(&incompatible)
         .expect_err("unknown schema version must not deserialize");
-    assert!(error
-        .to_string()
-        .contains("unsupported crawler operation schema version 99"));
+    assert!(
+        error
+            .to_string()
+            .contains("unsupported crawler operation schema version 99")
+    );
 }
 
 #[test]
@@ -107,6 +119,11 @@ fn alpha_catalog_covers_every_enabled_sketch_and_feature_command() {
         "crawler.sketch.construction",
         "crawler.part.extrude",
         "crawler.part.revolve",
+        "crawler.part.loft",
+        "crawler.part.sweep",
+        "crawler.part.extrude.cut",
+        "crawler.part.revolve.cut",
+        "crawler.part.draft",
         "crawler.part.boolean.union",
         "crawler.part.boolean.cut",
         "crawler.part.boolean.intersect",
@@ -145,9 +162,11 @@ fn alpha_catalog_covers_every_enabled_sketch_and_feature_command() {
         [SelectionKind::SketchCurve]
     );
     let circular = catalog.operation("crawler.part.pattern.circular").unwrap();
-    assert!(circular.input_slots[1]
-        .allowed_kinds
-        .contains(&SelectionKind::Axis));
+    assert!(
+        circular.input_slots[1]
+            .allowed_kinds
+            .contains(&SelectionKind::Axis)
+    );
     assert_eq!(circular.parameters[0].value_kind, ParameterValueKind::Count);
     assert_eq!(
         circular.parameters[1].value_kind,
@@ -161,10 +180,245 @@ fn alpha_catalog_covers_every_enabled_sketch_and_feature_command() {
         [SelectionKind::Body]
     );
     assert_eq!(transform.parameters.len(), 3);
-    assert!(transform
+    assert!(
+        transform
+            .parameters
+            .iter()
+            .all(|parameter| parameter.value_kind == ParameterValueKind::LengthNanometers)
+    );
+}
+
+fn input_contract(schema: &OperationSchema) -> Vec<(&str, Vec<SelectionKind>, u32, Option<u32>)> {
+    schema
+        .input_slots
+        .iter()
+        .map(|slot| {
+            (
+                slot.key.as_str(),
+                slot.allowed_kinds.clone(),
+                slot.minimum_count,
+                slot.maximum_count,
+            )
+        })
+        .collect()
+}
+
+fn parameter_keys(schema: &OperationSchema) -> Vec<&str> {
+    schema
         .parameters
         .iter()
-        .all(|parameter| parameter.value_kind == ParameterValueKind::LengthNanometers));
+        .map(|parameter| parameter.key.as_str())
+        .collect()
+}
+
+#[test]
+fn three_dimensional_operations_publish_exact_selection_and_parameter_contracts() {
+    let catalog = alpha_operation_catalog();
+
+    let extrude = catalog.operation("crawler.part.extrude").unwrap();
+    assert_eq!(
+        input_contract(extrude),
+        vec![("profile", vec![SelectionKind::SketchProfile], 1, Some(1))]
+    );
+    assert_eq!(parameter_keys(extrude), ["distance"]);
+
+    let revolve = catalog.operation("crawler.part.revolve").unwrap();
+    assert_eq!(
+        input_contract(revolve),
+        vec![
+            ("profile", vec![SelectionKind::SketchProfile], 1, Some(1)),
+            (
+                "axis",
+                vec![SelectionKind::Axis, SelectionKind::Edge],
+                1,
+                Some(1),
+            ),
+        ]
+    );
+    assert_eq!(parameter_keys(revolve), ["angle", "reverse"]);
+
+    let loft = catalog.operation("crawler.part.loft").unwrap();
+    assert_eq!(
+        input_contract(loft),
+        vec![("profiles", vec![SelectionKind::SketchProfile], 2, None)]
+    );
+    assert!(loft.parameters.is_empty());
+
+    let sweep = catalog.operation("crawler.part.sweep").unwrap();
+    assert_eq!(
+        input_contract(sweep),
+        vec![
+            ("profile", vec![SelectionKind::SketchProfile], 1, Some(1)),
+            (
+                "path",
+                vec![SelectionKind::SketchCurve, SelectionKind::Edge],
+                1,
+                None,
+            ),
+        ]
+    );
+    assert!(sweep.parameters.is_empty());
+
+    let extrude_cut = catalog.operation("crawler.part.extrude.cut").unwrap();
+    assert_eq!(
+        input_contract(extrude_cut),
+        vec![
+            ("target", vec![SelectionKind::Body], 1, Some(1)),
+            ("profile", vec![SelectionKind::SketchProfile], 1, Some(1)),
+        ]
+    );
+    assert_eq!(parameter_keys(extrude_cut), ["distance"]);
+
+    let revolve_cut = catalog.operation("crawler.part.revolve.cut").unwrap();
+    assert_eq!(
+        input_contract(revolve_cut),
+        vec![
+            ("target", vec![SelectionKind::Body], 1, Some(1)),
+            ("profile", vec![SelectionKind::SketchProfile], 1, Some(1)),
+            (
+                "axis",
+                vec![SelectionKind::Axis, SelectionKind::Edge],
+                1,
+                Some(1),
+            ),
+        ]
+    );
+    assert_eq!(parameter_keys(revolve_cut), ["angle", "reverse"]);
+
+    let draft = catalog.operation("crawler.part.draft").unwrap();
+    assert_eq!(
+        input_contract(draft),
+        vec![
+            ("body", vec![SelectionKind::Body], 1, Some(1)),
+            ("faces", vec![SelectionKind::Face], 1, None),
+            (
+                "neutral_plane",
+                vec![SelectionKind::Plane, SelectionKind::Face],
+                1,
+                Some(1),
+            ),
+        ]
+    );
+    assert_eq!(parameter_keys(draft), ["angle", "reverse"]);
+}
+
+#[test]
+fn enabled_existing_solid_tools_do_not_publish_ignored_controls() {
+    let catalog = alpha_operation_catalog();
+
+    let boolean = catalog.operation("crawler.part.boolean.union").unwrap();
+    assert_eq!(
+        input_contract(boolean),
+        vec![
+            ("target", vec![SelectionKind::Body], 1, Some(1)),
+            ("tools", vec![SelectionKind::Body], 1, None),
+        ]
+    );
+    assert_eq!(parameter_keys(boolean), ["tolerance"]);
+
+    let mirror = catalog.operation("crawler.part.mirror").unwrap();
+    assert_eq!(
+        input_contract(mirror),
+        vec![
+            (
+                "source",
+                vec![SelectionKind::Body, SelectionKind::Feature],
+                1,
+                None,
+            ),
+            ("plane", vec![SelectionKind::Plane], 1, Some(1),),
+        ]
+    );
+    assert!(mirror.parameters.is_empty());
+
+    let linear = catalog.operation("crawler.part.pattern.linear").unwrap();
+    assert_eq!(linear.input_slots[1].key, "direction");
+    assert_eq!(linear.input_slots[1].allowed_kinds, [SelectionKind::Axis]);
+    assert_eq!(parameter_keys(linear), ["count", "spacing"]);
+
+    let circular = catalog.operation("crawler.part.pattern.circular").unwrap();
+    assert_eq!(circular.input_slots[1].key, "axis");
+    assert_eq!(circular.input_slots[1].allowed_kinds, [SelectionKind::Axis]);
+    assert_eq!(parameter_keys(circular), ["count", "angle"]);
+
+    let shell = catalog.operation("crawler.part.shell").unwrap();
+    assert_eq!(
+        input_contract(shell),
+        vec![
+            ("body", vec![SelectionKind::Body], 1, Some(1)),
+            ("remove_faces", vec![SelectionKind::Face], 1, Some(1)),
+        ]
+    );
+    assert_eq!(parameter_keys(shell), ["thickness"]);
+}
+
+#[test]
+fn every_operation_has_one_qualified_capability_and_no_capability_is_orphaned() {
+    let catalog = alpha_operation_catalog();
+    let capability_ids = catalog
+        .capabilities
+        .iter()
+        .map(|capability| capability.id.as_str())
+        .collect::<BTreeSet<_>>();
+    let referenced = catalog
+        .operations
+        .iter()
+        .map(|operation| operation.enablement.capability.as_str())
+        .collect::<BTreeSet<_>>();
+
+    assert_eq!(capability_ids.len(), catalog.capabilities.len());
+    assert_eq!(referenced, capability_ids);
+    assert!(
+        catalog
+            .capabilities
+            .iter()
+            .all(|capability| capability.state == CapabilityState::Qualified)
+    );
+    assert!(catalog.operations.iter().all(|operation| {
+        operation.enablement.state == EnablementState::Enabled
+            && operation.enablement.capability == operation.id.strip_prefix("crawler.").unwrap()
+    }));
+}
+
+#[test]
+fn new_solid_tool_validation_rejects_missing_or_wrong_selection_roles() {
+    let catalog = alpha_operation_catalog();
+    let revolve_cut = catalog.operation("crawler.part.revolve.cut").unwrap();
+    let invocation = OperationInvocation {
+        operation_id: "feature:revolve-cut-1".to_owned(),
+        schema_id: revolve_cut.id.clone(),
+        schema_version: revolve_cut.schema_version.get(),
+        inputs: BTreeMap::from([
+            (
+                "target".to_owned(),
+                vec![InputSelection {
+                    kind: SelectionKind::Body,
+                    entity_id: "body:target".to_owned(),
+                }],
+            ),
+            (
+                "profile".to_owned(),
+                vec![InputSelection {
+                    kind: SelectionKind::Face,
+                    entity_id: "face:not-a-sketch-profile".to_owned(),
+                }],
+            ),
+        ]),
+        parameters: revolve_cut
+            .parameters
+            .iter()
+            .map(|parameter| (parameter.key.clone(), parameter.default.clone()))
+            .collect(),
+        preview_generation: 1,
+    };
+
+    let errors = revolve_cut.validate(&invocation);
+    assert!(errors.iter().any(|error| {
+        error.code == ErrorCode::InvalidInputKind && error.user_actions[0].target == "profile"
+    }));
+    assert!(errors.iter().any(|error| {
+        error.code == ErrorCode::MissingInput && error.user_actions[0].target == "axis"
+    }));
 }
 
 #[test]
@@ -207,9 +461,11 @@ fn unknown_catalog_versions_fail_closed() {
         catalog_json().replacen("\"catalog_version\": 1", "\"catalog_version\": 9", 1);
     let error = serde_json::from_str::<OperationCatalog>(&incompatible)
         .expect_err("unknown catalog version must not deserialize");
-    assert!(error
-        .to_string()
-        .contains("unsupported crawler operation catalog version 9"));
+    assert!(
+        error
+            .to_string()
+            .contains("unsupported crawler operation catalog version 9")
+    );
 }
 
 #[test]
@@ -248,20 +504,28 @@ fn catalog_validation_rejects_definition_and_invocation_shape_errors() {
         .parameters
         .insert("unexpected".to_owned(), ParameterValue::Boolean(true));
     let errors = fillet.validate(&invocation);
-    assert!(errors
-        .iter()
-        .any(|error| error.code == ErrorCode::InvalidInputKind));
-    assert!(errors
-        .iter()
-        .any(|error| error.code == ErrorCode::UnknownInput));
-    assert!(errors
-        .iter()
-        .any(|error| error.code == ErrorCode::UnknownParameter));
+    assert!(
+        errors
+            .iter()
+            .any(|error| error.code == ErrorCode::InvalidInputKind)
+    );
+    assert!(
+        errors
+            .iter()
+            .any(|error| error.code == ErrorCode::UnknownInput)
+    );
+    assert!(
+        errors
+            .iter()
+            .any(|error| error.code == ErrorCode::UnknownParameter)
+    );
 
     let mut malformed = fillet.clone();
     malformed.parameters[0].default = ParameterValue::Boolean(false);
-    assert!(malformed
-        .validate_definition()
-        .iter()
-        .any(|error| error.path.ends_with("default")));
+    assert!(
+        malformed
+            .validate_definition()
+            .iter()
+            .any(|error| error.path.ends_with("default"))
+    );
 }

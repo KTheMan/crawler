@@ -165,11 +165,14 @@ test("mirror and both pattern forms encode body or feature-sequence semantics", 
   assert.equal(mirror.request.operation.plane_normal, "x");
 
   const linear = buildAdvancedFeatureEnvelope(runtime, command("crawler.part.pattern.linear", {
-    parameters: { count: 3, spacing: 5_000_000, symmetric: false },
+    // A stale caller may still send the parameter removed from the catalog;
+    // it must not affect the durable request or parameter bindings.
+    parameters: { count: 3, spacing: 5_000_000, symmetric: true },
     selection: { axis: "y", directionSign: -1 },
   }));
   assert.deepEqual(linear.request.operation.step_nm, [0, -5_000_000, 0]);
   assert.equal((linear.request.operation.instance_body_ids as string[]).length, 3);
+  assert.equal("symmetric" in linear.feature.parameters, false);
 
   const circular = buildAdvancedFeatureEnvelope(runtime, command("crawler.part.pattern.circular", {
     parameters: { count: 4, angle: 360_000_000 },
@@ -267,4 +270,193 @@ test("suppressed or missing body lookup failures remain structured", () => {
       && error.detail.category === "not_found"
       && error.detail.field === "body_id",
   );
+});
+
+function acceptedOperation(
+  operationId: AdvancedFeatureCommand["operationId"],
+  operation: Record<string, unknown>,
+  parameterValues: Record<string, number | boolean | string>,
+) {
+  const view = runtimeView();
+  const featureId = `feature:accepted:${operationId}`;
+  const outputBodyId = `body:accepted:${operationId}`;
+  const parameters = Object.fromEntries(Object.keys(parameterValues).map((key) => [key, `parameter:accepted:${key}`]));
+  const feature = {
+    id: featureId,
+    display_name: "Accepted feature",
+    component: "component:root",
+    operation: { schema_id: operationId, schema_version: 1 },
+    dependencies: ["feature:geometry-source"],
+    inputs: { source: { kind: "body", id: "body:geometry-source" } },
+    parameters,
+    suppressed: false,
+  };
+  view.setDocument(JSON.stringify({
+    id: "document:alpha",
+    revision: 21,
+    features: { [featureId]: feature },
+    parameters: Object.fromEntries(Object.entries(parameterValues).map(([key, value]) => [parameters[key], {
+      id: parameters[key],
+      display_name: key,
+      value: { kind: typeof value === "boolean" ? "boolean" : key === "angle" ? "angle_microdegrees" : "length_nanometers", value },
+    }])),
+    transactions: [{ changes: [{
+      kind: "accept_feature_result",
+      feature: featureId,
+      request_json: JSON.stringify({
+        schema_version: 1,
+        document_id: "document:alpha",
+        feature_id: featureId,
+        output_body_id: outputBodyId,
+        operation,
+      }),
+    }] }],
+  }));
+  return { view, featureId, outputBodyId, feature };
+}
+
+test("profile revolve edits exact sweep and reverse axis while preserving profile geometry and identities", () => {
+  const profile = [[2_000_000, 0, 0], [4_000_000, 0, 0], [4_000_000, 0, 5_000_000], [2_000_000, 0, 5_000_000]];
+  const accepted = acceptedOperation("crawler.part.revolve", {
+    kind: "profile_revolve",
+    profile_nm: profile,
+    axis_origin_nm: [0, 0, 0],
+    axis_direction_nm: [0, 0, 1_000_000],
+    sweep_microdegrees: 180_000_000,
+    divisions: 32,
+    tolerance_nm: 10_000,
+  }, { angle: 180_000_000, reverse: false });
+  const edited = buildAdvancedFeatureEditEnvelope(accepted.view.runtime, command("crawler.part.revolve", {
+    type: "edit-advanced-feature",
+    featureId: accepted.featureId,
+    outputBodyId: "body:ignored-by-edit",
+    parameters: { angle: 270_000_000, reverse: true },
+  }));
+  assert.equal(edited.request.feature_id, accepted.featureId);
+  assert.equal(edited.request.output_body_id, accepted.outputBodyId);
+  assert.equal(edited.request.operation.sweep_microdegrees, 270_000_000);
+  assert.deepEqual(edited.request.operation.axis_direction_nm, [0, 0, -1_000_000]);
+  assert.deepEqual(edited.request.operation.profile_nm, profile);
+  assert.deepEqual(edited.request.operation.axis_origin_nm, [0, 0, 0]);
+  assert.deepEqual(edited.feature.inputs, accepted.feature.inputs);
+  assert.deepEqual(edited.feature.parameters, accepted.feature.parameters);
+});
+
+test("an already-reversed profile revolve does not flip its persisted axis again", () => {
+  const accepted = acceptedOperation("crawler.part.revolve", {
+    kind: "profile_revolve",
+    profile_nm: [[1, 0, 0], [2, 0, 0], [2, 0, 2], [1, 0, 2]],
+    axis_origin_nm: [0, 0, 0],
+    axis_direction_nm: [0, -5_000_000, 0],
+    sweep_microdegrees: 90_000_000,
+    divisions: 16,
+    tolerance_nm: 10_000,
+  }, { angle: 90_000_000, reverse: true });
+  const edited = buildAdvancedFeatureEditEnvelope(accepted.view.runtime, command("crawler.part.revolve", {
+    type: "edit-advanced-feature",
+    featureId: accepted.featureId,
+    parameters: { angle: 120_000_000, reverse: true },
+  }));
+  assert.deepEqual(edited.request.operation.axis_direction_nm, [0, -5_000_000, 0]);
+});
+
+test("extrude cut distance edit rescales the exact persisted direction without replacing target or profile", () => {
+  const target = body("body:cut-target");
+  const profiles = [[[0, 0, 0], [2_000_000, 0, 0], [2_000_000, 1_000_000, 0], [0, 1_000_000, 0]]];
+  const accepted = acceptedOperation("crawler.part.extrude.cut", {
+    kind: "extrude_cut",
+    target,
+    profiles_nm: profiles,
+    direction_nm: [3_000_000, 4_000_000, 0],
+    tolerance_nm: 10_000,
+  }, { distance: 5_000_000 });
+  const edited = buildAdvancedFeatureEditEnvelope(accepted.view.runtime, command("crawler.part.extrude.cut", {
+    type: "edit-advanced-feature",
+    featureId: accepted.featureId,
+    parameters: { distance: 10_000_000 },
+  }));
+  assert.deepEqual(edited.request.operation.direction_nm, [6_000_000, 8_000_000, 0]);
+  assert.deepEqual(edited.request.operation.target, target);
+  assert.deepEqual(edited.request.operation.profiles_nm, profiles);
+  assert.deepEqual(edited.feature.parameters, accepted.feature.parameters);
+});
+
+test("revolve cut edit preserves target and profile while applying angle and reverse to the exact axis", () => {
+  const target = body("body:revolve-cut-target");
+  const profile = [[1, 0, 0], [3, 0, 0], [3, 0, 4], [1, 0, 4]];
+  const accepted = acceptedOperation("crawler.part.revolve.cut", {
+    kind: "revolve_cut",
+    target,
+    profile_nm: profile,
+    axis_origin_nm: [5, 6, 7],
+    axis_direction_nm: [0, 2_000_000, 0],
+    sweep_microdegrees: 90_000_000,
+    divisions: 24,
+    tolerance_nm: 10_000,
+  }, { angle: 90_000_000, reverse: false });
+  const edited = buildAdvancedFeatureEditEnvelope(accepted.view.runtime, command("crawler.part.revolve.cut", {
+    type: "edit-advanced-feature",
+    featureId: accepted.featureId,
+    parameters: { angle: 45_000_000, reverse: true },
+  }));
+  assert.equal(edited.request.operation.sweep_microdegrees, 45_000_000);
+  assert.deepEqual(edited.request.operation.axis_direction_nm, [0, -2_000_000, 0]);
+  assert.deepEqual(edited.request.operation.axis_origin_nm, [5, 6, 7]);
+  assert.deepEqual(edited.request.operation.profile_nm, profile);
+  assert.deepEqual(edited.request.operation.target, target);
+});
+
+test("loft and sweep edits preserve all ordered geometry sources exactly", () => {
+  const cases: Array<[AdvancedFeatureCommand["operationId"], Record<string, unknown>]> = [
+    ["crawler.part.loft", { kind: "loft", profiles_nm: [[[0, 0, 0]], [[0, 0, 8]]], tolerance_nm: 10_000 }],
+    ["crawler.part.sweep", { kind: "sweep", profile_nm: [[0, 0, 0], [1, 0, 0]], path_nm: [[0, 0, 0], [0, 5, 0], [0, 5, 9]], tolerance_nm: 10_000 }],
+  ];
+  for (const [operationId, operation] of cases) {
+    const accepted = acceptedOperation(operationId, operation, {});
+    const edited = buildAdvancedFeatureEditEnvelope(accepted.view.runtime, command(operationId, {
+      type: "edit-advanced-feature",
+      featureId: accepted.featureId,
+    }));
+    assert.deepEqual(edited.request.operation, operation);
+    assert.deepEqual(edited.feature.inputs, accepted.feature.inputs);
+    assert.deepEqual(edited.feature.parameters, {});
+    assert.deepEqual(edited.parameter_definitions, []);
+  }
+});
+
+test("Draft creation and edit use exact selected faces, target, pull axis, neutral plane, angle, and reverse", () => {
+  const { runtime } = runtimeView();
+  const created = buildAdvancedFeatureEnvelope(runtime, command("crawler.part.draft", {
+    featureId: "feature:draft",
+    outputBodyId: "body:draft",
+    parameters: { angle: 3_000_000, reverse: true },
+    selection: {
+      targetBodyId: "body:target",
+      draftFaceStableIds: ["42", "18446744073709551614"],
+      axis: "y",
+      neutralPlaneOriginNanometers: [10, 20, 30],
+    },
+  }));
+  assert.deepEqual(created.feature.dependencies, ["feature:target"]);
+  assert.deepEqual(created.request.operation.target, body("body:target"));
+  assert.equal(created.request.operation.pull_direction, "y");
+  assert.deepEqual(created.request.operation.neutral_plane_origin_nm, [10, 20, 30]);
+  assert.equal(created.request.operation.angle_microdegrees, -3_000_000);
+  assert.match(serializeAdvancedFeatureEnvelope(created), /"face_stable_ids":\[42,18446744073709551614\]/);
+
+  const accepted = acceptedOperation("crawler.part.draft", created.request.operation, {
+    angle: 3_000_000,
+    reverse: true,
+  });
+  const edited = buildAdvancedFeatureEditEnvelope(accepted.view.runtime, command("crawler.part.draft", {
+    type: "edit-advanced-feature",
+    featureId: accepted.featureId,
+    parameters: { angle: 7_500_000, reverse: false },
+  }));
+  assert.equal(edited.request.operation.angle_microdegrees, 7_500_000);
+  assert.deepEqual(edited.request.operation.target, created.request.operation.target);
+  assert.match(serializeAdvancedFeatureEnvelope(edited), /"face_stable_ids":\[42,18446744073709551614\]/);
+  assert.equal(edited.request.operation.pull_direction, "y");
+  assert.deepEqual(edited.request.operation.neutral_plane_origin_nm, [10, 20, 30]);
+  assert.deepEqual(edited.feature.parameters, accepted.feature.parameters);
 });

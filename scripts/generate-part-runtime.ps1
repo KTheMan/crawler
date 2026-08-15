@@ -3,7 +3,7 @@ param()
 
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$expectedVersion = 'wasm-bindgen 0.2.126'
+$expectedVersion = 'wasm-bindgen 0.2.127'
 $candidates = @()
 if ($env:WASM_BINDGEN) {
     $candidates += $env:WASM_BINDGEN
@@ -12,10 +12,10 @@ $command = Get-Command wasm-bindgen -ErrorAction SilentlyContinue
 if ($command) {
     $candidates += $command.Source
 }
-$candidates += 'E:\Temp\wasm-bindgen-0.2.126\wasm-bindgen-0.2.126-x86_64-pc-windows-msvc\wasm-bindgen.exe'
+$candidates += 'E:\Temp\wasm-bindgen-cli-0.2.127\bin\wasm-bindgen.exe'
 $tool = $candidates | Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Leaf) } | Select-Object -First 1
 if (-not $tool) {
-    throw "wasm-bindgen 0.2.126 was not found. Put it on PATH or set WASM_BINDGEN to the executable."
+    throw "wasm-bindgen 0.2.127 was not found. Put it on PATH or set WASM_BINDGEN to the executable."
 }
 $actualVersion = (& $tool --version).Trim()
 if ($actualVersion -ne $expectedVersion) {

@@ -13,6 +13,11 @@ pub fn alpha_capabilities() -> Vec<CapabilitySchema> {
         "sketch.construction",
         "part.extrude",
         "part.revolve",
+        "part.loft",
+        "part.sweep",
+        "part.extrude.cut",
+        "part.revolve.cut",
+        "part.draft",
         "part.boolean.union",
         "part.boolean.cut",
         "part.boolean.intersect",
@@ -172,27 +177,16 @@ pub fn alpha_operation_catalog() -> OperationCatalog {
             vec![slot(
                 "profile",
                 "Profile",
-                &[SelectionKind::SketchProfile, SelectionKind::Face],
+                &[SelectionKind::SketchProfile],
                 1,
                 Some(1),
             )],
-            vec![
-                length(
-                    "distance",
-                    "Distance",
-                    10_000_000,
-                    Some((1_000, 1_000_000_000_000)),
-                ),
-                choice("extent", "Extent", "one_sided", &["one_sided", "symmetric"]),
-                advanced(angle(
-                    "draft_angle",
-                    "Draft angle",
-                    0,
-                    -89_000_000,
-                    89_000_000,
-                )),
-                advanced(boolean("reverse", "Reverse direction", false)),
-            ],
+            vec![length(
+                "distance",
+                "Distance",
+                10_000_000,
+                Some((1_000, 1_000_000_000_000)),
+            )],
         ),
         operation(
             &capabilities,
@@ -205,7 +199,7 @@ pub fn alpha_operation_catalog() -> OperationCatalog {
                 slot(
                     "profile",
                     "Profile",
-                    &[SelectionKind::SketchProfile, SelectionKind::Face],
+                    &[SelectionKind::SketchProfile],
                     1,
                     Some(1),
                 ),
@@ -218,19 +212,79 @@ pub fn alpha_operation_catalog() -> OperationCatalog {
                 ),
             ],
             vec![
-                angle("angle", "Angle", 360_000_000, -360_000_000, 360_000_000),
-                choice(
-                    "operation",
-                    "Operation",
-                    "new_body",
-                    &["new_body", "union", "cut", "intersect"],
-                ),
+                angle("angle", "Angle", 360_000_000, 1, 360_000_000),
                 boolean("reverse", "Reverse direction", false),
             ],
         ),
-        boolean_operation(&capabilities, "union", "Boolean union"),
-        boolean_operation(&capabilities, "cut", "Boolean cut"),
-        boolean_operation(&capabilities, "intersect", "Boolean intersect"),
+        operation(
+            &capabilities,
+            "crawler.part.loft",
+            "Loft",
+            OperationGroup::PartDesign,
+            OutputKind::Body,
+            "part.loft",
+            vec![slot(
+                "profiles",
+                "Profiles",
+                &[SelectionKind::SketchProfile],
+                2,
+                None,
+            )],
+            vec![],
+        ),
+        operation(
+            &capabilities,
+            "crawler.part.sweep",
+            "Sweep",
+            OperationGroup::PartDesign,
+            OutputKind::Body,
+            "part.sweep",
+            vec![
+                slot(
+                    "profile",
+                    "Profile",
+                    &[SelectionKind::SketchProfile],
+                    1,
+                    Some(1),
+                ),
+                slot(
+                    "path",
+                    "Path",
+                    &[SelectionKind::SketchCurve, SelectionKind::Edge],
+                    1,
+                    None,
+                ),
+            ],
+            vec![],
+        ),
+        cut_extrude_operation(&capabilities),
+        cut_revolve_operation(&capabilities),
+        operation(
+            &capabilities,
+            "crawler.part.draft",
+            "Draft",
+            OperationGroup::PartDesign,
+            OutputKind::Body,
+            "part.draft",
+            vec![
+                slot("body", "Body", &[SelectionKind::Body], 1, Some(1)),
+                slot("faces", "Faces", &[SelectionKind::Face], 1, None),
+                slot(
+                    "neutral_plane",
+                    "Neutral plane",
+                    &[SelectionKind::Plane, SelectionKind::Face],
+                    1,
+                    Some(1),
+                ),
+            ],
+            vec![
+                angle("angle", "Draft angle", 2_000_000, 1, 89_000_000),
+                boolean("reverse", "Reverse direction", false),
+            ],
+        ),
+        boolean_operation(&capabilities, "union", "Combine"),
+        boolean_operation(&capabilities, "cut", "Subtract"),
+        boolean_operation(&capabilities, "intersect", "Intersect"),
         edge_operation(&capabilities, "fillet", "Fillet", "radius", "Radius"),
         edge_operation(&capabilities, "chamfer", "Chamfer", "distance", "Distance"),
         operation(
@@ -248,15 +302,9 @@ pub fn alpha_operation_catalog() -> OperationCatalog {
                     1,
                     None,
                 ),
-                slot(
-                    "plane",
-                    "Mirror plane",
-                    &[SelectionKind::Plane, SelectionKind::Face],
-                    1,
-                    Some(1),
-                ),
+                slot("plane", "Mirror plane", &[SelectionKind::Plane], 1, Some(1)),
             ],
-            vec![boolean("merge", "Merge result", false)],
+            vec![],
         ),
         operation(
             &capabilities,
@@ -293,13 +341,7 @@ pub fn alpha_operation_catalog() -> OperationCatalog {
                     1,
                     None,
                 ),
-                slot(
-                    "direction",
-                    "Direction",
-                    &[SelectionKind::Axis, SelectionKind::Edge],
-                    1,
-                    Some(1),
-                ),
+                slot("direction", "Direction", &[SelectionKind::Axis], 1, Some(1)),
             ],
             vec![
                 count("count", "Count", 2, 2, 10_000),
@@ -309,7 +351,6 @@ pub fn alpha_operation_catalog() -> OperationCatalog {
                     10_000_000,
                     Some((1_000, 1_000_000_000_000)),
                 ),
-                boolean("symmetric", "Symmetric", false),
             ],
         ),
         operation(
@@ -327,13 +368,7 @@ pub fn alpha_operation_catalog() -> OperationCatalog {
                     1,
                     None,
                 ),
-                slot(
-                    "axis",
-                    "Axis",
-                    &[SelectionKind::Axis, SelectionKind::Edge],
-                    1,
-                    Some(1),
-                ),
+                slot("axis", "Axis", &[SelectionKind::Axis], 1, Some(1)),
             ],
             vec![
                 count("count", "Count", 4, 2, 10_000),
@@ -442,9 +477,70 @@ fn boolean_operation(
             slot("target", "Target body", &[SelectionKind::Body], 1, Some(1)),
             slot("tools", "Tool bodies", &[SelectionKind::Body], 1, None),
         ],
+        vec![length(
+            "tolerance",
+            "Tolerance",
+            10_000,
+            Some((1, 1_000_000)),
+        )],
+    )
+}
+
+fn cut_extrude_operation(capabilities: &[CapabilitySchema]) -> OperationSchema {
+    operation(
+        capabilities,
+        "crawler.part.extrude.cut",
+        "Extrude cut",
+        OperationGroup::PartDesign,
+        OutputKind::Body,
+        "part.extrude.cut",
         vec![
-            length("tolerance", "Tolerance", 10_000, Some((1, 1_000_000))),
-            boolean("keep_tools", "Keep tools visible", false),
+            slot("target", "Target body", &[SelectionKind::Body], 1, Some(1)),
+            slot(
+                "profile",
+                "Profile",
+                &[SelectionKind::SketchProfile],
+                1,
+                Some(1),
+            ),
+        ],
+        vec![length(
+            "distance",
+            "Distance",
+            10_000_000,
+            Some((1_000, 1_000_000_000_000)),
+        )],
+    )
+}
+
+fn cut_revolve_operation(capabilities: &[CapabilitySchema]) -> OperationSchema {
+    operation(
+        capabilities,
+        "crawler.part.revolve.cut",
+        "Revolve cut",
+        OperationGroup::PartDesign,
+        OutputKind::Body,
+        "part.revolve.cut",
+        vec![
+            slot("target", "Target body", &[SelectionKind::Body], 1, Some(1)),
+            slot(
+                "profile",
+                "Profile",
+                &[SelectionKind::SketchProfile],
+                1,
+                Some(1),
+            ),
+            slot(
+                "axis",
+                "Axis",
+                &[SelectionKind::Axis, SelectionKind::Edge],
+                1,
+                Some(1),
+            ),
+        ],
+        vec![
+            angle("angle", "Angle", 360_000_000, 1, 360_000_000),
+            boolean("reverse", "Reverse direction", false),
         ],
     )
 }
@@ -561,21 +657,4 @@ fn boolean(key: &str, label: &str, default: bool) -> ParameterSchema {
         ParameterValue::Boolean(default),
         None,
     )
-}
-
-fn choice(key: &str, label: &str, default: &str, choices: &[&str]) -> ParameterSchema {
-    let mut schema = parameter(
-        key,
-        label,
-        ParameterValueKind::Text,
-        ParameterValue::Text(default.to_owned()),
-        None,
-    );
-    schema.choices = choices.iter().map(|choice| (*choice).to_owned()).collect();
-    schema
-}
-
-fn advanced(mut parameter: ParameterSchema) -> ParameterSchema {
-    parameter.advanced_group = Some("Advanced".to_owned());
-    parameter
 }

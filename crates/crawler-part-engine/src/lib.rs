@@ -30,6 +30,12 @@ pub const HEIGHT_PARAMETER_ID: &str = "parameter:height";
 pub const DISTANCE_PARAMETER_ID: &str = "parameter:distance";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BlankPartCommand {
+    pub document_id: DocumentId,
+    pub display_name: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct NewPartCommand {
     pub document_id: DocumentId,
     pub display_name: String,
@@ -116,16 +122,25 @@ pub struct PartEngine {
 }
 
 impl PartEngine {
+    /// Create the document shell shown for a user-facing New Part command.
+    /// Reference geometry used to qualify the modeling pipeline is deliberately
+    /// created through `new_part` instead of being embedded in this document.
+    pub fn new_blank_part(command: BlankPartCommand) -> Result<Self, EngineError> {
+        validate_document_identity(&command.document_id, &command.display_name)?;
+        let document = build_blank_document(command);
+        validate_document(&document)?;
+        Ok(Self {
+            document,
+            undo_snapshots: Vec::new(),
+            redo_snapshots: Vec::new(),
+        })
+    }
+
     pub fn new_part(command: NewPartCommand) -> Result<Self, EngineError> {
         validate_positive("width", command.width_nanometers)?;
         validate_positive("height", command.height_nanometers)?;
         validate_positive("distance", command.distance_nanometers)?;
-        if command.document_id.0.is_empty() {
-            return Err(EngineError::InvalidDocument("document id is empty".into()));
-        }
-        if command.display_name.is_empty() {
-            return Err(EngineError::InvalidDocument("display name is empty".into()));
-        }
+        validate_document_identity(&command.document_id, &command.display_name)?;
 
         let dimensions = PartDimensions {
             width_nanometers: command.width_nanometers,
@@ -142,7 +157,7 @@ impl PartEngine {
     }
 
     pub fn from_document(document: Document) -> Result<Self, EngineError> {
-        evaluate_document(&document)?;
+        validate_document(&document)?;
         Ok(Self {
             document,
             undo_snapshots: Vec::new(),
@@ -264,7 +279,7 @@ impl PartEngine {
         if updates_dimensions {
             update_derived_geometry(&mut candidate)?;
         }
-        evaluate_document(&candidate)?;
+        validate_document(&candidate)?;
         self.undo_snapshots.push(self.document.clone());
         self.redo_snapshots.clear();
         self.document = candidate;
@@ -312,6 +327,7 @@ pub fn semantic_hash(document: &Document) -> Result<String, EngineError> {
 }
 
 pub fn evaluate_document(document: &Document) -> Result<PartDimensions, EngineError> {
+    validate_document_identity(&document.id, &document.display_name)?;
     validate_origin_planes(document)?;
     let order = stable_topological_order(document)?;
     let expected = [
@@ -328,6 +344,59 @@ pub fn evaluate_document(document: &Document) -> Result<PartDimensions, EngineEr
     validate_rectangle(document, dimensions)?;
     validate_topology(document, dimensions)?;
     Ok(dimensions)
+}
+
+/// Validate either a blank/user-authored part or the qualified rectangular
+/// reference part. Reserved reference-part identities remain all-or-nothing so
+/// a partially injected validation fixture can never be accepted as blank.
+pub fn validate_document(document: &Document) -> Result<(), EngineError> {
+    validate_document_identity(&document.id, &document.display_name)?;
+    validate_origin_planes(document)?;
+    stable_topological_order(document)?;
+    validate_component_references(document)?;
+    if contains_reference_part_identity(document) {
+        evaluate_document(document)?;
+    }
+    Ok(())
+}
+
+fn build_blank_document(command: BlankPartCommand) -> Document {
+    let component_id = ComponentId::from(ROOT_COMPONENT_ID);
+    Document {
+        schema_version: SchemaVersion::V1,
+        id: command.document_id,
+        display_name: command.display_name.clone(),
+        revision: 0,
+        units: DocumentUnits {
+            display_length: LengthUnit::Millimeter,
+            display_angle: AngleUnit::Degree,
+        },
+        root_component: component_id.clone(),
+        origin_planes: origin_planes(&component_id),
+        components: BTreeMap::from([(
+            component_id.clone(),
+            Component {
+                id: component_id,
+                display_name: command.display_name,
+                parent: None,
+                child_components: Vec::new(),
+                body_order: Vec::new(),
+                sketch_order: Vec::new(),
+                feature_order: Vec::new(),
+                parameter_order: Vec::new(),
+            },
+        )]),
+        bodies: BTreeMap::new(),
+        sketches: BTreeMap::new(),
+        features: BTreeMap::new(),
+        parameters: BTreeMap::new(),
+        topology_references: BTreeMap::new(),
+        transactions: Vec::new(),
+        recompute: RecomputeState {
+            accepted_revision: 0,
+            features: BTreeMap::new(),
+        },
+    }
 }
 
 fn build_new_document(
@@ -515,6 +584,102 @@ fn origin_planes(component: &ComponentId) -> BTreeMap<OriginPlaneId, OriginPlane
     .collect()
 }
 
+fn validate_document_identity(
+    document_id: &DocumentId,
+    display_name: &str,
+) -> Result<(), EngineError> {
+    if document_id.0.is_empty() {
+        return Err(EngineError::InvalidDocument("document id is empty".into()));
+    }
+    if display_name.is_empty() {
+        return Err(EngineError::InvalidDocument("display name is empty".into()));
+    }
+    Ok(())
+}
+
+fn contains_reference_part_identity(document: &Document) -> bool {
+    document
+        .features
+        .contains_key(&FeatureId::from(RECTANGLE_FEATURE_ID))
+        || document
+            .features
+            .contains_key(&FeatureId::from(EXTRUDE_FEATURE_ID))
+        || document
+            .sketches
+            .contains_key(&SketchId::from(RECTANGLE_SKETCH_ID))
+        || document.bodies.contains_key(&BodyId::from(BODY_ID))
+        || document
+            .parameters
+            .contains_key(&ParameterId::from(WIDTH_PARAMETER_ID))
+        || document
+            .parameters
+            .contains_key(&ParameterId::from(HEIGHT_PARAMETER_ID))
+        || document
+            .parameters
+            .contains_key(&ParameterId::from(DISTANCE_PARAMETER_ID))
+        || document
+            .topology_references
+            .contains_key(&TopologyReferenceId::from("topology:extrude-top"))
+}
+
+fn validate_component_references(document: &Document) -> Result<(), EngineError> {
+    if document.root_component != ComponentId::from(ROOT_COMPONENT_ID) {
+        return Err(EngineError::InvalidDocument(
+            "root component identity differs".into(),
+        ));
+    }
+    let root = document
+        .components
+        .get(&document.root_component)
+        .ok_or_else(|| EngineError::InvalidDocument("root component is missing".into()))?;
+    if root.id != document.root_component || root.parent.is_some() {
+        return Err(EngineError::InvalidDocument(
+            "root component record differs".into(),
+        ));
+    }
+    for (id, component) in &document.components {
+        if &component.id != id
+            || component
+                .parent
+                .as_ref()
+                .is_some_and(|parent| !document.components.contains_key(parent))
+        {
+            return Err(EngineError::InvalidDocument(format!(
+                "component {} has invalid identity or parent",
+                id.0
+            )));
+        }
+    }
+    for (id, sketch) in &document.sketches {
+        if &sketch.id != id || !document.components.contains_key(&sketch.component) {
+            return Err(EngineError::InvalidDocument(format!(
+                "sketch {} has invalid identity or component",
+                id.0
+            )));
+        }
+    }
+    for (id, feature) in &document.features {
+        if &feature.id != id || !document.components.contains_key(&feature.component) {
+            return Err(EngineError::InvalidDocument(format!(
+                "feature {} has invalid identity or component",
+                id.0
+            )));
+        }
+    }
+    for (id, body) in &document.bodies {
+        if &body.id != id
+            || !document.components.contains_key(&body.component)
+            || !document.features.contains_key(&body.generated_by)
+        {
+            return Err(EngineError::InvalidDocument(format!(
+                "body {} has invalid identity, component, or producer",
+                id.0
+            )));
+        }
+    }
+    Ok(())
+}
+
 fn rectangle_sketch(component: &ComponentId, dimensions: PartDimensions) -> Sketch {
     Sketch {
         id: SketchId::from(RECTANGLE_SKETCH_ID),
@@ -558,6 +723,9 @@ fn rectangle_sketch(component: &ComponentId, dimensions: PartDimensions) -> Sket
                 parameter: ParameterId::from(HEIGHT_PARAMETER_ID),
             },
         ],
+        dimension_positions: BTreeMap::new(),
+        recipes: BTreeMap::new(),
+        operations: BTreeMap::new(),
     }
 }
 
@@ -765,10 +933,12 @@ fn validate_rectangle(document: &Document, dimensions: PartDimensions) -> Result
         .sketches
         .get(&SketchId::from(RECTANGLE_SKETCH_ID))
         .ok_or_else(|| EngineError::InvalidDocument("rectangle sketch is missing".into()))?;
-    if sketch.support
-        != (SketchSupport::OriginPlaneReference {
-            plane: OriginPlaneId::from(XY_PLANE_ID),
-        })
+    let valid_origin_support = match &sketch.support {
+        SketchSupport::OriginPlane { .. } => true,
+        SketchSupport::OriginPlaneReference { plane } => document.origin_planes.contains_key(plane),
+        SketchSupport::Topology { .. } | SketchSupport::ConstructionPlaneReference { .. } => false,
+    };
+    if !valid_origin_support
         || !rectangle_elements(dimensions)
             .iter()
             .all(|expected| sketch.elements.contains(expected))
@@ -789,8 +959,15 @@ fn sketch_element_id(element: &SketchElement) -> &str {
         | SketchElement::Circle { id, .. }
         | SketchElement::Arc { id, .. }
         | SketchElement::Rectangle { id, .. }
+        | SketchElement::ControlPointSpline { id, .. }
+        | SketchElement::FitPointSpline { id, .. }
+        | SketchElement::Ellipse { id, .. }
+        | SketchElement::EllipticalArc { id, .. }
+        | SketchElement::Conic { id, .. }
+        | SketchElement::SketchPoint { id, .. }
         | SketchElement::ConstructionLine { id, .. }
-        | SketchElement::LineSegment { id, .. } => id,
+        | SketchElement::LineSegment { id, .. }
+        | SketchElement::ExternalLine { id, .. } => id,
     }
 }
 

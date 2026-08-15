@@ -1100,23 +1100,44 @@ mod tests {
     }
 
     #[test]
-    fn crawler_csg_step_cube_is_typed_unsupported_and_preserved() {
+    fn crawler_csg_step_cube_materializes_and_is_acknowledged() {
         let source = include_bytes!(
             "../../../fixtures/reference-models/step-roundtrip-cube/samples/cube-import.step"
         );
         let mut engine = WorkerEngine::default();
         let events = engine.execute(import_step("step-csg", source.to_vec()));
 
-        assert!(matches!(
-            &events.last().unwrap().event,
-            Event::Error {
-                code: ErrorCode::UnsupportedImport,
-                preserved_source: Some(preserved),
-                source_sha256: Some(hash),
-                ..
-            } if preserved == source && !hash.is_empty()
-        ));
-        assert_eq!(engine.acknowledged_state("document-a"), None);
+        let provenance = match &events.last().unwrap().event {
+            Event::Result {
+                result:
+                    ResultPayload::StepImport {
+                        provenance,
+                        body,
+                        render_packet,
+                        ..
+                    },
+            } => {
+                assert_eq!(body.evidence.vertex_count, 24);
+                assert_eq!(body.evidence.edge_count, 24);
+                assert_eq!(body.evidence.face_count, 6);
+                assert_eq!(body.evidence.bounds_nm.min, [0, 0, 0]);
+                assert_eq!(body.evidence.bounds_nm.max, [10_000_000; 3]);
+                assert_eq!(render_packet.bounds.min, [0.0, 0.0, 0.0]);
+                assert_eq!(render_packet.bounds.max, [10.0, 10.0, 10.0]);
+                provenance
+            }
+            other => panic!("expected CSG STEP import result, got {other:?}"),
+        };
+        assert_eq!(provenance.shell_count, 1);
+        assert_eq!(provenance.face_count, 6);
+        assert!(provenance.triangle_count >= 12);
+        assert_eq!(
+            engine
+                .acknowledged_state("document-a")
+                .and_then(|state| state.step_import.as_ref())
+                .map(|imported| &imported.provenance),
+            Some(provenance)
+        );
     }
 
     #[test]

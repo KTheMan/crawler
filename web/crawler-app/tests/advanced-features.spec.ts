@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 test.describe.configure({ timeout: 600_000 });
 
 test.beforeEach(async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/?qualificationReferencePart=1");
   await page.waitForFunction(() => Boolean(window.__crawlerApp) && Object.values(window.__crawlerApp.readiness()).every((status) => status === "ready"));
 });
 
@@ -18,6 +18,10 @@ async function openOperation(page: Page, query: string, operationId?: string): P
 
 async function executeAccepted(page: Page, label: string): Promise<string> {
   const before = await page.evaluate(() => window.__crawlerApp.durableChecksum());
+  await expect(page.locator("#execute-advanced-feature")).toBeEnabled({ timeout: 240_000 });
+  await expect(page.locator("#operation-state")).toHaveAttribute("data-status", "preview");
+  await expect(page.locator("#operation-state")).toHaveAttribute("data-preview-source", "worker-render-packet");
+  expect(await page.evaluate(() => window.__crawlerApp.durableChecksum())).toBe(before);
   await page.locator("#execute-advanced-feature").click();
   await expect.poll(() => page.locator("#operation-state").getAttribute("data-status"), { timeout: 240_000 }).not.toBe("preview");
   if (await page.locator("#operation-state").getAttribute("data-status") === "cancelled") {
@@ -28,6 +32,19 @@ async function executeAccepted(page: Page, label: string): Promise<string> {
   await expect.poll(() => page.evaluate(() => window.__crawlerApp.durableChecksum())).not.toBe(before);
   return page.evaluate(() => window.__crawlerApp.durableChecksum());
 }
+
+test("advanced feature preview is non-mutating and Cancel restores the accepted body", async ({ page }) => {
+  const beforeHash = await page.evaluate(() => window.__crawlerApp.durableChecksum());
+  const beforeBounds = roundedBounds(await page.evaluate(() => window.__crawlerApp.geometryBounds()));
+  await openOperation(page, "revolve");
+  await page.locator('[data-operation-parameter="angle"]').fill("180");
+  await expect(page.locator("#execute-advanced-feature")).toBeEnabled({ timeout: 240_000 });
+  expect(await page.evaluate(() => window.__crawlerApp.durableChecksum())).toBe(beforeHash);
+  await page.locator("#cancel-advanced-feature").click();
+  await expect(page.locator("#operation-state")).toHaveAttribute("data-status", "cancelled");
+  await expect.poll(() => page.evaluate(() => window.__crawlerApp.durableChecksum())).toBe(beforeHash);
+  await expect.poll(async () => roundedBounds(await page.evaluate(() => window.__crawlerApp.geometryBounds()))).toEqual(beforeBounds);
+});
 
 const roundedBounds = (bounds: number[]): number[] => bounds.map((value) => Math.round(value * 1_000_000) / 1_000_000);
 
@@ -45,7 +62,7 @@ test("revolve executes atomically and survives suppression, undo, and reload", a
   await page.locator("[data-feature-id]").last().click();
   await page.locator('[data-feature-action="suppress"]').click();
   await expect(page.locator("#inspector")).toContainText("suppressed");
-  await page.locator("#undo").click();
+  await page.keyboard.press("Control+z");
   await expect.poll(() => page.evaluate(() => window.__crawlerApp.durableChecksum())).toBe(accepted);
 });
 
@@ -59,7 +76,7 @@ test("advanced feature parameters edit in place and survive undo, redo, and relo
   await page.locator("[data-feature-id]").last().click();
   await expect(page.locator('[data-feature-action="edit-parameters"]')).toBeVisible();
   await page.locator('[data-feature-action="edit-parameters"]').click();
-  await expect(page.locator("#execute-advanced-feature")).toHaveText("Update Revolve");
+  await expect(page.locator("#execute-advanced-feature")).toHaveText("Apply update Revolve");
   await expect(page.locator('[data-operation-parameter="angle"]')).toHaveValue("180");
   await page.locator('[data-operation-parameter="angle"]').fill("270");
   const editedChecksum = await executeAccepted(page, "Revolve");
@@ -67,10 +84,10 @@ test("advanced feature parameters edit in place and survive undo, redo, and relo
   expect(await page.locator("[data-feature-id]").count()).toBe(featureCount);
   expect(roundedBounds(await page.evaluate(() => window.__crawlerApp.geometryBounds()))).not.toEqual(createdBounds);
 
-  await page.locator("#undo").click();
+  await page.keyboard.press("Control+z");
   await expect.poll(() => page.evaluate(() => window.__crawlerApp.durableChecksum())).toBe(createdChecksum);
   await expect.poll(async () => roundedBounds(await page.evaluate(() => window.__crawlerApp.geometryBounds()))).toEqual(createdBounds);
-  await page.locator("#redo").click();
+  await page.keyboard.press("Control+y");
   await expect.poll(() => page.evaluate(() => window.__crawlerApp.durableChecksum())).toBe(editedChecksum);
   await expect(page.locator("#storage-status")).toHaveText("autosaved");
 
@@ -98,7 +115,7 @@ test("editing an upstream advanced feature recomputes its accepted consumer chai
   await expect(page.locator("#history-action-status")).toContainText("Recomputed");
   await expect.poll(() => page.evaluate(() => window.__crawlerApp.durableChecksum())).not.toBe(chainChecksum);
   await expect.poll(async () => roundedBounds(await page.evaluate(() => window.__crawlerApp.geometryBounds()))).toEqual(chainBounds);
-  await page.locator("#undo").click();
+  await page.keyboard.press("Control+z");
   await expect.poll(() => page.evaluate(() => window.__crawlerApp.durableChecksum())).toBe(chainChecksum);
 
   await page.locator("[data-feature-id]").filter({ hasText: "Revolve" }).last().click();
@@ -109,7 +126,7 @@ test("editing an upstream advanced feature recomputes its accepted consumer chai
   expect(await page.locator("[data-feature-id]").count()).toBe(featureCount);
   expect(roundedBounds(await page.evaluate(() => window.__crawlerApp.geometryBounds()))).not.toEqual(chainBounds);
 
-  await page.locator("#undo").click();
+  await page.keyboard.press("Control+z");
   await expect.poll(() => page.evaluate(() => window.__crawlerApp.durableChecksum())).toBe(chainChecksum);
   await expect.poll(async () => roundedBounds(await page.evaluate(() => window.__crawlerApp.geometryBounds()))).toEqual(chainBounds);
 });
@@ -157,22 +174,23 @@ test("fillet consumes exact viewport edge IDs and reports accepted geometry", as
 });
 
 test("mirror and linear pattern execute from the active durable source", async ({ page }) => {
-  await openOperation(page, "revolve");
+  await openOperation(page, "revolve", "crawler.part.revolve");
   await executeAccepted(page, "Revolve");
-  await openOperation(page, "mirror");
+  await openOperation(page, "mirror", "crawler.part.mirror");
   await page.locator("[data-advanced-axis]").selectOption("x");
   await executeAccepted(page, "Mirror");
-  await openOperation(page, "linear pattern");
+  await openOperation(page, "linear pattern", "crawler.part.pattern.linear");
   await page.locator('[data-operation-parameter="count"]').fill("2");
   await page.locator('[data-operation-parameter="spacing"]').fill("5");
   await executeAccepted(page, "Linear pattern");
-  await expect(page.locator("#feature-browser")).toContainText("Linear pattern");
+  await expect(page.locator('#feature-browser [data-tree-group="bodies"] .body-tree-item')).toHaveCount(2);
+  await expect(page.locator("#timeline")).toContainText("Linear pattern");
 });
 
 test("Transform translates one durable body by exact signed XYZ lengths", async ({ page }) => {
   await page.locator("#start-pad").click();
   await page.keyboard.press("Enter");
-  await expect(page.locator("#operation-state")).toHaveAttribute("data-status", "committed");
+  await expect(page.locator("#operation-state")).toHaveAttribute("data-status", "committed", { timeout: 60_000 });
   await expect(page.locator("#storage-status")).toHaveText("autosaved");
   expect(await page.evaluate(() => window.__crawlerApp.geometryBounds())).toEqual([0, 0, 0, 40, 28, 12]);
 

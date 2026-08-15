@@ -42,6 +42,31 @@
       "reason": null
     },
     {
+      "id": "part.loft",
+      "state": "qualified",
+      "reason": null
+    },
+    {
+      "id": "part.sweep",
+      "state": "qualified",
+      "reason": null
+    },
+    {
+      "id": "part.extrude.cut",
+      "state": "qualified",
+      "reason": null
+    },
+    {
+      "id": "part.revolve.cut",
+      "state": "qualified",
+      "reason": null
+    },
+    {
+      "id": "part.draft",
+      "state": "qualified",
+      "reason": null
+    },
+    {
       "id": "part.boolean.union",
       "state": "qualified",
       "reason": null
@@ -531,8 +556,7 @@
           "key": "profile",
           "label": "Profile",
           "allowed_kinds": [
-            "sketch_profile",
-            "face"
+            "sketch_profile"
           ],
           "minimum_count": 1,
           "maximum_count": 1
@@ -553,48 +577,6 @@
           },
           "choices": [],
           "advanced_group": null
-        },
-        {
-          "key": "extent",
-          "label": "Extent",
-          "value_kind": "text",
-          "default": {
-            "kind": "text",
-            "value": "one_sided"
-          },
-          "bounds": null,
-          "choices": [
-            "one_sided",
-            "symmetric"
-          ],
-          "advanced_group": null
-        },
-        {
-          "key": "draft_angle",
-          "label": "Draft angle",
-          "value_kind": "angle_microdegrees",
-          "default": {
-            "kind": "angle_microdegrees",
-            "value": 0
-          },
-          "bounds": {
-            "minimum": -89000000,
-            "maximum": 89000000
-          },
-          "choices": [],
-          "advanced_group": "Advanced"
-        },
-        {
-          "key": "reverse",
-          "label": "Reverse direction",
-          "value_kind": "boolean",
-          "default": {
-            "kind": "boolean",
-            "value": false
-          },
-          "bounds": null,
-          "choices": [],
-          "advanced_group": "Advanced"
         }
       ],
       "preview": {
@@ -625,8 +607,7 @@
           "key": "profile",
           "label": "Profile",
           "allowed_kinds": [
-            "sketch_profile",
-            "face"
+            "sketch_profile"
           ],
           "minimum_count": 1,
           "maximum_count": 1
@@ -652,27 +633,10 @@
             "value": 360000000
           },
           "bounds": {
-            "minimum": -360000000,
+            "minimum": 1,
             "maximum": 360000000
           },
           "choices": [],
-          "advanced_group": null
-        },
-        {
-          "key": "operation",
-          "label": "Operation",
-          "value_kind": "text",
-          "default": {
-            "kind": "text",
-            "value": "new_body"
-          },
-          "bounds": null,
-          "choices": [
-            "new_body",
-            "union",
-            "cut",
-            "intersect"
-          ],
           "advanced_group": null
         },
         {
@@ -707,8 +671,312 @@
     },
     {
       "schema_version": 1,
+      "id": "crawler.part.loft",
+      "label": "Loft",
+      "group": "part_design",
+      "output_kind": "body",
+      "input_slots": [
+        {
+          "key": "profiles",
+          "label": "Profiles",
+          "allowed_kinds": [
+            "sketch_profile"
+          ],
+          "minimum_count": 2,
+          "maximum_count": null
+        }
+      ],
+      "parameters": [],
+      "preview": {
+        "strategy": "debounced",
+        "debounce_milliseconds": 75,
+        "cancellation": "replace_older_preview"
+      },
+      "lifecycle": {
+        "stage": "alpha",
+        "supports_preview": true,
+        "supports_edit": true,
+        "supports_suppression": true
+      },
+      "enablement": {
+        "state": "enabled",
+        "capability": "part.loft",
+        "reason": null
+      }
+    },
+    {
+      "schema_version": 1,
+      "id": "crawler.part.sweep",
+      "label": "Sweep",
+      "group": "part_design",
+      "output_kind": "body",
+      "input_slots": [
+        {
+          "key": "profile",
+          "label": "Profile",
+          "allowed_kinds": [
+            "sketch_profile"
+          ],
+          "minimum_count": 1,
+          "maximum_count": 1
+        },
+        {
+          "key": "path",
+          "label": "Path",
+          "allowed_kinds": [
+            "sketch_curve",
+            "edge"
+          ],
+          "minimum_count": 1,
+          "maximum_count": null
+        }
+      ],
+      "parameters": [],
+      "preview": {
+        "strategy": "debounced",
+        "debounce_milliseconds": 75,
+        "cancellation": "replace_older_preview"
+      },
+      "lifecycle": {
+        "stage": "alpha",
+        "supports_preview": true,
+        "supports_edit": true,
+        "supports_suppression": true
+      },
+      "enablement": {
+        "state": "enabled",
+        "capability": "part.sweep",
+        "reason": null
+      }
+    },
+    {
+      "schema_version": 1,
+      "id": "crawler.part.extrude.cut",
+      "label": "Extrude cut",
+      "group": "part_design",
+      "output_kind": "body",
+      "input_slots": [
+        {
+          "key": "target",
+          "label": "Target body",
+          "allowed_kinds": [
+            "body"
+          ],
+          "minimum_count": 1,
+          "maximum_count": 1
+        },
+        {
+          "key": "profile",
+          "label": "Profile",
+          "allowed_kinds": [
+            "sketch_profile"
+          ],
+          "minimum_count": 1,
+          "maximum_count": 1
+        }
+      ],
+      "parameters": [
+        {
+          "key": "distance",
+          "label": "Distance",
+          "value_kind": "length_nanometers",
+          "default": {
+            "kind": "length_nanometers",
+            "value": 10000000
+          },
+          "bounds": {
+            "minimum": 1000,
+            "maximum": 1000000000000
+          },
+          "choices": [],
+          "advanced_group": null
+        }
+      ],
+      "preview": {
+        "strategy": "debounced",
+        "debounce_milliseconds": 75,
+        "cancellation": "replace_older_preview"
+      },
+      "lifecycle": {
+        "stage": "alpha",
+        "supports_preview": true,
+        "supports_edit": true,
+        "supports_suppression": true
+      },
+      "enablement": {
+        "state": "enabled",
+        "capability": "part.extrude.cut",
+        "reason": null
+      }
+    },
+    {
+      "schema_version": 1,
+      "id": "crawler.part.revolve.cut",
+      "label": "Revolve cut",
+      "group": "part_design",
+      "output_kind": "body",
+      "input_slots": [
+        {
+          "key": "target",
+          "label": "Target body",
+          "allowed_kinds": [
+            "body"
+          ],
+          "minimum_count": 1,
+          "maximum_count": 1
+        },
+        {
+          "key": "profile",
+          "label": "Profile",
+          "allowed_kinds": [
+            "sketch_profile"
+          ],
+          "minimum_count": 1,
+          "maximum_count": 1
+        },
+        {
+          "key": "axis",
+          "label": "Axis",
+          "allowed_kinds": [
+            "axis",
+            "edge"
+          ],
+          "minimum_count": 1,
+          "maximum_count": 1
+        }
+      ],
+      "parameters": [
+        {
+          "key": "angle",
+          "label": "Angle",
+          "value_kind": "angle_microdegrees",
+          "default": {
+            "kind": "angle_microdegrees",
+            "value": 360000000
+          },
+          "bounds": {
+            "minimum": 1,
+            "maximum": 360000000
+          },
+          "choices": [],
+          "advanced_group": null
+        },
+        {
+          "key": "reverse",
+          "label": "Reverse direction",
+          "value_kind": "boolean",
+          "default": {
+            "kind": "boolean",
+            "value": false
+          },
+          "bounds": null,
+          "choices": [],
+          "advanced_group": null
+        }
+      ],
+      "preview": {
+        "strategy": "debounced",
+        "debounce_milliseconds": 75,
+        "cancellation": "replace_older_preview"
+      },
+      "lifecycle": {
+        "stage": "alpha",
+        "supports_preview": true,
+        "supports_edit": true,
+        "supports_suppression": true
+      },
+      "enablement": {
+        "state": "enabled",
+        "capability": "part.revolve.cut",
+        "reason": null
+      }
+    },
+    {
+      "schema_version": 1,
+      "id": "crawler.part.draft",
+      "label": "Draft",
+      "group": "part_design",
+      "output_kind": "body",
+      "input_slots": [
+        {
+          "key": "body",
+          "label": "Body",
+          "allowed_kinds": [
+            "body"
+          ],
+          "minimum_count": 1,
+          "maximum_count": 1
+        },
+        {
+          "key": "faces",
+          "label": "Faces",
+          "allowed_kinds": [
+            "face"
+          ],
+          "minimum_count": 1,
+          "maximum_count": null
+        },
+        {
+          "key": "neutral_plane",
+          "label": "Neutral plane",
+          "allowed_kinds": [
+            "plane",
+            "face"
+          ],
+          "minimum_count": 1,
+          "maximum_count": 1
+        }
+      ],
+      "parameters": [
+        {
+          "key": "angle",
+          "label": "Draft angle",
+          "value_kind": "angle_microdegrees",
+          "default": {
+            "kind": "angle_microdegrees",
+            "value": 2000000
+          },
+          "bounds": {
+            "minimum": 1,
+            "maximum": 89000000
+          },
+          "choices": [],
+          "advanced_group": null
+        },
+        {
+          "key": "reverse",
+          "label": "Reverse direction",
+          "value_kind": "boolean",
+          "default": {
+            "kind": "boolean",
+            "value": false
+          },
+          "bounds": null,
+          "choices": [],
+          "advanced_group": null
+        }
+      ],
+      "preview": {
+        "strategy": "debounced",
+        "debounce_milliseconds": 75,
+        "cancellation": "replace_older_preview"
+      },
+      "lifecycle": {
+        "stage": "alpha",
+        "supports_preview": true,
+        "supports_edit": true,
+        "supports_suppression": true
+      },
+      "enablement": {
+        "state": "enabled",
+        "capability": "part.draft",
+        "reason": null
+      }
+    },
+    {
+      "schema_version": 1,
       "id": "crawler.part.boolean.union",
-      "label": "Boolean union",
+      "label": "Combine",
       "group": "part_design",
       "output_kind": "body",
       "input_slots": [
@@ -744,18 +1012,6 @@
             "minimum": 1,
             "maximum": 1000000
           },
-          "choices": [],
-          "advanced_group": null
-        },
-        {
-          "key": "keep_tools",
-          "label": "Keep tools visible",
-          "value_kind": "boolean",
-          "default": {
-            "kind": "boolean",
-            "value": false
-          },
-          "bounds": null,
           "choices": [],
           "advanced_group": null
         }
@@ -780,7 +1036,7 @@
     {
       "schema_version": 1,
       "id": "crawler.part.boolean.cut",
-      "label": "Boolean cut",
+      "label": "Subtract",
       "group": "part_design",
       "output_kind": "body",
       "input_slots": [
@@ -816,18 +1072,6 @@
             "minimum": 1,
             "maximum": 1000000
           },
-          "choices": [],
-          "advanced_group": null
-        },
-        {
-          "key": "keep_tools",
-          "label": "Keep tools visible",
-          "value_kind": "boolean",
-          "default": {
-            "kind": "boolean",
-            "value": false
-          },
-          "bounds": null,
           "choices": [],
           "advanced_group": null
         }
@@ -852,7 +1096,7 @@
     {
       "schema_version": 1,
       "id": "crawler.part.boolean.intersect",
-      "label": "Boolean intersect",
+      "label": "Intersect",
       "group": "part_design",
       "output_kind": "body",
       "input_slots": [
@@ -888,18 +1132,6 @@
             "minimum": 1,
             "maximum": 1000000
           },
-          "choices": [],
-          "advanced_group": null
-        },
-        {
-          "key": "keep_tools",
-          "label": "Keep tools visible",
-          "value_kind": "boolean",
-          "default": {
-            "kind": "boolean",
-            "value": false
-          },
-          "bounds": null,
           "choices": [],
           "advanced_group": null
         }
@@ -1062,27 +1294,13 @@
           "key": "plane",
           "label": "Mirror plane",
           "allowed_kinds": [
-            "plane",
-            "face"
+            "plane"
           ],
           "minimum_count": 1,
           "maximum_count": 1
         }
       ],
-      "parameters": [
-        {
-          "key": "merge",
-          "label": "Merge result",
-          "value_kind": "boolean",
-          "default": {
-            "kind": "boolean",
-            "value": false
-          },
-          "bounds": null,
-          "choices": [],
-          "advanced_group": null
-        }
-      ],
+      "parameters": [],
       "preview": {
         "strategy": "debounced",
         "debounce_milliseconds": 75,
@@ -1193,8 +1411,7 @@
           "key": "direction",
           "label": "Direction",
           "allowed_kinds": [
-            "axis",
-            "edge"
+            "axis"
           ],
           "minimum_count": 1,
           "maximum_count": 1
@@ -1228,18 +1445,6 @@
             "minimum": 1000,
             "maximum": 1000000000000
           },
-          "choices": [],
-          "advanced_group": null
-        },
-        {
-          "key": "symmetric",
-          "label": "Symmetric",
-          "value_kind": "boolean",
-          "default": {
-            "kind": "boolean",
-            "value": false
-          },
-          "bounds": null,
           "choices": [],
           "advanced_group": null
         }
@@ -1282,8 +1487,7 @@
           "key": "axis",
           "label": "Axis",
           "allowed_kinds": [
-            "axis",
-            "edge"
+            "axis"
           ],
           "minimum_count": 1,
           "maximum_count": 1

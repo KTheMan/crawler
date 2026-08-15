@@ -4,7 +4,6 @@ pub use crawler_feature_kernel::BodySnapshot;
 use crawler_feature_kernel::{AxisAlignedBoundsNm, GeometryEvidence};
 use crawler_part_engine::{EngineError, PartDimensions, PartEngine};
 pub use crawler_render_packet::RenderPacket;
-#[cfg(not(target_arch = "wasm32"))]
 use crawler_render_packet::packet_from_solid;
 #[cfg(target_arch = "wasm32")]
 use crawler_render_packet::{
@@ -120,6 +119,267 @@ pub struct StepImportError {
     pub settings: StepImportSettings,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct StepCsgBlock {
+    origin: Point3,
+    x_axis: Vector3,
+    y_axis: Vector3,
+    z_axis: Vector3,
+    dimensions: [f64; 3],
+}
+
+fn split_step_arguments(arguments: &str) -> Vec<&str> {
+    let mut values = Vec::new();
+    let mut start = 0;
+    let mut depth = 0usize;
+    let mut quoted = false;
+    let bytes = arguments.as_bytes();
+    let mut index = 0;
+    while index < bytes.len() {
+        match bytes[index] {
+            b'\'' => {
+                if quoted && bytes.get(index + 1) == Some(&b'\'') {
+                    index += 1;
+                } else {
+                    quoted = !quoted;
+                }
+            }
+            b'(' if !quoted => depth += 1,
+            b')' if !quoted && depth > 0 => depth -= 1,
+            b',' if !quoted && depth == 0 => {
+                values.push(arguments[start..index].trim());
+                start = index + 1;
+            }
+            _ => {}
+        }
+        index += 1;
+    }
+    values.push(arguments[start..].trim());
+    values
+}
+
+fn split_step_records(source: &str) -> Vec<&str> {
+    let mut records = Vec::new();
+    let mut start = 0;
+    let mut quoted = false;
+    let bytes = source.as_bytes();
+    let mut index = 0;
+    while index < bytes.len() {
+        match bytes[index] {
+            b'\'' => {
+                if quoted && bytes.get(index + 1) == Some(&b'\'') {
+                    index += 1;
+                } else {
+                    quoted = !quoted;
+                }
+            }
+            b';' if !quoted => {
+                records.push(source[start..index].trim());
+                start = index + 1;
+            }
+            _ => {}
+        }
+        index += 1;
+    }
+    records.push(source[start..].trim());
+    records
+}
+
+fn step_record_arguments<'a>(record: &'a str, entity: &str) -> Option<&'a str> {
+    let record = record.trim();
+    let open = record.find('(')?;
+    let close = record.rfind(')')?;
+    (record[..open].trim().eq_ignore_ascii_case(entity) && close > open)
+        .then_some(&record[open + 1..close])
+}
+
+fn step_reference(value: &str) -> Option<u64> {
+    value.trim().strip_prefix('#')?.trim().parse().ok()
+}
+
+fn step_vector(value: &str) -> Option<[f64; 3]> {
+    let inner = value.trim().strip_prefix('(')?.strip_suffix(')')?;
+    let values = split_step_arguments(inner);
+    if values.len() != 3 {
+        return None;
+    }
+    Some([
+        values[0].parse().ok()?,
+        values[1].parse().ok()?,
+        values[2].parse().ok()?,
+    ])
+}
+
+fn normalized(vector: [f64; 3]) -> Option<Vector3> {
+    let magnitude = (vector[0] * vector[0] + vector[1] * vector[1] + vector[2] * vector[2]).sqrt();
+    if !magnitude.is_finite() || magnitude <= f64::EPSILON {
+        return None;
+    }
+    Some(Vector3::new(
+        vector[0] / magnitude,
+        vector[1] / magnitude,
+        vector[2] / magnitude,
+    ))
+}
+
+fn cross(left: Vector3, right: Vector3) -> Vector3 {
+    Vector3::new(
+        left.y * right.z - left.z * right.y,
+        left.z * right.x - left.x * right.z,
+        left.x * right.y - left.y * right.x,
+    )
+}
+
+fn validate_csg_length_units(source: &str) -> Result<(), String> {
+    let normalized = source
+        .chars()
+        .filter(|character| !character.is_whitespace())
+        .flat_map(char::to_uppercase)
+        .collect::<String>();
+    if normalized.contains("CONVERSION_BASED_UNIT(") {
+        return Err("STEP CSG BLOCK conversion-based length units are not supported".to_owned());
+    }
+    if normalized.contains("SI_UNIT(") && !normalized.contains("SI_UNIT(.MILLI.,.METRE.)") {
+        return Err("STEP CSG BLOCK length units must be millimetres".to_owned());
+    }
+    Ok(())
+}
+
+fn parse_step_csg_block(source: &str) -> Result<StepCsgBlock, String> {
+    use std::collections::BTreeMap;
+
+    validate_csg_length_units(source)?;
+    let records = split_step_records(source)
+        .into_iter()
+        .filter_map(|statement| {
+            let statement = statement.trim();
+            let (id, record) = statement.strip_prefix('#')?.split_once('=')?;
+            Some((id.trim().parse::<u64>().ok()?, record.trim()))
+        })
+        .collect::<BTreeMap<_, _>>();
+    let csg_blocks = records
+        .values()
+        .filter_map(|record| {
+            step_record_arguments(record, "CSG_SOLID")
+                .and_then(|arguments| split_step_arguments(arguments).last().copied())
+                .and_then(step_reference)
+        })
+        .collect::<Vec<_>>();
+    let [block_id] = csg_blocks.as_slice() else {
+        return Err("STEP input must contain exactly one supported CSG_SOLID BLOCK".to_owned());
+    };
+    let block_arguments = records
+        .get(block_id)
+        .and_then(|record| step_record_arguments(record, "BLOCK"))
+        .ok_or_else(|| "STEP CSG_SOLID does not reference a supported BLOCK".to_owned())?;
+    let block = split_step_arguments(block_arguments);
+    if block.len() != 5 {
+        return Err("STEP BLOCK must contain placement, width, height, and depth".to_owned());
+    }
+    let placement_id =
+        step_reference(block[1]).ok_or_else(|| "STEP BLOCK placement is invalid".to_owned())?;
+    let dimensions = [
+        block[2]
+            .parse::<f64>()
+            .map_err(|_| "STEP BLOCK width is invalid".to_owned())?,
+        block[3]
+            .parse::<f64>()
+            .map_err(|_| "STEP BLOCK height is invalid".to_owned())?,
+        block[4]
+            .parse::<f64>()
+            .map_err(|_| "STEP BLOCK depth is invalid".to_owned())?,
+    ];
+    if dimensions
+        .iter()
+        .any(|value| !value.is_finite() || *value <= 0.0)
+    {
+        return Err("STEP BLOCK dimensions must be finite and positive".to_owned());
+    }
+    let placement_record = records
+        .get(&placement_id)
+        .ok_or_else(|| "STEP BLOCK placement is missing".to_owned())?;
+    let placement = split_step_arguments(
+        step_record_arguments(placement_record, "AXIS2_PLACEMENT_3D")
+            .ok_or_else(|| "STEP BLOCK placement must be AXIS2_PLACEMENT_3D".to_owned())?,
+    );
+    if placement.len() < 2 {
+        return Err("STEP BLOCK placement has no origin".to_owned());
+    }
+    let point_id = step_reference(placement[1])
+        .ok_or_else(|| "STEP BLOCK origin reference is invalid".to_owned())?;
+    let point = split_step_arguments(
+        step_record_arguments(
+            records
+                .get(&point_id)
+                .ok_or_else(|| "STEP BLOCK origin is missing".to_owned())?,
+            "CARTESIAN_POINT",
+        )
+        .ok_or_else(|| "STEP BLOCK origin must be a CARTESIAN_POINT".to_owned())?,
+    );
+    let origin = step_vector(
+        point
+            .get(1)
+            .ok_or_else(|| "STEP BLOCK origin coordinates are missing".to_owned())?,
+    )
+    .ok_or_else(|| "STEP BLOCK origin coordinates are invalid".to_owned())?;
+    let direction = |index: usize, default: [f64; 3]| -> Result<Vector3, String> {
+        let Some(value) = placement.get(index) else {
+            return normalized(default)
+                .ok_or_else(|| "default STEP direction is invalid".to_owned());
+        };
+        if value.trim() == "$" || value.trim() == "*" {
+            return normalized(default)
+                .ok_or_else(|| "default STEP direction is invalid".to_owned());
+        }
+        let id = step_reference(value)
+            .ok_or_else(|| "STEP direction reference is invalid".to_owned())?;
+        let record = records
+            .get(&id)
+            .ok_or_else(|| "STEP direction is missing".to_owned())?;
+        let arguments = split_step_arguments(
+            step_record_arguments(record, "DIRECTION")
+                .ok_or_else(|| "STEP axis must reference DIRECTION".to_owned())?,
+        );
+        normalized(
+            step_vector(
+                arguments
+                    .get(1)
+                    .ok_or_else(|| "STEP direction coordinates are missing".to_owned())?,
+            )
+            .ok_or_else(|| "STEP direction coordinates are invalid".to_owned())?,
+        )
+        .ok_or_else(|| "STEP direction must have positive length".to_owned())
+    };
+    let z_axis = direction(2, [0.0, 0.0, 1.0])?;
+    let x_axis = direction(3, [1.0, 0.0, 0.0])?;
+    let y_axis = normalized([
+        cross(z_axis, x_axis).x,
+        cross(z_axis, x_axis).y,
+        cross(z_axis, x_axis).z,
+    ])
+    .ok_or_else(|| "STEP BLOCK axes must not be parallel".to_owned())?;
+    let corrected_x = normalized([
+        cross(y_axis, z_axis).x,
+        cross(y_axis, z_axis).y,
+        cross(y_axis, z_axis).z,
+    ])
+    .ok_or_else(|| "STEP BLOCK axes are invalid".to_owned())?;
+    Ok(StepCsgBlock {
+        origin: Point3::new(origin[0], origin[1], origin[2]),
+        x_axis: corrected_x,
+        y_axis,
+        z_axis,
+        dimensions,
+    })
+}
+
+fn csg_block_solid(block: StepCsgBlock) -> Solid {
+    let vertex = builder::vertex(block.origin);
+    let edge = builder::extrude(&vertex, block.x_axis * block.dimensions[0]);
+    let face = builder::extrude(&edge, block.y_axis * block.dimensions[1]);
+    builder::extrude(&face, block.z_axis * block.dimensions[2])
+}
+
 /// Parse and inspect every imported shell without changing a part document.
 pub fn inspect_step(
     source_bytes: &[u8],
@@ -144,10 +404,15 @@ pub fn inspect_step(
     let table = monstertruck_step::load::Table::from_step(source)
         .map_err(|error| fail("invalid_step", error.to_string()))?;
     if table.shell.is_empty() {
-        return Err(fail(
-            "no_supported_geometry",
-            "STEP input contains no inspectable shells".into(),
-        ));
+        parse_step_csg_block(source).map_err(|message| fail("no_supported_geometry", message))?;
+        return Ok(StepImportSummary {
+            source_sha256,
+            source_bytes: source_bytes.len(),
+            settings,
+            shell_count: 1,
+            face_count: 6,
+            triangle_count: 12,
+        });
     }
     let tolerance = settings.tolerance_nanometers as f64 / NANOMETERS_PER_MILLIMETER;
     let mut face_count = 0;
@@ -209,10 +474,45 @@ pub fn import_step_body(
     let table = monstertruck_step::load::Table::from_step(source)
         .map_err(|error| fail("invalid_step", error.to_string()))?;
     if table.shell.is_empty() {
-        return Err(fail(
-            "no_supported_geometry",
-            "STEP input contains no inspectable shells".into(),
-        ));
+        let block = parse_step_csg_block(source)
+            .map_err(|message| fail("no_supported_geometry", message))?;
+        let mut solid = csg_block_solid(block);
+        solid.ensure_topology_stable_ids();
+        let tolerance = settings.tolerance_nanometers as f64 / NANOMETERS_PER_MILLIMETER;
+        let render_packet = packet_from_solid(&mut solid, tolerance)
+            .map_err(|error| fail("render_failed", error.to_string()))?;
+        let bounds_nm = AxisAlignedBoundsNm {
+            min: render_packet.bounds.min.map(model_units_to_nanometers),
+            max: render_packet.bounds.max.map(model_units_to_nanometers),
+        };
+        let solid_json = serde_json::to_vec(&solid)
+            .map_err(|error| fail("body_encode_failed", error.to_string()))?;
+        let evidence_digest = format!("sha256:{:x}", Sha256::digest(&solid_json));
+        let body = BodySnapshot {
+            body_id,
+            solid_json,
+            evidence: GeometryEvidence {
+                vertex_count: solid.vertex_iter().count(),
+                edge_count: solid.edge_iter().count(),
+                face_count: solid.face_iter().count(),
+                bounds_nm,
+                volume_model_units3: block.dimensions.into_iter().product(),
+                deterministic_digest: evidence_digest,
+            },
+        };
+        let provenance = StepImportSummary {
+            source_sha256,
+            source_bytes: source_bytes.len(),
+            settings,
+            shell_count: solid.boundaries().len(),
+            face_count: body.evidence.face_count,
+            triangle_count: render_packet.triangle_indices.len() / 3,
+        };
+        return Ok(StepImportResult {
+            provenance,
+            body,
+            render_packet,
+        });
     }
 
     // Crawler's writer emits MANIFOLD_SOLID_BREP. Prefer those associations so
@@ -953,6 +1253,58 @@ mod tests {
 
         let repeated = import_step_body(source, settings, "body:import:cube").unwrap();
         assert_eq!(imported, repeated);
+    }
+
+    #[test]
+    fn crawler_csg_block_import_materializes_exact_body_and_render_topology() {
+        let source = include_bytes!(
+            "../../../fixtures/reference-models/step-roundtrip-cube/samples/cube-import.step"
+        );
+        let settings = StepImportSettings {
+            tolerance_nanometers: 10_000,
+        };
+
+        let summary = inspect_step(source, settings).unwrap();
+        assert_eq!(summary.shell_count, 1);
+        assert_eq!(summary.face_count, 6);
+        assert_eq!(summary.triangle_count, 12);
+
+        let imported = import_step_body(source, settings, "body:import:csg-cube").unwrap();
+        assert_eq!(imported.body.evidence.vertex_count, 24);
+        assert_eq!(imported.body.evidence.edge_count, 24);
+        assert_eq!(imported.body.evidence.face_count, 6);
+        assert_eq!(imported.body.evidence.bounds_nm.min, [0, 0, 0]);
+        assert_eq!(imported.body.evidence.bounds_nm.max, [10_000_000; 3]);
+        assert_eq!(imported.body.evidence.volume_model_units3, 1_000.0);
+        assert_eq!(imported.render_packet.bounds.min, [0.0, 0.0, 0.0]);
+        assert_eq!(imported.render_packet.bounds.max, [10.0, 10.0, 10.0]);
+        assert_eq!(imported.render_packet.face_ranges.len(), 6);
+        assert_eq!(imported.render_packet.edge_ranges.len(), 12);
+        assert_eq!(imported.render_packet.vertex_pick_tokens.len(), 8);
+        assert_eq!(imported.provenance.face_count, 6);
+        assert!(imported.provenance.triangle_count >= 12);
+    }
+
+    #[test]
+    fn csg_block_parser_follows_the_solid_reference_and_rejects_non_mm_units() {
+        let source = std::str::from_utf8(include_bytes!(
+            "../../../fixtures/reference-models/step-roundtrip-cube/samples/cube-import.step"
+        ))
+        .unwrap();
+        let with_unreferenced_block_and_quoted_semicolon = source
+            .replace("#12=BLOCK", "#14=BLOCK('unused',#11,1.,1.,1.);\n#12=BLOCK")
+            .replace("CSG_SOLID('cube'", "CSG_SOLID('cube;still one record'");
+        let block = parse_step_csg_block(&with_unreferenced_block_and_quoted_semicolon).unwrap();
+        assert_eq!(block.dimensions, [10.0; 3]);
+
+        let metres = source.replace(
+            "DATA;",
+            "DATA;\n#14=(LENGTH_UNIT() NAMED_UNIT(*) SI_UNIT($,.METRE.));",
+        );
+        assert_eq!(
+            parse_step_csg_block(&metres).unwrap_err(),
+            "STEP CSG BLOCK length units must be millimetres"
+        );
     }
 
     #[test]

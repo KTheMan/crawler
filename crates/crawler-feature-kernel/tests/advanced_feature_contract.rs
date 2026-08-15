@@ -44,6 +44,387 @@ fn body_source(body: BodySnapshot) -> TransformSource {
 }
 
 #[test]
+fn closed_planar_profile_extrudes_to_a_durable_solid() {
+    let result = execute(&request(FeatureOperation::Extrude(ExtrudeInput {
+        profiles_nm: vec![vec![
+            [0, 0, 0],
+            [20_000_000, 0, 0],
+            [20_000_000, 10_000_000, 0],
+            [0, 10_000_000, 0],
+        ]],
+        direction_nm: [0, 0, 5_000_000],
+        tolerance_nm: TOLERANCE_NM,
+    })))
+    .unwrap();
+
+    assert_eq!(result.output.evidence.face_count, 6);
+    assert_eq!(result.output.evidence.bounds_nm.min, [0, 0, 0]);
+    assert_eq!(
+        result.output.evidence.bounds_nm.max,
+        [20_000_000, 10_000_000, 5_000_000]
+    );
+    assert!((result.output.evidence.volume_model_units3 - 1_000.0).abs() < 1.0e-6);
+    assert!(result.ordered_input_body_ids.is_empty());
+}
+
+#[test]
+fn arbitrary_world_axis_revolves_the_caller_polygon_deterministically() {
+    let request = request(FeatureOperation::ProfileRevolve(ProfileRevolveInput {
+        profile_nm: vec![
+            [0, 0, 1_000_000],
+            [2_000_000, 2_000_000, 1_000_000],
+            [2_000_000, 2_000_000, 2_000_000],
+            [0, 0, 2_000_000],
+        ],
+        axis_origin_nm: [0, 0, 0],
+        axis_direction_nm: [1_000_000, 1_000_000, 0],
+        sweep_microdegrees: 360_000_000,
+        divisions: 16,
+        tolerance_nm: 1_000,
+    }));
+    let first = execute(&request).unwrap();
+    let second = execute(&request).unwrap();
+
+    assert_eq!(first, second);
+    assert!(first.ordered_input_body_ids.is_empty());
+    assert!(first.output.evidence.face_count >= 4);
+    let expected = std::f64::consts::PI * 3.0 * 8.0_f64.sqrt();
+    assert!(
+        (first.output.evidence.volume_model_units3 - expected).abs() < 0.1,
+        "actual={} expected={expected}",
+        first.output.evidence.volume_model_units3
+    );
+}
+
+#[test]
+fn loft_preserves_all_unequal_polygon_corners_across_three_sections() {
+    let result = execute(&request(FeatureOperation::Loft(LoftInput {
+        profiles_nm: vec![
+            vec![[0, 0, 0], [4_000_000, 0, 0], [2_000_000, 4_000_000, 0]],
+            vec![
+                [0, 0, 2_000_000],
+                [4_000_000, 0, 2_000_000],
+                [4_000_000, 4_000_000, 2_000_000],
+                [0, 4_000_000, 2_000_000],
+            ],
+            vec![
+                [1_000_000, 1_000_000, 4_000_000],
+                [3_000_000, 1_000_000, 4_000_000],
+                [3_000_000, 3_000_000, 4_000_000],
+                [1_000_000, 3_000_000, 4_000_000],
+            ],
+        ],
+        tolerance_nm: TOLERANCE_NM,
+    })))
+    .unwrap();
+
+    assert_eq!(result.output.evidence.bounds_nm.min, [0, 0, 0]);
+    assert_eq!(result.output.evidence.bounds_nm.max, [4_000_000; 3]);
+    assert!(result.output.evidence.face_count > 10);
+    assert!(result.output.evidence.volume_model_units3 > 20.0);
+}
+
+#[test]
+fn polygon_sweep_follows_a_bent_monotone_polyline_as_one_closed_solid() {
+    let request = request(FeatureOperation::Sweep(SweepInput {
+        profile_nm: vec![
+            [0, 0, 0],
+            [2_000_000, 0, 0],
+            [2_000_000, 2_000_000, 0],
+            [0, 2_000_000, 0],
+        ],
+        path_nm: vec![
+            [0, 0, 0],
+            [1_000_000, 0, 2_000_000],
+            [1_000_000, 1_000_000, 4_000_000],
+        ],
+        tolerance_nm: TOLERANCE_NM,
+    }));
+    let first = execute(&request).unwrap();
+    let second = execute(&request).unwrap();
+
+    assert_eq!(first, second);
+    assert_eq!(first.output.evidence.bounds_nm.min, [0, 0, 0]);
+    assert_eq!(
+        first.output.evidence.bounds_nm.max,
+        [3_000_000, 3_000_000, 4_000_000]
+    );
+    assert_eq!(first.output.evidence.face_count, 10);
+    assert!((first.output.evidence.volume_model_units3 - 16.0).abs() < 1.0e-8);
+}
+
+#[test]
+fn sweep_refuses_a_reversing_or_tangent_path() {
+    for path_nm in [
+        vec![[0, 0, 0], [0, 0, 2_000_000], [0, 0, 1_000_000]],
+        vec![[0, 0, 0], [1_000_000, 0, 0]],
+    ] {
+        let error = execute(&request(FeatureOperation::Sweep(SweepInput {
+            profile_nm: vec![[0, 0, 0], [1_000_000, 0, 0], [0, 1_000_000, 0]],
+            path_nm,
+            tolerance_nm: TOLERANCE_NM,
+        })))
+        .unwrap_err();
+        assert_eq!(error.category, ErrorCategory::InvalidInput);
+        assert_eq!(error.field.as_deref(), Some("path_nm"));
+    }
+}
+
+fn face_on_principal_plane(body: &BodySnapshot, axis: usize, coordinate: f64) -> u64 {
+    let solid: Solid = serde_json::from_slice(&body.solid_json).unwrap();
+    solid
+        .face_iter()
+        .find(|face| {
+            face.vertex_iter()
+                .all(|vertex| (vertex.point()[axis] - coordinate).abs() < 1.0e-9)
+        })
+        .unwrap()
+        .stable_id()
+        .raw()
+}
+
+#[test]
+fn draft_tapers_selected_stable_prism_faces_about_a_neutral_plane() {
+    let body = box_snapshot("draft-source", [0.0, 0.0, 0.0], 2.0);
+    let positive_x = face_on_principal_plane(&body, 0, 2.0);
+    let request = request(FeatureOperation::Draft(DraftInput {
+        target: body.clone(),
+        face_stable_ids: vec![positive_x],
+        pull_direction: PrincipalAxis::Z,
+        neutral_plane_origin_nm: [0, 0, 0],
+        angle_microdegrees: 45_000_000,
+        tolerance_nm: 1_000,
+    }));
+    let first = execute(&request).unwrap();
+    let second = execute(&request).unwrap();
+
+    assert_eq!(first, second);
+    assert_eq!(first.ordered_input_body_ids, ["draft-source"]);
+    assert_eq!(first.output.evidence.bounds_nm.min, [0, 0, 0]);
+    assert_eq!(
+        first.output.evidence.bounds_nm.max,
+        [4_000_000, 2_000_000, 2_000_000]
+    );
+    assert!(
+        (first.output.evidence.volume_model_units3 - 12.0).abs() < 1.0e-8,
+        "actual={}",
+        first.output.evidence.volume_model_units3
+    );
+}
+
+#[test]
+fn draft_refuses_end_faces_and_preserves_the_target_byte_for_byte() {
+    let body = box_snapshot("draft-source", [0.0, 0.0, 0.0], 2.0);
+    let positive_z = face_on_principal_plane(&body, 2, 2.0);
+    let error = execute(&request(FeatureOperation::Draft(DraftInput {
+        target: body.clone(),
+        face_stable_ids: vec![positive_z],
+        pull_direction: PrincipalAxis::Z,
+        neutral_plane_origin_nm: [0, 0, 0],
+        angle_microdegrees: 5_000_000,
+        tolerance_nm: TOLERANCE_NM,
+    })))
+    .unwrap_err();
+
+    assert_eq!(error.category, ErrorCategory::InvalidInput);
+    assert_eq!(error.preserved_inputs, [body]);
+    assert_eq!(
+        error.problematic_reference.unwrap().stable_id,
+        positive_z.to_string()
+    );
+}
+
+#[test]
+fn durable_extrude_cut_subtracts_a_through_profile_and_keeps_target_identity() {
+    let body = box_snapshot("cut-target", [0.0, 0.0, 0.0], 4.0);
+    let result = execute(&request(FeatureOperation::ExtrudeCut(ExtrudeCutInput {
+        target: body,
+        profiles_nm: vec![vec![
+            [1_000_000, 1_000_000, -1_000_000],
+            [3_000_000, 1_000_000, -1_000_000],
+            [3_000_000, 3_000_000, -1_000_000],
+            [1_000_000, 3_000_000, -1_000_000],
+        ]],
+        direction_nm: [0, 0, 6_000_000],
+        tolerance_nm: TOLERANCE_NM,
+    })))
+    .unwrap();
+
+    assert_eq!(result.ordered_input_body_ids, ["cut-target"]);
+    assert_eq!(result.output.evidence.bounds_nm.min, [0, 0, 0]);
+    assert_eq!(result.output.evidence.bounds_nm.max, [4_000_000; 3]);
+    assert!((result.output.evidence.volume_model_units3 - 48.0).abs() < 1.0e-8);
+}
+
+fn through_revolve_cut(
+    body: BodySnapshot,
+    inner_radius_nm: i64,
+    outer_radius_nm: i64,
+    sweep_microdegrees: i64,
+    divisions: u32,
+) -> FeatureRequest {
+    request(FeatureOperation::RevolveCut(RevolveCutInput {
+        target: body,
+        profile_nm: vec![
+            [2_000_000 + inner_radius_nm, 2_000_000, -1_000_000],
+            [2_000_000 + outer_radius_nm, 2_000_000, -1_000_000],
+            [2_000_000 + outer_radius_nm, 2_000_000, 5_000_000],
+            [2_000_000 + inner_radius_nm, 2_000_000, 5_000_000],
+        ],
+        axis_origin_nm: [2_000_000, 2_000_000, 0],
+        axis_direction_nm: [0, 0, 1_000_000],
+        sweep_microdegrees,
+        divisions,
+        tolerance_nm: 10_000,
+    }))
+}
+
+#[test]
+fn durable_revolve_cut_builds_a_full_cylindrical_through_hole() {
+    let body = box_snapshot("revolve-cut-target", [0.0, 0.0, 0.0], 4.0);
+    let request = through_revolve_cut(body, 0, 1_000_000, 360_000_000, 24);
+    let first = execute(&request).unwrap();
+    let second = execute(&request).unwrap();
+
+    assert_eq!(first, second);
+    assert_eq!(first.ordered_input_body_ids, ["revolve-cut-target"]);
+    assert_eq!(first.output.evidence.bounds_nm.min, [0, 0, 0]);
+    assert_eq!(first.output.evidence.bounds_nm.max, [4_000_000; 3]);
+    let expected = 64.0 - std::f64::consts::PI * 4.0;
+    assert!((first.output.evidence.volume_model_units3 - expected).abs() < 0.1);
+    let solid: Solid = serde_json::from_slice(&first.output.solid_json).unwrap();
+    assert_eq!(solid.boundaries().len(), 1);
+    assert!(first.output.evidence.face_count >= 8);
+}
+
+#[test]
+fn durable_revolve_cut_builds_a_full_annular_through_cut_and_retains_the_core() {
+    let body = box_snapshot("annular-revolve-cut-target", [0.0, 0.0, 0.0], 4.0);
+    let request = through_revolve_cut(body, 500_000, 1_000_000, 360_000_000, 24);
+    let first = execute(&request).unwrap();
+    let second = execute(&request).unwrap();
+
+    assert_eq!(first, second);
+    assert_eq!(first.ordered_input_body_ids, ["annular-revolve-cut-target"]);
+    assert_eq!(first.output.evidence.bounds_nm.min, [0, 0, 0]);
+    assert_eq!(first.output.evidence.bounds_nm.max, [4_000_000; 3]);
+    let expected = 64.0 - std::f64::consts::PI * 3.0;
+    assert!((first.output.evidence.volume_model_units3 - expected).abs() < 0.1);
+    let solid: Solid = serde_json::from_slice(&first.output.solid_json).unwrap();
+    assert_eq!(solid.boundaries().len(), 2);
+}
+
+#[test]
+fn durable_revolve_cut_builds_a_partial_annular_through_cut_at_requested_divisions() {
+    let body = box_snapshot("partial-revolve-cut-target", [0.0, 0.0, 0.0], 4.0);
+    let request = through_revolve_cut(body, 500_000, 1_000_000, 90_000_000, 6);
+    let first = execute(&request).unwrap();
+    let second = execute(&request).unwrap();
+
+    assert_eq!(first, second);
+    assert_eq!(first.ordered_input_body_ids, ["partial-revolve-cut-target"]);
+    let expected = 64.0 - std::f64::consts::PI * (1.0 - 0.25);
+    assert!((first.output.evidence.volume_model_units3 - expected).abs() < 0.1);
+    // Six outer and six inner arc edges become twelve curved side faces;
+    // radial closures add two more cut faces and the six box faces remain.
+    assert!(first.output.evidence.face_count >= 20);
+}
+
+#[test]
+fn durable_revolve_cut_builds_a_full_outer_radial_cut_as_the_exact_inner_core() {
+    let body = box_snapshot("outer-revolve-cut-target", [0.0, 0.0, 0.0], 4.0);
+    let request = through_revolve_cut(body, 1_000_000, 4_000_000, 360_000_000, 24);
+    let result = execute(&request).unwrap();
+
+    assert_eq!(result.ordered_input_body_ids, ["outer-revolve-cut-target"]);
+    assert_eq!(
+        result.output.evidence.bounds_nm.min,
+        [1_000_000, 1_000_000, 0]
+    );
+    assert_eq!(
+        result.output.evidence.bounds_nm.max,
+        [3_000_000, 3_000_000, 4_000_000]
+    );
+    assert!((result.output.evidence.volume_model_units3 - std::f64::consts::PI * 4.0).abs() < 0.1);
+}
+
+#[test]
+fn revolve_cut_clips_a_full_inscribed_core_at_prism_clearance() {
+    let body = box_snapshot("inscribed-revolve-cut-target", [0.0, 0.0, 0.0], 4.0);
+    let request = through_revolve_cut(body, 2_000_000, 5_000_000, 360_000_000, 32);
+    let first = execute(&request).unwrap();
+    let second = execute(&request).unwrap();
+
+    assert_eq!(first, second);
+    assert_eq!(
+        first.ordered_input_body_ids,
+        ["inscribed-revolve-cut-target"]
+    );
+    assert_eq!(first.output.evidence.bounds_nm.min, [0, 0, 0]);
+    assert_eq!(first.output.evidence.bounds_nm.max, [4_000_000; 3]);
+    let expected = 256.0 * (std::f64::consts::PI / 16.0).sin();
+    assert!(
+        (first.output.evidence.volume_model_units3 - expected).abs() < 1.0e-5,
+        "actual={}, expected={expected}",
+        first.output.evidence.volume_model_units3
+    );
+    assert_eq!(first.output.evidence.face_count, 34);
+}
+
+#[test]
+fn revolve_cut_clips_a_quarter_sector_crossing_the_prism_sides() {
+    let body = box_snapshot("quarter-sector-cut-target", [0.0, 0.0, 0.0], 4.0);
+    let request = through_revolve_cut(body, 2_000_000, 5_000_000, 90_000_000, 8);
+    let first = execute(&request).unwrap();
+    let second = execute(&request).unwrap();
+
+    assert_eq!(first, second);
+    assert_eq!(first.ordered_input_body_ids, ["quarter-sector-cut-target"]);
+    assert_eq!(first.output.evidence.bounds_nm.min, [0, 0, 0]);
+    assert_eq!(first.output.evidence.bounds_nm.max, [4_000_000; 3]);
+    let expected = 48.0 + 64.0 * (std::f64::consts::PI / 16.0).sin();
+    assert!(
+        (first.output.evidence.volume_model_units3 - expected).abs() < 1.0e-5,
+        "actual={}, expected={expected}",
+        first.output.evidence.volume_model_units3
+    );
+    assert_eq!(first.output.evidence.face_count, 16);
+}
+
+#[test]
+fn revolve_cut_outside_every_prism_corner_is_a_successful_no_op() {
+    let body = box_snapshot("outside-sector-cut-target", [0.0, 0.0, 0.0], 4.0);
+    let request = through_revolve_cut(body, 3_000_000, 5_000_000, 180_000_000, 16);
+    let first = execute(&request).unwrap();
+    let second = execute(&request).unwrap();
+
+    assert_eq!(first, second);
+    assert_eq!(first.ordered_input_body_ids, ["outside-sector-cut-target"]);
+    assert_eq!(first.output.evidence.bounds_nm.min, [0, 0, 0]);
+    assert_eq!(first.output.evidence.bounds_nm.max, [4_000_000; 3]);
+    assert!((first.output.evidence.volume_model_units3 - 64.0).abs() < 1.0e-9);
+    assert_eq!(first.output.evidence.face_count, 6);
+}
+
+#[test]
+fn rejected_revolve_cut_preserves_only_the_durable_target() {
+    let body = box_snapshot("revolve-cut-target", [0.0, 0.0, 0.0], 4.0);
+    let error = execute(&request(FeatureOperation::RevolveCut(RevolveCutInput {
+        target: body.clone(),
+        profile_nm: vec![[0, 0, 0], [1_000_000, 0, 0], [0, 1_000_000, 0]],
+        axis_origin_nm: [0, 0, 0],
+        axis_direction_nm: [0, 0, 0],
+        sweep_microdegrees: 360_000_000,
+        divisions: 16,
+        tolerance_nm: 1,
+    })))
+    .unwrap_err();
+
+    assert_eq!(error.category, ErrorCategory::InvalidInput);
+    assert_eq!(error.preserved_inputs, [body]);
+}
+
+#[test]
 fn mirror_is_a_native_body_transform_with_deterministic_evidence() {
     let operation = FeatureOperation::Mirror(MirrorInput {
         source: body_source(box_snapshot("source", [1.0, 0.0, 0.0], 1.0)),

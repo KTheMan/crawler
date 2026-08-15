@@ -3,9 +3,9 @@ use crawler_document::{
     SketchElement, SketchId, SketchSupport,
 };
 use crawler_part_engine::{
-    DISTANCE_PARAMETER_ID, EXTRUDE_FEATURE_ID, EngineError, HEIGHT_PARAMETER_ID, NewPartCommand,
-    ParameterEdit, PartDimensions, PartEngine, RECTANGLE_FEATURE_ID, RECTANGLE_SKETCH_ID,
-    WIDTH_PARAMETER_ID, XY_PLANE_ID, XZ_PLANE_ID, YZ_PLANE_ID,
+    BlankPartCommand, DISTANCE_PARAMETER_ID, EXTRUDE_FEATURE_ID, EngineError, HEIGHT_PARAMETER_ID,
+    NewPartCommand, ParameterEdit, PartDimensions, PartEngine, RECTANGLE_FEATURE_ID,
+    RECTANGLE_SKETCH_ID, WIDTH_PARAMETER_ID, XY_PLANE_ID, XZ_PLANE_ID, YZ_PLANE_ID,
 };
 
 fn cube_engine() -> PartEngine {
@@ -15,6 +15,36 @@ fn cube_engine() -> PartEngine {
         10_000_000,
     ))
     .unwrap()
+}
+
+#[test]
+fn new_blank_part_contains_only_its_document_shell_and_origin_planes() {
+    let engine = PartEngine::new_blank_part(BlankPartCommand {
+        document_id: DocumentId::from("document:blank"),
+        display_name: "Untitled Part".into(),
+    })
+    .unwrap();
+    let document = engine.document();
+
+    assert_eq!(document.revision, 0);
+    assert_eq!(document.display_name, "Untitled Part");
+    assert_eq!(document.origin_planes.len(), 3);
+    assert!(document.bodies.is_empty());
+    assert!(document.sketches.is_empty());
+    assert!(document.features.is_empty());
+    assert!(document.parameters.is_empty());
+    assert!(document.topology_references.is_empty());
+    assert!(document.transactions.is_empty());
+    assert!(
+        document.components[&document.root_component]
+            .body_order
+            .is_empty()
+    );
+    assert!(
+        document.components[&document.root_component]
+            .feature_order
+            .is_empty()
+    );
 }
 
 #[test]

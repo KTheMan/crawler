@@ -9,8 +9,8 @@ use std::{
 #[cfg(not(target_arch = "wasm32"))]
 use monstertruck_meshing::prelude::*;
 use monstertruck_modeling::{
-    Edge, Face, FilletOptions, FilletProfile, Point3, RadiusSpec, Shell, Solid, Vector3, Vertex,
-    Wire, builder, fillet_edges, profile,
+    Edge, Face, FilletOptions, FilletProfile, InnerSpace, Point3, RadiusSpec, Shell, Solid,
+    Vector3, Vertex, Wire, builder, fillet_edges, profile,
 };
 #[cfg(not(target_arch = "wasm32"))]
 use monstertruck_solid::ShapeOpsError;
@@ -38,7 +38,14 @@ pub struct FeatureRequest {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum FeatureOperation {
+    Extrude(ExtrudeInput),
+    ExtrudeCut(ExtrudeCutInput),
+    ProfileRevolve(ProfileRevolveInput),
+    RevolveCut(RevolveCutInput),
     Revolve(RevolveInput),
+    Loft(LoftInput),
+    Sweep(SweepInput),
+    Draft(DraftInput),
     Boolean(BooleanInput),
     Fillet(EdgeTreatmentInput),
     Chamfer(EdgeTreatmentInput),
@@ -47,6 +54,47 @@ pub enum FeatureOperation {
     Transform(TransformInput),
     LinearPattern(LinearPatternInput),
     CircularPattern(CircularPatternInput),
+}
+
+/// One or more coplanar polygon loops swept by an exact world-space vector.
+/// The first loop is the material boundary; subsequent loops are holes.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExtrudeInput {
+    pub profiles_nm: Vec<Vec<[i64; 3]>>,
+    pub direction_nm: [i64; 3],
+    pub tolerance_nm: i64,
+}
+
+/// Durable subtractive extrusion retaining both the target and editable tool profile.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExtrudeCutInput {
+    pub target: BodySnapshot,
+    pub profiles_nm: Vec<Vec<[i64; 3]>>,
+    pub direction_nm: [i64; 3],
+    pub tolerance_nm: i64,
+}
+
+/// One coplanar closed polygon revolved around a caller-provided world-space axis.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProfileRevolveInput {
+    pub profile_nm: Vec<[i64; 3]>,
+    pub axis_origin_nm: [i64; 3],
+    pub axis_direction_nm: [i64; 3],
+    pub sweep_microdegrees: i64,
+    pub divisions: u32,
+    pub tolerance_nm: i64,
+}
+
+/// Durable subtractive revolve retaining the target, profile, world axis, and sweep.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RevolveCutInput {
+    pub target: BodySnapshot,
+    pub profile_nm: Vec<[i64; 3]>,
+    pub axis_origin_nm: [i64; 3],
+    pub axis_direction_nm: [i64; 3],
+    pub sweep_microdegrees: i64,
+    pub divisions: u32,
+    pub tolerance_nm: i64,
 }
 
 /// Exact rectangular radial profile revolved around a principal axis.
@@ -60,6 +108,36 @@ pub struct RevolveInput {
     pub axial_end_nm: i64,
     pub sweep_microdegrees: i64,
     pub divisions: u32,
+    pub tolerance_nm: i64,
+}
+
+/// Two or more caller-ordered closed polygon sections. Vertex correspondence
+/// starts at each section's first vertex and follows its caller-owned winding.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LoftInput {
+    pub profiles_nm: Vec<Vec<[i64; 3]>>,
+    pub tolerance_nm: i64,
+}
+
+/// A closed world-space polygon translated along a caller-ordered world-space
+/// polyline. The first path point is the profile placement reference.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SweepInput {
+    pub profile_nm: Vec<[i64; 3]>,
+    pub path_nm: Vec<[i64; 3]>,
+    pub tolerance_nm: i64,
+}
+
+/// Exact draft contract for selected stable side faces of one axis-aligned
+/// rectangular prism. Positive angle moves a selected face outward in the
+/// positive pull direction relative to the neutral plane.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DraftInput {
+    pub target: BodySnapshot,
+    pub face_stable_ids: Vec<u64>,
+    pub pull_direction: PrincipalAxis,
+    pub neutral_plane_origin_nm: [i64; 3],
+    pub angle_microdegrees: i64,
     pub tolerance_nm: i64,
 }
 
@@ -241,11 +319,77 @@ pub fn execute(request: &FeatureRequest) -> Result<FeatureResult, FeatureError> 
     validate_envelope(request)?;
     let (mut solid, ordered_input_body_ids, instance_body_ids, tolerance) = match &request.operation
     {
+        FeatureOperation::Extrude(input) => {
+            validate_extrude(input)?;
+            (
+                execute_extrude(input)?,
+                Vec::new(),
+                Vec::new(),
+                input.tolerance_nm,
+            )
+        }
+        FeatureOperation::ExtrudeCut(input) => {
+            validate_extrude_cut(input)?;
+            let id = input.target.body_id.clone();
+            (
+                execute_extrude_cut(input)?,
+                vec![id],
+                Vec::new(),
+                input.tolerance_nm,
+            )
+        }
+        FeatureOperation::ProfileRevolve(input) => {
+            validate_profile_revolve(input)?;
+            (
+                execute_profile_revolve(input)?,
+                Vec::new(),
+                Vec::new(),
+                input.tolerance_nm,
+            )
+        }
+        FeatureOperation::RevolveCut(input) => {
+            validate_revolve_cut(input)?;
+            let id = input.target.body_id.clone();
+            (
+                execute_revolve_cut(input)?,
+                vec![id],
+                Vec::new(),
+                input.tolerance_nm,
+            )
+        }
         FeatureOperation::Revolve(input) => {
             validate_revolve(input)?;
             (
                 execute_revolve(input)?,
                 Vec::new(),
+                Vec::new(),
+                input.tolerance_nm,
+            )
+        }
+        FeatureOperation::Loft(input) => {
+            validate_loft(input)?;
+            (
+                execute_loft(input)?,
+                Vec::new(),
+                Vec::new(),
+                input.tolerance_nm,
+            )
+        }
+        FeatureOperation::Sweep(input) => {
+            validate_sweep(input)?;
+            (
+                execute_sweep(input)?,
+                Vec::new(),
+                Vec::new(),
+                input.tolerance_nm,
+            )
+        }
+        FeatureOperation::Draft(input) => {
+            validate_draft(input)?;
+            let id = input.target.body_id.clone();
+            (
+                execute_draft(input)?,
+                vec![id],
                 Vec::new(),
                 input.tolerance_nm,
             )
@@ -358,6 +502,969 @@ pub fn execute(request: &FeatureRequest) -> Result<FeatureResult, FeatureError> 
         ordered_input_body_ids,
         instance_body_ids,
     })
+}
+
+fn validate_extrude(input: &ExtrudeInput) -> Result<(), FeatureError> {
+    exact_positive_nm("tolerance_nm", input.tolerance_nm)?;
+    validate_exact_vector("direction_nm", input.direction_nm)?;
+    if input.direction_nm == [0; 3] {
+        return Err(invalid("direction_nm", "must have non-zero length"));
+    }
+    if input.profiles_nm.is_empty() {
+        return Err(invalid("profiles_nm", "must contain one closed profile"));
+    }
+    for (profile_index, points) in input.profiles_nm.iter().enumerate() {
+        if points.len() < 3 {
+            return Err(invalid(
+                &format!("profiles_nm[{profile_index}]"),
+                "must contain at least three distinct vertices",
+            ));
+        }
+        for (point_index, point) in points.iter().copied().enumerate() {
+            validate_exact_vector(
+                &format!("profiles_nm[{profile_index}][{point_index}]"),
+                point,
+            )?;
+        }
+        if points.windows(2).any(|pair| pair[0] == pair[1]) {
+            return Err(invalid(
+                &format!("profiles_nm[{profile_index}]"),
+                "cannot contain consecutive duplicate vertices",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn execute_extrude(input: &ExtrudeInput) -> Result<Solid, FeatureError> {
+    let wires = input
+        .profiles_nm
+        .iter()
+        .map(|points| polygon_wire(points))
+        .collect::<Vec<_>>();
+    let direction = Vector3::new(
+        model_units(input.direction_nm[0]),
+        model_units(input.direction_nm[1]),
+        model_units(input.direction_nm[2]),
+    );
+    profile::solid_from_planar_profile(wires, direction).map_err(|error| {
+        failure(
+            ErrorCategory::InvalidInput,
+            format!("extrude profile is invalid: {error}"),
+            Some("profiles_nm"),
+            "select one closed, non-self-intersecting planar profile",
+        )
+    })
+}
+
+fn validate_extrude_cut(input: &ExtrudeCutInput) -> Result<(), FeatureError> {
+    validate_snapshot("target", &input.target)
+        .and_then(|_| {
+            validate_extrude(&ExtrudeInput {
+                profiles_nm: input.profiles_nm.clone(),
+                direction_nm: input.direction_nm,
+                tolerance_nm: input.tolerance_nm,
+            })
+        })
+        .map_err(|error| preserving_cut_error(error, &input.target))
+}
+
+fn execute_extrude_cut(input: &ExtrudeCutInput) -> Result<Solid, FeatureError> {
+    let tool = execute_extrude(&ExtrudeInput {
+        profiles_nm: input.profiles_nm.clone(),
+        direction_nm: input.direction_nm,
+        tolerance_nm: input.tolerance_nm,
+    })
+    .and_then(|solid| tool_snapshot(solid, "extrude-cut-tool"))
+    .map_err(|error| preserving_cut_error(error, &input.target))?;
+    execute_boolean(&BooleanInput {
+        operation: BooleanKind::Cut,
+        target: input.target.clone(),
+        tools: vec![tool],
+        tolerance_nm: input.tolerance_nm,
+    })
+    .map_err(|error| preserving_cut_error(error, &input.target))
+}
+
+fn validate_profile_revolve(input: &ProfileRevolveInput) -> Result<(), FeatureError> {
+    exact_positive_nm("tolerance_nm", input.tolerance_nm)?;
+    validate_polygon("profile_nm", &input.profile_nm, input.tolerance_nm)?;
+    validate_exact_vector("axis_origin_nm", input.axis_origin_nm)?;
+    validate_exact_vector("axis_direction_nm", input.axis_direction_nm)?;
+    if input.axis_direction_nm == [0; 3] {
+        return Err(invalid("axis_direction_nm", "must have non-zero length"));
+    }
+    validate_angular_sweep(input.sweep_microdegrees, input.divisions)
+}
+
+fn execute_profile_revolve(input: &ProfileRevolveInput) -> Result<Solid, FeatureError> {
+    let face: Face = profile::attach_plane_normalized(vec![polygon_wire(&input.profile_nm)])
+        .map_err(|error| {
+            failure(
+                ErrorCategory::InvalidInput,
+                format!("revolve profile is invalid: {error}"),
+                Some("profile_nm"),
+                "select one closed, non-self-intersecting coplanar polygon",
+            )
+        })?;
+    let raw_axis = vector_from_nm(input.axis_direction_nm);
+    let axis = raw_axis / raw_axis.magnitude();
+    let sweep = sweep_angle(input.sweep_microdegrees);
+    let solid: Solid = builder::revolve(
+        &face,
+        point_from_nm(input.axis_origin_nm),
+        axis,
+        sweep,
+        input.divisions as usize,
+    );
+    Solid::try_new(solid.into_boundaries()).map_err(|error| {
+        failure(
+            ErrorCategory::InvalidInput,
+            format!("revolve produced an invalid boundary representation: {error}"),
+            Some("profile_nm"),
+            "move the profile to one side of the axis or reduce the sweep",
+        )
+    })
+}
+
+fn validate_revolve_cut(input: &RevolveCutInput) -> Result<(), FeatureError> {
+    validate_snapshot("target", &input.target)
+        .and_then(|_| {
+            validate_profile_revolve(&ProfileRevolveInput {
+                profile_nm: input.profile_nm.clone(),
+                axis_origin_nm: input.axis_origin_nm,
+                axis_direction_nm: input.axis_direction_nm,
+                sweep_microdegrees: input.sweep_microdegrees,
+                divisions: input.divisions,
+                tolerance_nm: input.tolerance_nm,
+            })
+        })
+        .map_err(|error| preserving_cut_error(error, &input.target))
+}
+
+fn execute_revolve_cut(input: &RevolveCutInput) -> Result<Solid, FeatureError> {
+    let tool = execute_profile_revolve(&ProfileRevolveInput {
+        profile_nm: input.profile_nm.clone(),
+        axis_origin_nm: input.axis_origin_nm,
+        axis_direction_nm: input.axis_direction_nm,
+        sweep_microdegrees: input.sweep_microdegrees,
+        divisions: input.divisions,
+        tolerance_nm: input.tolerance_nm,
+    })
+    .and_then(|solid| tool_snapshot(solid, "revolve-cut-tool"))
+    .map_err(|error| preserving_cut_error(error, &input.target))?;
+    let boolean = BooleanInput {
+        operation: BooleanKind::Cut,
+        target: input.target.clone(),
+        tools: vec![tool],
+        tolerance_nm: input.tolerance_nm,
+    };
+    match execute_boolean(&boolean) {
+        Ok(solid) => Ok(solid),
+        Err(backend_error) => match execute_qualified_prism_revolve_cut(input)? {
+            Some(solid) => Ok(solid),
+            None => Err(preserving_cut_error(backend_error, &input.target)),
+        },
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct QualifiedRevolveCut {
+    bounds: AxisAlignedBoundsNm,
+    axis: usize,
+    axis_origin_nm: [i64; 3],
+    radial_direction: Vector3,
+    inner_radius_nm: i64,
+    outer_radius_nm: i64,
+}
+
+/// Deterministic repair path for the common CAD contract where an
+/// axis-aligned prism is cut through by a radial rectangle revolved around a
+/// principal axis. It constructs the resulting profile-with-hole directly and
+/// extrudes it, retaining Monstertruck arc edges at the requested divisions.
+fn execute_qualified_prism_revolve_cut(
+    input: &RevolveCutInput,
+) -> Result<Option<Solid>, FeatureError> {
+    let source = decode_solid("target", &input.target)
+        .map_err(|error| preserving_cut_error(error, &input.target))?;
+    let Some(qualified) = qualify_prism_revolve_cut(input, &source)? else {
+        return Ok(None);
+    };
+    let radial_axes = (0..3)
+        .filter(|axis| *axis != qualified.axis)
+        .collect::<Vec<_>>();
+    let clearance = radial_axes
+        .iter()
+        .map(|axis| {
+            (qualified.axis_origin_nm[*axis] - qualified.bounds.min[*axis])
+                .min(qualified.bounds.max[*axis] - qualified.axis_origin_nm[*axis])
+        })
+        .min()
+        .unwrap_or(0);
+    let farthest_corner_radius = radial_axes
+        .iter()
+        .map(|axis| {
+            (qualified.axis_origin_nm[*axis] - qualified.bounds.min[*axis])
+                .abs()
+                .max((qualified.bounds.max[*axis] - qualified.axis_origin_nm[*axis]).abs())
+        })
+        .map(|value| value as f64)
+        .collect::<Vec<_>>();
+    let farthest_corner_radius =
+        (farthest_corner_radius[0].powi(2) + farthest_corner_radius[1].powi(2)).sqrt();
+    let tolerance = input.tolerance_nm;
+    let full = input.sweep_microdegrees == MICRODEGREES_PER_REVOLUTION;
+
+    // When the tool reaches beyond every target corner, its exact through-cut
+    // is the prism section clipped by the inner radial sector.  This remains a
+    // single star-shaped loop even when the inner radius reaches or exceeds a
+    // side clearance, so construct that requested faceted boundary directly
+    // instead of asking the solid boolean backend to infer it.
+    if clearance >= -tolerance
+        && qualified.outer_radius_nm as f64 > farthest_corner_radius + tolerance as f64
+        && qualified.inner_radius_nm >= clearance - tolerance
+    {
+        if qualified.inner_radius_nm as f64 >= farthest_corner_radius - tolerance as f64 {
+            return Ok(Some(source));
+        }
+        return clipped_prism_radial_sector(input, qualified).map(Some);
+    }
+
+    if qualified.outer_radius_nm < clearance - tolerance {
+        let section_coordinate = qualified.bounds.min[qualified.axis];
+        let outer = polygon_wire(&rectangular_section(
+            qualified.bounds.min,
+            qualified.bounds.max,
+            qualified.axis,
+            section_coordinate,
+        ));
+        let cut = radial_cut_wire(input, qualified, section_coordinate)?;
+        let direction_nm = {
+            let mut value = [0; 3];
+            value[qualified.axis] =
+                qualified.bounds.max[qualified.axis] - qualified.bounds.min[qualified.axis];
+            value
+        };
+        let outer_material =
+            profile::solid_from_planar_profile(vec![outer, cut], vector_from_nm(direction_nm))
+                .map_err(|error| {
+                    revolve_cut_error(
+                        input,
+                        ErrorCategory::Unsupported,
+                        "profile_nm",
+                        format!("qualified Revolve Cut profile construction failed: {error}"),
+                    )
+                })?;
+
+        if full && qualified.inner_radius_nm > tolerance {
+            let core_wire = radial_circle_wire(
+                input,
+                qualified,
+                section_coordinate,
+                qualified.inner_radius_nm,
+                builder::SweepAngle::Closed,
+            );
+            let core =
+                profile::solid_from_planar_profile(vec![core_wire], vector_from_nm(direction_nm))
+                    .map_err(|error| {
+                    revolve_cut_error(
+                        input,
+                        ErrorCategory::Unsupported,
+                        "profile_nm",
+                        format!("qualified annular core construction failed: {error}"),
+                    )
+                })?;
+            let boundaries = outer_material
+                .into_boundaries()
+                .into_iter()
+                .chain(core.into_boundaries())
+                .collect();
+            return Solid::try_new(boundaries).map(Some).map_err(|error| {
+                revolve_cut_error(
+                    input,
+                    ErrorCategory::Unsupported,
+                    "profile_nm",
+                    format!("qualified annular result is not a valid B-rep: {error}"),
+                )
+            });
+        }
+        return Ok(Some(outer_material));
+    }
+
+    // A full annular tool whose outer radius covers every target corner leaves
+    // exactly the inner cylindrical core. This handles real outer radial cuts
+    // without substituting the target bounds for the requested radial surface.
+    if full && qualified.outer_radius_nm as f64 > farthest_corner_radius + tolerance as f64 {
+        if qualified.inner_radius_nm <= tolerance {
+            return Err(revolve_cut_error(
+                input,
+                ErrorCategory::EmptyResult,
+                "profile_nm",
+                "Revolve Cut removes the entire target",
+            ));
+        }
+        if qualified.inner_radius_nm >= clearance - tolerance {
+            return Ok(None);
+        }
+        let section_coordinate = qualified.bounds.min[qualified.axis];
+        let core_wire = radial_circle_wire(
+            input,
+            qualified,
+            section_coordinate,
+            qualified.inner_radius_nm,
+            builder::SweepAngle::Closed,
+        );
+        let mut direction_nm = [0; 3];
+        direction_nm[qualified.axis] =
+            qualified.bounds.max[qualified.axis] - qualified.bounds.min[qualified.axis];
+        let core =
+            profile::solid_from_planar_profile(vec![core_wire], vector_from_nm(direction_nm))
+                .map_err(|error| {
+                    revolve_cut_error(
+                        input,
+                        ErrorCategory::Unsupported,
+                        "profile_nm",
+                        format!("qualified outer radial result failed: {error}"),
+                    )
+                })?;
+        return Ok(Some(core));
+    }
+    Ok(None)
+}
+
+/// Build the exact qualified prism section that remains after a through-cut
+/// whose outer radius covers the target. The rectangle is represented exactly;
+/// only the requested circular boundary is faceted, with the caller's divisions.
+fn clipped_prism_radial_sector(
+    input: &RevolveCutInput,
+    qualified: QualifiedRevolveCut,
+) -> Result<Solid, FeatureError> {
+    let section_coordinate = qualified.bounds.min[qualified.axis];
+    let sweep_radians = input.sweep_microdegrees as f64 / MICRODEGREES_PER_REVOLUTION as f64 * TAU;
+    let full = input.sweep_microdegrees == MICRODEGREES_PER_REVOLUTION;
+    let axis_sign = input.axis_direction_nm[qualified.axis].signum() as f64;
+    let radial_axes = (0..3)
+        .filter(|axis| *axis != qualified.axis)
+        .collect::<Vec<_>>();
+    let u = qualified.radial_direction;
+    let mut v = Vector3::new(0.0, 0.0, 0.0);
+    // v = axis x u, preserving the exact handedness used by revolve.
+    v[radial_axes[0]] = -axis_sign * u[radial_axes[1]];
+    v[radial_axes[1]] = axis_sign * u[radial_axes[0]];
+
+    let mut critical_angles = Vec::new();
+    for index in 0..=input.divisions {
+        critical_angles.push(sweep_radians * index as f64 / input.divisions as f64);
+    }
+    for corner in rectangular_section(
+        qualified.bounds.min,
+        qualified.bounds.max,
+        qualified.axis,
+        section_coordinate,
+    ) {
+        critical_angles.push(radial_angle(qualified, u, v, corner));
+    }
+    critical_angles.extend(radial_rectangle_circle_intersections(
+        qualified,
+        u,
+        v,
+        qualified.inner_radius_nm as f64,
+    ));
+    critical_angles = sorted_unique_angles(critical_angles);
+
+    let rectangle_radius =
+        |angle: f64| radial_rectangle_radius(qualified, u * angle.cos() + v * angle.sin());
+    let retained_radius =
+        |angle: f64| rectangle_radius(angle).min(qualified.inner_radius_nm as f64);
+    let mut points = Vec::new();
+    if full {
+        let mut angles = critical_angles;
+        angles
+            .extend((0..input.divisions).map(|index| TAU * index as f64 / input.divisions as f64));
+        for angle in sorted_unique_angles(angles) {
+            push_distinct_point(
+                &mut points,
+                radial_section_point(
+                    qualified,
+                    u,
+                    v,
+                    section_coordinate,
+                    angle,
+                    retained_radius(angle),
+                ),
+            );
+        }
+    } else {
+        // The two values at each sweep endpoint intentionally create the exact
+        // radial closure from the target boundary to the retained inner arc.
+        push_distinct_point(
+            &mut points,
+            radial_section_point(
+                qualified,
+                u,
+                v,
+                section_coordinate,
+                0.0,
+                rectangle_radius(0.0),
+            ),
+        );
+        push_distinct_point(
+            &mut points,
+            radial_section_point(
+                qualified,
+                u,
+                v,
+                section_coordinate,
+                0.0,
+                retained_radius(0.0),
+            ),
+        );
+        for angle in critical_angles
+            .iter()
+            .copied()
+            .filter(|angle| *angle > 1.0e-12 && *angle < sweep_radians - 1.0e-12)
+        {
+            push_distinct_point(
+                &mut points,
+                radial_section_point(
+                    qualified,
+                    u,
+                    v,
+                    section_coordinate,
+                    angle,
+                    retained_radius(angle),
+                ),
+            );
+        }
+        push_distinct_point(
+            &mut points,
+            radial_section_point(
+                qualified,
+                u,
+                v,
+                section_coordinate,
+                sweep_radians,
+                retained_radius(sweep_radians),
+            ),
+        );
+        push_distinct_point(
+            &mut points,
+            radial_section_point(
+                qualified,
+                u,
+                v,
+                section_coordinate,
+                sweep_radians,
+                rectangle_radius(sweep_radians),
+            ),
+        );
+        for angle in critical_angles
+            .iter()
+            .copied()
+            .filter(|angle| *angle > sweep_radians + 1.0e-12 && *angle < TAU - 1.0e-12)
+        {
+            push_distinct_point(
+                &mut points,
+                radial_section_point(
+                    qualified,
+                    u,
+                    v,
+                    section_coordinate,
+                    angle,
+                    rectangle_radius(angle),
+                ),
+            );
+        }
+    }
+    if points.len() > 1 && points.first() == points.last() {
+        points.pop();
+    }
+    if points.len() < 3 {
+        return Err(revolve_cut_error(
+            input,
+            ErrorCategory::EmptyResult,
+            "profile_nm",
+            "Revolve Cut removes the entire target",
+        ));
+    }
+
+    let mut direction_nm = [0; 3];
+    direction_nm[qualified.axis] =
+        qualified.bounds.max[qualified.axis] - qualified.bounds.min[qualified.axis];
+    profile::solid_from_planar_profile(vec![polygon_wire(&points)], vector_from_nm(direction_nm))
+        .map_err(|error| {
+            revolve_cut_error(
+                input,
+                ErrorCategory::Unsupported,
+                "profile_nm",
+                format!("clipped Revolve Cut section construction failed: {error}"),
+            )
+        })
+}
+
+fn radial_rectangle_radius(qualified: QualifiedRevolveCut, direction: Vector3) -> f64 {
+    let mut radius = f64::INFINITY;
+    for axis in 0..3 {
+        if axis == qualified.axis || direction[axis].abs() <= 1.0e-14 {
+            continue;
+        }
+        let boundary = if direction[axis] > 0.0 {
+            qualified.bounds.max[axis] - qualified.axis_origin_nm[axis]
+        } else {
+            qualified.bounds.min[axis] - qualified.axis_origin_nm[axis]
+        };
+        radius = radius.min(boundary as f64 / direction[axis]);
+    }
+    radius.max(0.0)
+}
+
+fn radial_angle(qualified: QualifiedRevolveCut, u: Vector3, v: Vector3, point: [i64; 3]) -> f64 {
+    let delta = vector_between_nm(qualified.axis_origin_nm, point);
+    normalize_angle(delta.dot(v).atan2(delta.dot(u)))
+}
+
+fn radial_rectangle_circle_intersections(
+    qualified: QualifiedRevolveCut,
+    u: Vector3,
+    v: Vector3,
+    radius_nm: f64,
+) -> Vec<f64> {
+    let axes = (0..3)
+        .filter(|axis| *axis != qualified.axis)
+        .collect::<Vec<_>>();
+    let corners = [
+        [qualified.bounds.min[axes[0]], qualified.bounds.min[axes[1]]],
+        [qualified.bounds.max[axes[0]], qualified.bounds.min[axes[1]]],
+        [qualified.bounds.max[axes[0]], qualified.bounds.max[axes[1]]],
+        [qualified.bounds.min[axes[0]], qualified.bounds.max[axes[1]]],
+    ];
+    let mut angles = Vec::new();
+    for index in 0..4 {
+        let start = corners[index];
+        let end = corners[(index + 1) % 4];
+        let p = [
+            (start[0] - qualified.axis_origin_nm[axes[0]]) as f64,
+            (start[1] - qualified.axis_origin_nm[axes[1]]) as f64,
+        ];
+        let delta = [(end[0] - start[0]) as f64, (end[1] - start[1]) as f64];
+        let a = delta[0] * delta[0] + delta[1] * delta[1];
+        let b = 2.0 * (p[0] * delta[0] + p[1] * delta[1]);
+        let c = p[0] * p[0] + p[1] * p[1] - radius_nm * radius_nm;
+        let discriminant = b * b - 4.0 * a * c;
+        if discriminant < -1.0e-6 {
+            continue;
+        }
+        let root = discriminant.max(0.0).sqrt();
+        for t in [(-b - root) / (2.0 * a), (-b + root) / (2.0 * a)] {
+            if (-1.0e-12..=1.0 + 1.0e-12).contains(&t) {
+                let mut point = qualified.axis_origin_nm;
+                point[axes[0]] = (start[0] as f64 + delta[0] * t).round() as i64;
+                point[axes[1]] = (start[1] as f64 + delta[1] * t).round() as i64;
+                angles.push(radial_angle(qualified, u, v, point));
+            }
+        }
+    }
+    angles
+}
+
+fn radial_section_point(
+    qualified: QualifiedRevolveCut,
+    u: Vector3,
+    v: Vector3,
+    section_coordinate: i64,
+    angle: f64,
+    radius_nm: f64,
+) -> [i64; 3] {
+    let direction = u * angle.cos() + v * angle.sin();
+    let mut point = qualified.axis_origin_nm;
+    point[qualified.axis] = section_coordinate;
+    for axis in 0..3 {
+        if axis != qualified.axis {
+            point[axis] = (qualified.axis_origin_nm[axis] as f64 + direction[axis] * radius_nm)
+                .round() as i64;
+        }
+    }
+    point
+}
+
+fn normalize_angle(angle: f64) -> f64 {
+    angle.rem_euclid(TAU)
+}
+
+fn sorted_unique_angles(mut angles: Vec<f64>) -> Vec<f64> {
+    for angle in &mut angles {
+        *angle = normalize_angle(*angle);
+    }
+    angles.sort_by(f64::total_cmp);
+    angles.dedup_by(|left, right| (*left - *right).abs() <= 1.0e-12);
+    angles
+}
+
+fn push_distinct_point(points: &mut Vec<[i64; 3]>, point: [i64; 3]) {
+    if points.last() != Some(&point) {
+        points.push(point);
+    }
+}
+
+fn qualify_prism_revolve_cut(
+    input: &RevolveCutInput,
+    source: &Solid,
+) -> Result<Option<QualifiedRevolveCut>, FeatureError> {
+    let Some(boxes) = qualified_axis_aligned_boxes(source)
+        .map_err(|error| preserving_cut_error(error, &input.target))?
+    else {
+        return Ok(None);
+    };
+    if boxes.len() != 1 || source.boundaries().len() != 1 || input.profile_nm.len() != 4 {
+        return Ok(None);
+    }
+    let nonzero_axes = input
+        .axis_direction_nm
+        .iter()
+        .enumerate()
+        .filter(|(_, value)| **value != 0)
+        .map(|(axis, _)| axis)
+        .collect::<Vec<_>>();
+    if nonzero_axes.len() != 1 {
+        return Ok(None);
+    }
+    let axis = nonzero_axes[0];
+    let bounds = AxisAlignedBoundsNm {
+        min: boxes[0].min,
+        max: boxes[0].max,
+    };
+    let tolerance = input.tolerance_nm as f64;
+    let mut axial = input
+        .profile_nm
+        .iter()
+        .map(|point| point[axis])
+        .collect::<Vec<_>>();
+    axial.sort_unstable();
+    axial.dedup_by(|left, right| (*left - *right).abs() <= input.tolerance_nm);
+    if axial.len() != 2
+        || axial[0] > bounds.min[axis] + input.tolerance_nm
+        || axial[1] < bounds.max[axis] - input.tolerance_nm
+    {
+        return Ok(None);
+    }
+    let mut radii = Vec::with_capacity(4);
+    let mut radial_direction: Option<Vector3> = None;
+    for point in &input.profile_nm {
+        let mut radial = vector_between_nm(input.axis_origin_nm, *point);
+        radial[axis] = 0.0;
+        let radius = radial.magnitude() * NANOMETERS_PER_MODEL_UNIT;
+        radii.push(radius.round() as i64);
+        if radius > tolerance {
+            let direction = radial / radial.magnitude();
+            if let Some(reference) = radial_direction {
+                if (direction - reference).magnitude() > 1.0e-8 {
+                    return Ok(None);
+                }
+            } else {
+                radial_direction = Some(direction);
+            }
+        }
+    }
+    radii.sort_unstable();
+    radii.dedup_by(|left, right| (*left - *right).abs() <= input.tolerance_nm);
+    if radii.len() != 2 || radii[0] < 0 || radii[1] <= radii[0] {
+        return Ok(None);
+    }
+    let Some(radial_direction) = radial_direction else {
+        return Ok(None);
+    };
+    Ok(Some(QualifiedRevolveCut {
+        bounds,
+        axis,
+        axis_origin_nm: input.axis_origin_nm,
+        radial_direction,
+        inner_radius_nm: radii[0],
+        outer_radius_nm: radii[1],
+    }))
+}
+
+fn radial_cut_wire(
+    input: &RevolveCutInput,
+    qualified: QualifiedRevolveCut,
+    section_coordinate: i64,
+) -> Result<Wire, FeatureError> {
+    let sweep = sweep_angle(input.sweep_microdegrees);
+    if matches!(sweep, builder::SweepAngle::Closed) {
+        return Ok(radial_circle_wire(
+            input,
+            qualified,
+            section_coordinate,
+            qualified.outer_radius_nm,
+            sweep,
+        ));
+    }
+    let outer = radial_circle_wire(
+        input,
+        qualified,
+        section_coordinate,
+        qualified.outer_radius_nm,
+        sweep,
+    );
+    let origin = axis_origin_at_section(qualified, section_coordinate);
+    let inner = if qualified.inner_radius_nm > input.tolerance_nm {
+        Some(radial_circle_wire(
+            input,
+            qualified,
+            section_coordinate,
+            qualified.inner_radius_nm,
+            sweep,
+        ))
+    } else {
+        None
+    };
+    let mut edges = outer.edge_iter().cloned().collect::<Vec<_>>();
+    if let Some(inner) = inner {
+        edges.push(builder::line(
+            outer.back_vertex().unwrap(),
+            inner.back_vertex().unwrap(),
+        ));
+        edges.extend(inner.inverse().edge_iter().cloned());
+        edges.push(builder::line(
+            inner.front_vertex().unwrap(),
+            outer.front_vertex().unwrap(),
+        ));
+    } else {
+        let center = builder::vertex(origin);
+        edges.push(builder::line(outer.back_vertex().unwrap(), &center));
+        edges.push(builder::line(&center, outer.front_vertex().unwrap()));
+    }
+    Ok(edges.into())
+}
+
+fn radial_circle_wire(
+    input: &RevolveCutInput,
+    qualified: QualifiedRevolveCut,
+    section_coordinate: i64,
+    radius_nm: i64,
+    sweep: builder::SweepAngle,
+) -> Wire {
+    let origin = axis_origin_at_section(qualified, section_coordinate);
+    let vertex = builder::vertex(origin + qualified.radial_direction * model_units(radius_nm));
+    let mut axis = Vector3::new(0.0, 0.0, 0.0);
+    axis[qualified.axis] = input.axis_direction_nm[qualified.axis].signum() as f64;
+    builder::revolve(&vertex, origin, axis, sweep, input.divisions as usize)
+}
+
+fn axis_origin_at_section(qualified: QualifiedRevolveCut, coordinate: i64) -> Point3 {
+    let mut origin = qualified.axis_origin_nm;
+    origin[qualified.axis] = coordinate;
+    point_from_nm(origin)
+}
+
+fn revolve_cut_error(
+    input: &RevolveCutInput,
+    category: ErrorCategory,
+    field: &str,
+    message: impl Into<String>,
+) -> FeatureError {
+    let mut error = failure(
+        category,
+        message,
+        Some(field),
+        "retain the original target and adjust the revolved cutting profile",
+    );
+    error.preserved_inputs.push(input.target.clone());
+    error
+}
+
+fn tool_snapshot(mut solid: Solid, body_id: &str) -> Result<BodySnapshot, FeatureError> {
+    solid.ensure_topology_stable_ids();
+    let solid_json = serde_json::to_vec(&solid).map_err(|error| {
+        failure(
+            ErrorCategory::Unsupported,
+            format!("cutting tool cannot be serialized: {error}"),
+            Some("profile_nm"),
+            "simplify the cutting profile",
+        )
+    })?;
+    Ok(BodySnapshot {
+        body_id: body_id.to_owned(),
+        solid_json,
+        evidence: GeometryEvidence {
+            vertex_count: solid.vertex_iter().count(),
+            edge_count: solid.edge_iter().count(),
+            face_count: solid.face_iter().count(),
+            bounds_nm: bounds_nm(
+                &solid
+                    .vertex_iter()
+                    .map(|vertex| vertex.point())
+                    .collect::<Vec<_>>(),
+            )?,
+            volume_model_units3: 0.0,
+            deterministic_digest: "internal-cutting-tool".to_owned(),
+        },
+    })
+}
+
+fn preserving_cut_error(mut error: FeatureError, target: &BodySnapshot) -> FeatureError {
+    error.preserved_inputs.clear();
+    error.preserved_inputs.push(target.clone());
+    error
+}
+
+fn validate_loft(input: &LoftInput) -> Result<(), FeatureError> {
+    exact_positive_nm("tolerance_nm", input.tolerance_nm)?;
+    if !(2..=256).contains(&input.profiles_nm.len()) {
+        return Err(invalid("profiles_nm", "must contain 2..=256 sections"));
+    }
+    for (index, points) in input.profiles_nm.iter().enumerate() {
+        validate_polygon(&format!("profiles_nm[{index}]"), points, input.tolerance_nm)?;
+    }
+    let correspondence_count = profile_breakpoints(&input.profiles_nm).len();
+    if correspondence_count > 4096 {
+        return Err(invalid(
+            "profiles_nm",
+            "combined section correspondence exceeds 4096 vertices",
+        ));
+    }
+    Ok(())
+}
+
+fn execute_loft(input: &LoftInput) -> Result<Solid, FeatureError> {
+    let same_vertex_count = input
+        .profiles_nm
+        .iter()
+        .map(Vec::len)
+        .all(|count| count == input.profiles_nm[0].len());
+    let wires = if same_vertex_count {
+        input
+            .profiles_nm
+            .iter()
+            .map(|profile| polygon_wire(profile))
+            .collect::<Vec<_>>()
+    } else {
+        let breaks = profile_breakpoints(&input.profiles_nm);
+        input
+            .profiles_nm
+            .iter()
+            .map(|profile| polygon_wire_points(&resample_polygon(profile, &breaks)))
+            .collect::<Vec<_>>()
+    };
+    capped_skin(&wires, "loft", "profiles_nm")
+}
+
+fn validate_sweep(input: &SweepInput) -> Result<(), FeatureError> {
+    exact_positive_nm("tolerance_nm", input.tolerance_nm)?;
+    validate_polygon("profile_nm", &input.profile_nm, input.tolerance_nm)?;
+    if !(2..=4096).contains(&input.path_nm.len()) {
+        return Err(invalid("path_nm", "must contain 2..=4096 path points"));
+    }
+    for (index, point) in input.path_nm.iter().copied().enumerate() {
+        validate_exact_vector(&format!("path_nm[{index}]"), point)?;
+    }
+    if input.path_nm.windows(2).any(|pair| pair[0] == pair[1]) {
+        return Err(invalid(
+            "path_nm",
+            "cannot contain consecutive duplicate points",
+        ));
+    }
+    let normal = polygon_normal(&input.profile_nm).expect("validated polygon has a normal");
+    let mut sign = 0.0_f64;
+    for segment in input.path_nm.windows(2) {
+        let delta = vector_between_nm(segment[0], segment[1]);
+        let projection = delta.dot(normal);
+        if projection.abs() <= model_units(input.tolerance_nm) {
+            return Err(invalid(
+                "path_nm",
+                "each segment must advance transversely through the profile plane",
+            ));
+        }
+        if sign == 0.0 {
+            sign = projection.signum();
+        } else if projection.signum() != sign {
+            return Err(invalid(
+                "path_nm",
+                "segments must advance consistently through the profile plane",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn execute_sweep(input: &SweepInput) -> Result<Solid, FeatureError> {
+    let reference = input.path_nm[0];
+    let wires = input
+        .path_nm
+        .iter()
+        .map(|path| {
+            let delta = vector_between_nm(reference, *path);
+            let points = input
+                .profile_nm
+                .iter()
+                .copied()
+                .map(point_from_nm)
+                .map(|point| point + delta)
+                .collect::<Vec<_>>();
+            polygon_wire_points(&points)
+        })
+        .collect::<Vec<_>>();
+    capped_skin(&wires, "sweep", "path_nm")
+}
+
+fn validate_polygon(
+    field: &str,
+    points: &[[i64; 3]],
+    tolerance_nm: i64,
+) -> Result<(), FeatureError> {
+    if !(3..=4096).contains(&points.len()) {
+        return Err(invalid(field, "must contain 3..=4096 distinct vertices"));
+    }
+    for (index, point) in points.iter().copied().enumerate() {
+        validate_exact_vector(&format!("{field}[{index}]"), point)?;
+    }
+    if points.iter().copied().collect::<BTreeSet<_>>().len() != points.len() {
+        return Err(invalid(field, "cannot contain duplicate vertices"));
+    }
+    let Some(normal) = polygon_normal(points) else {
+        return Err(invalid(field, "must enclose non-zero planar area"));
+    };
+    let origin = point_from_nm(points[0]);
+    let tolerance = model_units(tolerance_nm);
+    if points
+        .iter()
+        .copied()
+        .map(point_from_nm)
+        .any(|point| (point - origin).dot(normal).abs() > tolerance)
+    {
+        return Err(invalid(field, "must be coplanar within tolerance_nm"));
+    }
+    Ok(())
+}
+
+fn validate_angular_sweep(sweep_microdegrees: i64, divisions: u32) -> Result<(), FeatureError> {
+    if !(1..=MICRODEGREES_PER_REVOLUTION).contains(&sweep_microdegrees) {
+        return Err(invalid(
+            "sweep_microdegrees",
+            "must be between 1 and 360000000",
+        ));
+    }
+    let minimum = if sweep_microdegrees == MICRODEGREES_PER_REVOLUTION {
+        4
+    } else {
+        1
+    };
+    if !(minimum..=4096).contains(&divisions) {
+        return Err(invalid(
+            "divisions",
+            "must be 4..=4096 for a closed sweep or 1..=4096 for a partial sweep",
+        ));
+    }
+    Ok(())
+}
+
+fn sweep_angle(sweep_microdegrees: i64) -> builder::SweepAngle {
+    if sweep_microdegrees == MICRODEGREES_PER_REVOLUTION {
+        builder::SweepAngle::Closed
+    } else {
+        builder::SweepAngle::Partial(monstertruck_modeling::Rad(
+            sweep_microdegrees as f64 / MICRODEGREES_PER_REVOLUTION as f64 * TAU,
+        ))
+    }
 }
 
 fn validate_envelope(request: &FeatureRequest) -> Result<(), FeatureError> {
@@ -485,6 +1592,54 @@ fn validate_shell(input: &ShellInput) -> Result<(), FeatureError> {
         return Err(invalid(
             "removed_face_stable_ids",
             "cannot contain the unassigned stable ID 0",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_draft(input: &DraftInput) -> Result<(), FeatureError> {
+    validate_snapshot("target", &input.target).map_err(|mut error| {
+        error.preserved_inputs.push(input.target.clone());
+        error
+    })?;
+    exact_positive_nm("tolerance_nm", input.tolerance_nm).map_err(|mut error| {
+        error.preserved_inputs.push(input.target.clone());
+        error
+    })?;
+    validate_exact_vector("neutral_plane_origin_nm", input.neutral_plane_origin_nm).map_err(
+        |mut error| {
+            error.preserved_inputs.push(input.target.clone());
+            error
+        },
+    )?;
+    if input.face_stable_ids.is_empty() {
+        return Err(draft_error(
+            input,
+            ErrorCategory::InvalidInput,
+            "face_stable_ids",
+            "must contain at least one stable planar side-face reference",
+            None,
+        ));
+    }
+    let mut unique = BTreeSet::new();
+    for (index, id) in input.face_stable_ids.iter().copied().enumerate() {
+        if id == 0 || !unique.insert(id) {
+            return Err(draft_error(
+                input,
+                ErrorCategory::InvalidInput,
+                "face_stable_ids",
+                "must contain unique non-zero stable face references",
+                Some((id, index)),
+            ));
+        }
+    }
+    if input.angle_microdegrees == 0 || input.angle_microdegrees.unsigned_abs() >= 89_000_000 {
+        return Err(draft_error(
+            input,
+            ErrorCategory::InvalidInput,
+            "angle_microdegrees",
+            "must be non-zero and strictly between -89000000 and 89000000",
+            None,
         ));
     }
     Ok(())
@@ -1658,6 +2813,252 @@ fn shell_input_error(
     error
 }
 
+fn execute_draft(input: &DraftInput) -> Result<Solid, FeatureError> {
+    let source = decode_solid("target", &input.target).map_err(|mut error| {
+        error.preserved_inputs.push(input.target.clone());
+        error
+    })?;
+    let boxes = qualified_axis_aligned_boxes(&source)?.ok_or_else(|| {
+        draft_error(
+            input,
+            ErrorCategory::Unsupported,
+            "target",
+            "Draft requires one exact axis-aligned rectangular-prism body",
+            None,
+        )
+    })?;
+    if boxes.len() != 1 || source.boundaries().len() != 1 {
+        return Err(draft_error(
+            input,
+            ErrorCategory::Unsupported,
+            "target",
+            "Draft requires exactly one rectangular-prism boundary",
+            None,
+        ));
+    }
+    let bounds = AxisAlignedBoundsNm {
+        min: boxes[0].min,
+        max: boxes[0].max,
+    };
+    let pull_axis = principal_axis_index(input.pull_direction);
+    let neutral = input.neutral_plane_origin_nm[pull_axis];
+    if neutral < bounds.min[pull_axis] || neutral > bounds.max[pull_axis] {
+        return Err(draft_error(
+            input,
+            ErrorCategory::InvalidInput,
+            "neutral_plane_origin_nm",
+            "neutral plane must intersect the source prism along the pull direction",
+            None,
+        ));
+    }
+
+    let mut selected_planes = BTreeSet::new();
+    for (ordered_index, stable_id) in input.face_stable_ids.iter().copied().enumerate() {
+        let face = source
+            .face_iter()
+            .find(|face| face.stable_id().raw() == stable_id)
+            .ok_or_else(|| {
+                draft_error(
+                    input,
+                    ErrorCategory::InvalidInput,
+                    "face_stable_ids",
+                    "contains a reference absent from the target",
+                    Some((stable_id, ordered_index)),
+                )
+            })?;
+        let points = face
+            .vertex_iter()
+            .map(|vertex| point_nm(vertex.point()))
+            .collect::<Result<BTreeSet<_>, _>>()?;
+        let constant = (0..3)
+            .filter_map(|axis| {
+                let coordinate = points.first()?[axis];
+                points
+                    .iter()
+                    .all(|point| point[axis] == coordinate)
+                    .then_some((axis, coordinate))
+            })
+            .collect::<Vec<_>>();
+        if constant.len() != 1 {
+            return Err(draft_error(
+                input,
+                ErrorCategory::Unsupported,
+                "face_stable_ids",
+                "selected face is not planar on one principal plane",
+                Some((stable_id, ordered_index)),
+            ));
+        }
+        let (axis, coordinate) = constant[0];
+        if axis == pull_axis {
+            return Err(draft_error(
+                input,
+                ErrorCategory::InvalidInput,
+                "face_stable_ids",
+                "selected face must be parallel to the pull direction",
+                Some((stable_id, ordered_index)),
+            ));
+        }
+        let positive = if coordinate == bounds.max[axis] {
+            true
+        } else if coordinate == bounds.min[axis] {
+            false
+        } else {
+            return Err(draft_error(
+                input,
+                ErrorCategory::Unsupported,
+                "face_stable_ids",
+                "selected face does not lie on the prism's outer bounds",
+                Some((stable_id, ordered_index)),
+            ));
+        };
+        selected_planes.insert((axis, positive));
+    }
+
+    let angle = input.angle_microdegrees as f64 / MICRODEGREES_PER_REVOLUTION as f64 * TAU;
+    let tangent = angle.tan();
+    let section = |coordinate: i64| -> Result<Vec<[i64; 3]>, FeatureError> {
+        let delta = ((coordinate - neutral) as f64 * tangent).round();
+        if !delta.is_finite() || delta.abs() > MAX_EXACT_NANOMETERS as f64 {
+            return Err(draft_error(
+                input,
+                ErrorCategory::Numerical,
+                "angle_microdegrees",
+                "draft displacement exceeds exact nanometer range",
+                None,
+            ));
+        }
+        let delta = delta as i64;
+        let mut min = bounds.min;
+        let mut max = bounds.max;
+        for &(axis, positive) in &selected_planes {
+            if positive {
+                max[axis] = max[axis].checked_add(delta).ok_or_else(|| {
+                    draft_error(
+                        input,
+                        ErrorCategory::Numerical,
+                        "angle_microdegrees",
+                        "draft displacement overflowed exact coordinates",
+                        None,
+                    )
+                })?;
+            } else {
+                min[axis] = min[axis].checked_sub(delta).ok_or_else(|| {
+                    draft_error(
+                        input,
+                        ErrorCategory::Numerical,
+                        "angle_microdegrees",
+                        "draft displacement overflowed exact coordinates",
+                        None,
+                    )
+                })?;
+            }
+        }
+        if (0..3)
+            .filter(|axis| *axis != pull_axis)
+            .any(|axis| min[axis] >= max[axis])
+        {
+            return Err(draft_error(
+                input,
+                ErrorCategory::InvalidInput,
+                "angle_microdegrees",
+                "draft collapses or inverts a prism section",
+                None,
+            ));
+        }
+        Ok(rectangular_section(min, max, pull_axis, coordinate))
+    };
+    let profiles_nm = vec![
+        section(bounds.min[pull_axis])?,
+        section(bounds.max[pull_axis])?,
+    ];
+    if profiles_nm[0] == profiles_nm[1] {
+        return Err(draft_error(
+            input,
+            ErrorCategory::InvalidInput,
+            "angle_microdegrees",
+            "draft angle rounds to zero displacement at model precision",
+            None,
+        ));
+    }
+    execute_loft(&LoftInput {
+        profiles_nm,
+        tolerance_nm: input.tolerance_nm,
+    })
+    .map_err(|error| {
+        draft_error(
+            input,
+            error.category,
+            error.field.as_deref().unwrap_or("target"),
+            format!(
+                "draft could not construct a valid tapered prism: {}",
+                error.message
+            ),
+            None,
+        )
+    })
+}
+
+fn rectangular_section(
+    min: [i64; 3],
+    max: [i64; 3],
+    pull_axis: usize,
+    coordinate: i64,
+) -> Vec<[i64; 3]> {
+    match pull_axis {
+        0 => vec![
+            [coordinate, min[1], min[2]],
+            [coordinate, max[1], min[2]],
+            [coordinate, max[1], max[2]],
+            [coordinate, min[1], max[2]],
+        ],
+        1 => vec![
+            [min[0], coordinate, min[2]],
+            [min[0], coordinate, max[2]],
+            [max[0], coordinate, max[2]],
+            [max[0], coordinate, min[2]],
+        ],
+        2 => vec![
+            [min[0], min[1], coordinate],
+            [max[0], min[1], coordinate],
+            [max[0], max[1], coordinate],
+            [min[0], max[1], coordinate],
+        ],
+        _ => unreachable!("principal axis index"),
+    }
+}
+
+fn principal_axis_index(axis: PrincipalAxis) -> usize {
+    match axis {
+        PrincipalAxis::X => 0,
+        PrincipalAxis::Y => 1,
+        PrincipalAxis::Z => 2,
+    }
+}
+
+fn draft_error(
+    input: &DraftInput,
+    category: ErrorCategory,
+    field: &str,
+    message: impl Into<String>,
+    reference: Option<(u64, usize)>,
+) -> FeatureError {
+    let mut error = failure(
+        category,
+        message,
+        Some(field),
+        "retain the original body and choose qualified planar prism side faces",
+    );
+    error.preserved_inputs.push(input.target.clone());
+    error.problematic_reference = reference.map(|(stable_id, ordered_index)| {
+        Box::new(ProblematicReference {
+            kind: ReferenceKind::Face,
+            stable_id: stable_id.to_string(),
+            ordered_index: Some(ordered_index),
+        })
+    });
+    error
+}
+
 fn point_nm(point: Point3) -> Result<[i64; 3], FeatureError> {
     Ok([
         model_coordinate_nm(point[0])?,
@@ -1921,6 +3322,146 @@ fn closed_wire(points: [Point3; 4]) -> Wire {
         builder::line(&vertices[3], &vertices[0]),
     ]
     .into()
+}
+
+fn polygon_wire(points: &[[i64; 3]]) -> Wire {
+    polygon_wire_points(
+        &points
+            .iter()
+            .copied()
+            .map(point_from_nm)
+            .collect::<Vec<_>>(),
+    )
+}
+
+fn polygon_wire_points(points: &[Point3]) -> Wire {
+    let vertices = points
+        .iter()
+        .copied()
+        .map(builder::vertex)
+        .collect::<Vec<_>>();
+    (0..vertices.len())
+        .map(|index| builder::line(&vertices[index], &vertices[(index + 1) % vertices.len()]))
+        .collect::<Vec<_>>()
+        .into()
+}
+
+fn capped_skin(wires: &[Wire], operation: &str, field: &str) -> Result<Solid, FeatureError> {
+    let mut shell: Shell = builder::try_skin_wires(wires).map_err(|error| {
+        failure(
+            ErrorCategory::InvalidInput,
+            format!("{operation} section correspondence is invalid: {error}"),
+            Some(field),
+            "use valid closed polygon sections with consistent caller-owned winding",
+        )
+    })?;
+    let boundaries = shell.extract_boundaries();
+    if boundaries.len() != 2 {
+        return Err(failure(
+            ErrorCategory::InvalidInput,
+            format!("{operation} produced {} open boundaries", boundaries.len()),
+            Some(field),
+            "remove self-intersections and keep sections in consistent order",
+        ));
+    }
+    for boundary in boundaries {
+        let cap = builder::try_attach_plane(vec![boundary.inverse()]).map_err(|error| {
+            failure(
+                ErrorCategory::InvalidInput,
+                format!("{operation} cap is invalid: {error}"),
+                Some(field),
+                "use closed coplanar polygon sections",
+            )
+        })?;
+        shell.push(cap);
+    }
+    Solid::try_new(vec![shell]).map_err(|error| {
+        failure(
+            ErrorCategory::InvalidInput,
+            format!("{operation} produced an invalid boundary representation: {error}"),
+            Some(field),
+            "remove section crossings and keep section winding consistent",
+        )
+    })
+}
+
+/// Union of normalized vertex positions preserves every caller-supplied
+/// polygon corner while giving every loft section identical edge counts.
+fn profile_breakpoints(profiles: &[Vec<[i64; 3]>]) -> Vec<f64> {
+    let mut breaks = Vec::new();
+    for profile in profiles {
+        let lengths = polygon_edge_lengths(profile);
+        let total = lengths.iter().sum::<f64>();
+        let mut accumulated = 0.0;
+        for length in lengths {
+            breaks.push(accumulated / total);
+            accumulated += length;
+        }
+    }
+    breaks.sort_by(f64::total_cmp);
+    breaks.dedup_by(|left, right| (*left - *right).abs() <= 1.0e-12);
+    breaks
+}
+
+fn polygon_edge_lengths(points: &[[i64; 3]]) -> Vec<f64> {
+    (0..points.len())
+        .map(|index| {
+            vector_between_nm(points[index], points[(index + 1) % points.len()]).magnitude()
+        })
+        .collect()
+}
+
+fn resample_polygon(points: &[[i64; 3]], breaks: &[f64]) -> Vec<Point3> {
+    let lengths = polygon_edge_lengths(points);
+    let total = lengths.iter().sum::<f64>();
+    breaks
+        .iter()
+        .copied()
+        .map(|position| {
+            let target = position * total;
+            let mut accumulated = 0.0;
+            for (index, length) in lengths.iter().copied().enumerate() {
+                if target <= accumulated + length || index + 1 == lengths.len() {
+                    let ratio = ((target - accumulated) / length).clamp(0.0, 1.0);
+                    let front = point_from_nm(points[index]);
+                    let delta =
+                        vector_between_nm(points[index], points[(index + 1) % points.len()]);
+                    return front + delta * ratio;
+                }
+                accumulated += length;
+            }
+            unreachable!("non-empty validated polygon")
+        })
+        .collect()
+}
+
+fn polygon_normal(points: &[[i64; 3]]) -> Option<Vector3> {
+    let mut normal = Vector3::new(0.0, 0.0, 0.0);
+    for index in 0..points.len() {
+        let current = point_from_nm(points[index]);
+        let next = point_from_nm(points[(index + 1) % points.len()]);
+        normal.x += (current.y - next.y) * (current.z + next.z);
+        normal.y += (current.z - next.z) * (current.x + next.x);
+        normal.z += (current.x - next.x) * (current.y + next.y);
+    }
+    let magnitude = normal.magnitude();
+    (magnitude > f64::EPSILON).then(|| normal / magnitude)
+}
+
+fn vector_from_nm(value: [i64; 3]) -> Vector3 {
+    Vector3::new(
+        model_units(value[0]),
+        model_units(value[1]),
+        model_units(value[2]),
+    )
+}
+
+fn vector_between_nm(front: [i64; 3], back: [i64; 3]) -> Vector3 {
+    Vector3::new(
+        model_units(back[0] - front[0]),
+        model_units(back[1] - front[1]),
+        model_units(back[2] - front[2]),
+    )
 }
 
 fn bounds_nm(points: &[Point3]) -> Result<AxisAlignedBoundsNm, FeatureError> {

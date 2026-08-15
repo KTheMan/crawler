@@ -56,6 +56,7 @@ interface DocumentView {
   id: string;
   revision: number;
   features?: Record<string, StoredFeature>;
+  parameters?: Record<string, { value?: { kind?: string; value?: number | boolean | string } }>;
   transactions?: Array<{ changes?: Array<{ kind?: string; feature?: string; request_json?: string }> }>;
 }
 
@@ -158,8 +159,9 @@ export function buildAdvancedFeatureEditEnvelope(
   const accepted = [...(document.transactions ?? [])].reverse().flatMap((transaction) => [...(transaction.changes ?? [])].reverse()).find((change) => change.kind === "accept_feature_result" && change.feature === featureId && change.request_json);
   if (!accepted?.request_json) fail("not_found", "featureId", "accepted feature request is missing", "recompute or recreate the feature before editing it");
   const request = parseJson<StoredFeatureRequest>(accepted.request_json, "feature.request", "recompute or recreate the feature before editing it");
-  const operation = applyAdvancedParameterEdits(command, request.operation);
-  const parameterValues = normalizedParameterValues(command, operation);
+  const acceptedParameterValues = storedParameterValues(document, feature);
+  const operation = applyAdvancedParameterEdits(command, request.operation, acceptedParameterValues);
+  const parameterValues = normalizedParameterValues(command, operation, acceptedParameterValues);
   const bindings = parameterBindings(featureId, parameterValues, feature.parameters);
   return {
     transaction_id: `transaction:${document.revision + 1}:edit-${command.operationId.replace("crawler.part.", "").replaceAll(".", "-")}`,
@@ -207,6 +209,7 @@ function parameterBindings(
 function normalizedParameterValues(
   command: AdvancedFeatureCommand,
   operation: Readonly<Record<string, unknown>>,
+  accepted: Readonly<Record<string, number | boolean | string>> = {},
 ): Record<string, number | boolean | string> {
   const supplied = command.parameters ?? {};
   const integer = (key: string, fallback: unknown) => integerParameter(supplied, key, Number(fallback), undefined);
@@ -222,6 +225,21 @@ function normalizedParameterValues(
       divisions: integer("divisions", operation.divisions),
       tolerance,
     };
+    case "profile_revolve": return {
+      angle: integer("angle", operation.sweep_microdegrees),
+      reverse: booleanParameter(supplied, "reverse", accepted.reverse === true),
+    };
+    case "revolve_cut": return {
+      angle: integer("angle", operation.sweep_microdegrees),
+      reverse: booleanParameter(supplied, "reverse", accepted.reverse === true),
+    };
+    case "extrude_cut": return { distance: integer("distance", vectorLength(operation.direction_nm)) };
+    case "draft": return {
+      angle: integer("angle", Math.abs(Number(operation.angle_microdegrees))),
+      reverse: booleanParameter(supplied, "reverse", accepted.reverse === true || Number(operation.angle_microdegrees) < 0),
+    };
+    case "loft":
+    case "sweep": return {};
     case "boolean": return { tolerance };
     case "fillet": return { radius: integer("radius", operation.radius_nm), divisions: integer("divisions", operation.divisions), tolerance };
     case "chamfer": return { distance: integer("distance", operation.radius_nm), divisions: integer("divisions", operation.divisions), tolerance };
@@ -238,7 +256,6 @@ function normalizedParameterValues(
     case "linear_pattern": return {
       count: integer("count", Array.isArray(operation.instance_body_ids) ? operation.instance_body_ids.length : 2),
       spacing: integer("spacing", vectorMagnitude(operation.step_nm)),
-      symmetric: booleanParameter(supplied, "symmetric", false),
       tolerance,
     };
     case "circular_pattern": {
@@ -253,10 +270,11 @@ function normalizedParameterValues(
 function applyAdvancedParameterEdits(
   command: AdvancedFeatureCommand,
   stored: Readonly<Record<string, unknown>>,
+  accepted: Readonly<Record<string, number | boolean | string>>,
 ): Record<string, unknown> {
   const operation = structuredClone(stored) as Record<string, unknown>;
-  const values = normalizedParameterValues(command, operation);
-  operation.tolerance_nm = values.tolerance;
+  const values = normalizedParameterValues(command, operation, accepted);
+  if (values.tolerance !== undefined) operation.tolerance_nm = values.tolerance;
   switch (operation.kind) {
     case "revolve":
       operation.inner_radius_nm = values.inner_radius;
@@ -266,6 +284,24 @@ function applyAdvancedParameterEdits(
       operation.sweep_microdegrees = Math.abs(values.angle as number);
       operation.divisions = values.divisions;
       break;
+    case "profile_revolve":
+    case "revolve_cut": {
+      operation.sweep_microdegrees = checkedSweepMagnitude(values.angle, "parameters.angle");
+      const wasReversed = accepted.reverse === true;
+      const reverse = values.reverse === true;
+      if (wasReversed !== reverse) {
+        operation.axis_direction_nm = negatedExactVector(operation.axis_direction_nm, "operation.axis_direction_nm");
+      }
+      break;
+    }
+    case "extrude_cut":
+      operation.direction_nm = resizedVector(operation.direction_nm, values.distance as number, "operation.direction_nm");
+      break;
+    case "draft": {
+      const magnitude = checkedDraftMagnitude(values.angle, "parameters.angle");
+      operation.angle_microdegrees = values.reverse === true ? -magnitude : magnitude;
+      break;
+    }
     case "fillet": operation.radius_nm = values.radius; operation.divisions = values.divisions; break;
     case "chamfer": operation.radius_nm = values.distance; operation.divisions = values.divisions; break;
     case "transform": operation.translation_nm = [values.x, values.y, values.z]; break;
@@ -296,6 +332,64 @@ function resizedInstanceIds(value: unknown, count: number): string[] {
 function vectorMagnitude(value: unknown): number {
   if (!Array.isArray(value)) return 0;
   return Math.max(...value.map((entry) => Math.abs(Number(entry))));
+}
+
+function vectorLength(value: unknown): number {
+  if (!Array.isArray(value) || value.length !== 3 || value.some((entry) => !Number.isSafeInteger(entry))) return 0;
+  return Math.round(Math.hypot(...value.map(Number)));
+}
+
+function resizedVector(value: unknown, magnitude: number, field: string): [number, number, number] {
+  if (!Number.isSafeInteger(magnitude) || magnitude < 1) {
+    fail("invalid_input", "parameters.distance", "distance must be a positive exact nanometer integer", "enter a positive distance and retry");
+  }
+  if (!Array.isArray(value) || value.length !== 3 || value.some((entry) => !Number.isSafeInteger(entry))) {
+    fail("invalid_input", field, "stored direction must contain three exact nanometer integers", "recreate the feature from a valid profile support");
+  }
+  const original = value.map(Number);
+  const length = Math.hypot(...original);
+  if (!Number.isFinite(length) || length === 0) {
+    fail("invalid_input", field, "stored direction must have non-zero length", "recreate the feature from a valid profile support");
+  }
+  const resized = original.map((entry) => Math.round(entry / length * magnitude)) as [number, number, number];
+  if (resized.every((entry) => entry === 0)) {
+    fail("invalid_input", field, "edited distance rounds the stored direction to zero", "enter a larger distance and retry");
+  }
+  return resized;
+}
+
+function negatedExactVector(value: unknown, field: string): [number, number, number] {
+  if (!Array.isArray(value) || value.length !== 3 || value.some((entry) => !Number.isSafeInteger(entry))) {
+    fail("invalid_input", field, "stored axis direction must contain three exact nanometer integers", "recreate the feature with a valid axis");
+  }
+  const negated = value.map((entry) => Number(entry) === 0 ? 0 : -Number(entry)) as [number, number, number];
+  if (negated.every((entry) => entry === 0)) {
+    fail("invalid_input", field, "stored axis direction must have non-zero length", "recreate the feature with a valid axis");
+  }
+  return negated;
+}
+
+function checkedSweepMagnitude(value: unknown, field: string): number {
+  const magnitude = Math.abs(Number(value));
+  if (!Number.isSafeInteger(magnitude) || magnitude < 1 || magnitude > 360_000_000) {
+    fail("invalid_input", field, "angle must be an exact microdegree value from 1 through 360000000", "enter an angle from 0 through 360 degrees and retry");
+  }
+  return magnitude;
+}
+
+function checkedDraftMagnitude(value: unknown, field: string): number {
+  const magnitude = Math.abs(Number(value));
+  if (!Number.isSafeInteger(magnitude) || magnitude < 1 || magnitude >= 89_000_000) {
+    fail("invalid_input", field, "draft angle must be non-zero and less than 89 degrees", "enter a draft angle between 0 and 89 degrees and retry");
+  }
+  return magnitude;
+}
+
+function storedParameterValues(document: DocumentView, feature: StoredFeature): Record<string, number | boolean | string> {
+  return Object.fromEntries(Object.entries(feature.parameters).flatMap(([key, parameterId]) => {
+    const value = document.parameters?.[parameterId]?.value?.value;
+    return typeof value === "number" || typeof value === "boolean" || typeof value === "string" ? [[key, value]] : [];
+  }));
 }
 
 function buildOperation(
@@ -366,6 +460,25 @@ function buildOperation(
     }, resolvedInputs: [source] };
   }
 
+  if (command.operationId === "crawler.part.draft") {
+    const faceIds = exactStableIds(selection.draftFaceStableIds, "selection.draftFaceStableIds", true);
+    const rawAngle = integerParameter(parameters, "angle", 2_000_000, 1);
+    const angle = checkedDraftMagnitude(rawAngle, "parameters.angle");
+    const reverse = booleanParameter(parameters, "reverse", false);
+    return { value: {
+      kind: "draft",
+      target: source.body,
+      face_stable_ids: faceIds,
+      pull_direction: axis,
+      neutral_plane_origin_nm: exactVector(
+        selection.neutralPlaneOriginNanometers ?? selection.originNanometers ?? inferredOrigin(active, axis),
+        "selection.neutralPlaneOriginNanometers",
+      ),
+      angle_microdegrees: reverse ? -angle : angle,
+      tolerance_nm: toleranceNm,
+    }, resolvedInputs: [source] };
+  }
+
   const transformSource = selection.orderedFeatureIds?.length
     ? { semantics: "feature_sequence", ordered_feature_ids: [...selection.orderedFeatureIds], resolved_body: source.body }
     : { semantics: "body", body: source.body };
@@ -387,7 +500,6 @@ function buildOperation(
     return { value: { kind: "transform", source: transformSource, translation_nm: translation, tolerance_nm: toleranceNm }, resolvedInputs: [source] };
   }
   if (command.operationId === "crawler.part.pattern.linear") {
-    if (booleanParameter(parameters, "symmetric", false)) fail("unsupported", "parameters.symmetric", "symmetric linear pattern placement is not qualified", "turn off Symmetric and retry");
     const count = integerParameter(parameters, "count", 2, 2);
     if (count > 1024) fail("invalid_input", "parameters.count", "pattern count exceeds the qualified limit of 1024", "reduce Count to 1024 or fewer instances");
     const spacing = integerParameter(parameters, "spacing", 10_000_000, 1) * (selection.directionSign ?? 1);

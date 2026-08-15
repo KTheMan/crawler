@@ -8,7 +8,7 @@
     {
       "key": "profile",
       "label": "Profile",
-      "allowed_kinds": ["sketch_profile", "face"],
+      "allowed_kinds": ["sketch_profile"],
       "minimum_count": 1,
       "maximum_count": 1
     }
@@ -22,38 +22,22 @@
       "bounds": { "minimum": 1000, "maximum": 1000000000000 },
       "choices": [],
       "advanced_group": null
-    },
-    {
-      "key": "extent",
-      "label": "Extent",
-      "value_kind": "text",
-      "default": { "kind": "text", "value": "one_sided" },
-      "bounds": null,
-      "choices": ["one_sided", "symmetric"],
-      "advanced_group": null
-    },
-    {
-      "key": "draft_angle",
-      "label": "Draft angle",
-      "value_kind": "angle_microdegrees",
-      "default": { "kind": "angle_microdegrees", "value": 0 },
-      "bounds": { "minimum": -89000000, "maximum": 89000000 },
-      "choices": [],
-      "advanced_group": "Advanced"
-    },
-    {
-      "key": "reverse",
-      "label": "Reverse direction",
-      "value_kind": "boolean",
-      "default": { "kind": "boolean", "value": false },
-      "bounds": null,
-      "choices": [],
-      "advanced_group": "Advanced"
     }
   ],
   "preview": {
     "strategy": "debounced",
     "debounce_milliseconds": 75,
     "cancellation": "replace_older_preview"
+  },
+  "lifecycle": {
+    "stage": "alpha",
+    "supports_preview": true,
+    "supports_edit": true,
+    "supports_suppression": true
+  },
+  "enablement": {
+    "state": "enabled",
+    "capability": "part.extrude",
+    "reason": null
   }
 }
