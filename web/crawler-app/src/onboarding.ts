@@ -1,11 +1,11 @@
 const KEY = "crawler-alpha-onboarding";
-const STATE_VERSION = 2;
+const STATE_VERSION = 4;
 
-export const ONBOARDING_ACTIONS = ["model", "timeline", "save"] as const;
+export const ONBOARDING_ACTIONS = ["start-sketch", "choose-support", "draw-rectangle", "finish-sketch", "start-extrude", "commit-extrude"] as const;
 export type OnboardingAction = (typeof ONBOARDING_ACTIONS)[number];
 
 export interface OnboardingState {
-  version: 2;
+  version: 4;
   step: number;
   complete: boolean;
   achieved: OnboardingAction[];
@@ -15,21 +15,43 @@ const STEPS: readonly {
   action: OnboardingAction;
   instruction: string;
   context: string;
+  focusTarget: string;
 }[] = [
   {
-    action: "model",
-    instruction: "Change Pad length and press Enter.",
-    context: "The inspector edits exact parameters. Undo reverses accepted edits.",
+    action: "start-sketch",
+    instruction: "Choose New Sketch.",
+    context: "A sketch starts 2D geometry. You will choose its support before drawing anything.",
+    focusTarget: "#edit-sketch",
   },
   {
-    action: "timeline",
-    instruction: "Select a feature in the timeline.",
-    context: "The browser shows objects. The timeline shows how they were built.",
+    action: "choose-support",
+    instruction: "Choose an origin plane in the model browser.",
+    context: "XY is a familiar starting plane. Choosing support sets orientation; it does not create geometry.",
+    focusTarget: '[data-origin-plane-id="origin-plane:xy"]',
   },
   {
-    action: "save",
-    instruction: "Save the part.",
-    context: "Save keeps an explicit copy. Autosave remains available for recovery.",
+    action: "draw-rectangle",
+    instruction: "Create a closed rectangle.",
+    context: "Choose Rectangle, then drag between two corners on the sketch plane. A closed profile is ready for a solid feature.",
+    focusTarget: '[data-sketch-tool="rectangle"]',
+  },
+  {
+    action: "finish-sketch",
+    instruction: "Finish Sketch to keep the rectangle.",
+    context: "Finish Sketch commits this 2D profile and returns you to the solid-modeling workspace.",
+    focusTarget: "#active-tool-finish",
+  },
+  {
+    action: "start-extrude",
+    instruction: "Start Extrude.",
+    context: "Extrude turns the closed sketch profile into a 3D feature. You will see a preview before committing it.",
+    focusTarget: "#start-pad",
+  },
+  {
+    action: "commit-extrude",
+    instruction: "Commit the Extrude preview.",
+    context: "Review the distance, then press Enter to accept the preview and create the feature.",
+    focusTarget: "#pad-length",
   },
 ];
 
@@ -46,16 +68,56 @@ export function advanceOnboarding(value: OnboardingState): OnboardingState {
     : { ...value, step: value.step + 1 };
 }
 
+export function goBackOnboarding(value: OnboardingState): OnboardingState {
+  if (value.complete || value.step === 0) return value;
+  return { ...value, step: value.step - 1 };
+}
+
 export function installOnboarding(
   host: HTMLElement,
-  focusTargets: readonly string[],
+  options: { autoStart?: boolean } = {},
 ): { restart(): void; state(): { step: number; complete: boolean } } {
   let value = read();
-  let initialPadValue = document.querySelector<HTMLInputElement>("#pad-length")?.value ?? "";
-  let padChanged = false;
+  let hasPersistedState = false;
+  try { hasPersistedState = localStorage.getItem(KEY) !== null; } catch { /* Storage is optional. */ }
+  if (options.autoStart === false && !hasPersistedState) {
+    value = { ...freshState(), complete: true };
+  }
+  let describedTarget: HTMLElement | null = null;
+  let previousDescription: string | null = null;
 
   const persist = () => write(value);
+  const targetForStep = (step = value.step): HTMLElement | null => {
+    const selector = STEPS[step]?.focusTarget;
+    return selector ? document.querySelector<HTMLElement>(selector) : null;
+  };
+  const clearTarget = () => {
+    if (!describedTarget) return;
+    describedTarget.removeAttribute("data-tour-target");
+    if (previousDescription === null) describedTarget.removeAttribute("aria-describedby");
+    else describedTarget.setAttribute("aria-describedby", previousDescription);
+    describedTarget = null;
+    previousDescription = null;
+  };
+  const describeTarget = () => {
+    clearTarget();
+    if (value.complete) return;
+    const target = targetForStep();
+    if (!target) return;
+    describedTarget = target;
+    previousDescription = target.getAttribute("aria-describedby");
+    const descriptions = new Set((previousDescription ?? "").split(/\s+/).filter(Boolean));
+    descriptions.add("tour-instruction");
+    target.setAttribute("aria-describedby", [...descriptions].join(" "));
+    target.setAttribute("data-tour-target", "true");
+  };
+  const focusCurrentTarget = () => requestAnimationFrame(() => {
+    describeTarget();
+    targetForStep()?.focus();
+  });
+
   const render = () => {
+    clearTarget();
     host.hidden = value.complete;
     if (value.complete) {
       host.innerHTML = "";
@@ -65,23 +127,35 @@ export function installOnboarding(
     const achieved = value.achieved.includes(definition.action);
     host.innerHTML = `
       <strong>Quick tour ${value.step + 1}/${STEPS.length}</strong>
-      <span>${definition.instruction}</span>
+      <span id="tour-instruction">${definition.instruction}</span>
       <small>${definition.context}</small>
       <span id="tour-action-status" role="status">${achieved ? "Action complete." : "Complete this action to continue."}</span>
-      <button id="tour-next" type="button" ${achieved ? "" : "disabled"} aria-describedby="tour-action-status">${value.step === STEPS.length - 1 ? "Finish" : "Next"}</button>
-      <button id="tour-skip" class="quiet" type="button">Skip</button>`;
+      <div class="tour-actions"><button id="tour-back" class="quiet" type="button" ${value.step === 0 ? "disabled" : ""}>Back</button><button id="tour-next" type="button" ${achieved ? "" : "disabled"} aria-describedby="tour-action-status">${value.step === STEPS.length - 1 ? "Finish tour" : "Next"}</button><button id="tour-exit" class="quiet" type="button">Exit tour</button></div>`;
+    describeTarget();
     host.querySelector("#tour-next")?.addEventListener("click", () => {
       const next = advanceOnboarding(value);
       if (next === value) return;
+      const completedTarget = targetForStep();
       value = next;
       persist();
       render();
-      if (!value.complete) document.querySelector<HTMLElement>(focusTargets[value.step])?.focus();
+      if (value.complete) completedTarget?.focus();
+      else focusCurrentTarget();
     });
-    host.querySelector("#tour-skip")?.addEventListener("click", () => {
+    host.querySelector("#tour-back")?.addEventListener("click", () => {
+      const previous = goBackOnboarding(value);
+      if (previous === value) return;
+      value = previous;
+      persist();
+      render();
+      focusCurrentTarget();
+    });
+    host.querySelector("#tour-exit")?.addEventListener("click", () => {
+      const returnTarget = targetForStep();
       value = { ...value, complete: true };
       persist();
       render();
+      returnTarget?.focus();
     });
   };
 
@@ -93,40 +167,34 @@ export function installOnboarding(
     render();
   };
 
-  const checkCommittedModel = () => {
-    const operation = document.querySelector<HTMLElement>("#operation-state");
-    if (
-      padChanged &&
-      operation?.dataset.status === "committed" &&
-      operation.textContent?.includes("Extrude")
-    ) achieve("model");
-  };
-  const checkSaved = () => {
-    if (document.querySelector("#storage-status")?.textContent?.trim() === "saved") achieve("save");
-  };
-
-  document.addEventListener("input", (event) => {
-    if (!(event.target instanceof HTMLInputElement) || event.target.id !== "pad-length") return;
-    padChanged = event.target.value !== initialPadValue;
-  });
   document.addEventListener("click", (event) => {
-    if (event.target instanceof Element && event.target.closest("[data-timeline-id]")) achieve("timeline");
-  }, true);
+    if (!(event.target instanceof Element)) return;
+    if (event.target.closest("#edit-sketch") && document.querySelector(".workspace.sketch-active")) {
+      achieve("start-sketch");
+      return;
+    }
+    if (event.target.closest("[data-origin-plane-id]") && document.querySelector(".workspace.sketch-active")) {
+      achieve("choose-support");
+      return;
+    }
+  });
+  document.addEventListener("crawler:onboarding-action", (event) => {
+    const action = (event as CustomEvent<unknown>).detail;
+    if (typeof action === "string" && ONBOARDING_ACTIONS.includes(action as OnboardingAction)) achieve(action as OnboardingAction);
+  });
+
   new MutationObserver(() => {
-    checkCommittedModel();
-    checkSaved();
-  }).observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true });
+    if (value.complete) return;
+    if (!describedTarget?.isConnected || describedTarget !== targetForStep()) describeTarget();
+  }).observe(document.body, { subtree: true, childList: true });
 
   render();
-  checkSaved();
   return {
     restart() {
       value = freshState();
-      initialPadValue = document.querySelector<HTMLInputElement>("#pad-length")?.value ?? "";
-      padChanged = false;
       persist();
       render();
-      document.querySelector<HTMLInputElement>(focusTargets[0])?.focus();
+      focusCurrentTarget();
     },
     state() { return { step: value.step, complete: value.complete }; },
   };

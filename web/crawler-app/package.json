@@ -5,21 +5,37 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "build": "tsc --noEmit && vite build",
-    "build:pages": "tsc --noEmit && vite build --mode pages",
+    "build": "tsc --noEmit && vite build && node scripts/verify-production-theme-boundary.mjs",
+    "build:pages": "tsc --noEmit && vite build --mode pages && node scripts/verify-production-theme-boundary.mjs",
+    "build:dev": "tsc --noEmit && vite build --mode development",
+    "verify:production-theme-boundary": "node scripts/verify-production-theme-boundary.mjs",
     "test": "playwright test",
     "test:pages": "playwright test --config playwright.pages.config.ts",
     "test:unit": "node --experimental-strip-types --test unit/*.test.ts",
+    "test:sketch-workspace": "node --experimental-strip-types --test unit/sketch-workspace.test.ts unit/sketch-snap-spatial-index.test.ts unit/sketch-render-indexes.test.ts",
+    "test:sketch-scale": "node scripts/run-sketch-scale.mjs",
+    "test:sketch-scale:raw": "pnpm run build && playwright test tests/sketch-workspace-scale.spec.ts --config playwright.performance.config.ts --workers=1",
+    "test:sketch-perf": "playwright test tests/sketch-performance-matrix.spec.ts --workers=1",
+    "test:sketch-perf:qualified": "node scripts/run-sketch-performance.mjs",
+    "test:sketch-perf:watchdog": "node scripts/run-sketch-performance.mjs --self-test",
     "test:advanced": "node --experimental-strip-types --test unit/advanced-feature-builder.test.ts",
     "test:sketch": "node --experimental-strip-types --test unit/sketch-editor.test.ts"
   },
   "dependencies": {
-    "three": "^0.185.1"
+    "fflate": "0.8.3",
+    "lucide": "0.468.0",
+    "three": "^0.185.1",
+    "three-viewport-gizmo": "2.2.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.56.1",
     "@types/three": "^0.181.0",
     "typescript": "^5.9.3",
     "vite": "^7.2.4"
+  },
+  "pnpm": {
+    "patchedDependencies": {
+      "three-viewport-gizmo@2.2.0": "patches/three-viewport-gizmo@2.2.0.patch"
+    }
   }
 }

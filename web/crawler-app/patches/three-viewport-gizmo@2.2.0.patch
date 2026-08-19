@@ -1,0 +1,31 @@
+diff --git a/dist/three-viewport-gizmo.js b/dist/three-viewport-gizmo.js
+index c9084c9..250aa24 100644
+--- a/dist/three-viewport-gizmo.js
++++ b/dist/three-viewport-gizmo.js
+@@ -1,7 +1,7 @@
+ var oe = Object.defineProperty;
+ var re = (s, e, t) => e in s ? oe(s, e, { enumerable: !0, configurable: !0, writable: !0, value: t }) : s[e] = t;
+ var m = (s, e, t) => re(s, typeof e != "symbol" ? e + "" : e, t);
+-import { Vector3 as U, Vector2 as Q, Raycaster as ae, Object3D as ft, Color as Vt, CanvasTexture as ce, RepeatWrapping as zt, SRGBColorSpace as le, BufferGeometry as Xt, BufferAttribute as nt, Sprite as bt, SpriteMaterial as St, Mesh as V, MeshBasicMaterial as at, BackSide as de, SphereGeometry as ue, InstancedBufferGeometry as he, Float32BufferAttribute as Bt, InstancedInterleavedBuffer as pt, InterleavedBufferAttribute as N, WireframeGeometry as fe, Box3 as xt, Sphere as Zt, ShaderMaterial as pe, ShaderLib as it, UniformsUtils as $t, UniformsLib as st, Vector4 as X, Line3 as me, Matrix4 as Yt, MathUtils as ge, Clock as ye, Quaternion as ct, Scene as _e, OrthographicCamera as ve, PerspectiveCamera as we, Spherical as be } from "three";
++import { Vector3 as U, Vector2 as Q, Raycaster as ae, Object3D as ft, Color as Vt, CanvasTexture as ce, RepeatWrapping as zt, SRGBColorSpace as le, BufferGeometry as Xt, BufferAttribute as nt, Sprite as bt, SpriteMaterial as St, Mesh as V, MeshBasicMaterial as at, BackSide as de, SphereGeometry as ue, InstancedBufferGeometry as he, Float32BufferAttribute as Bt, InstancedInterleavedBuffer as pt, InterleavedBufferAttribute as N, WireframeGeometry as fe, Box3 as xt, Sphere as Zt, ShaderMaterial as pe, ShaderLib as it, UniformsUtils as $t, UniformsLib as st, Vector4 as X, Line3 as me, Matrix4 as Yt, MathUtils as ge, Timer as ye, Quaternion as ct, Scene as _e, OrthographicCamera as ve, PerspectiveCamera as we, Spherical as be } from "three";
+ const Qt = (s, e) => {
+   const [t, n] = e.split("-");
+   return Object.assign(s.style, {
+@@ -1537,7 +1537,7 @@ class Ke extends ft {
+       return;
+     }
+     this._controls && (this._controls.enabled = !1);
+-    const o = this._clock.getDelta() * Me * this.speed;
++    const o = this._clock.update().getDelta() * Me * this.speed;
+     this._quaternionStart.rotateTowards(this._quaternionEnd, o), t.applyQuaternion(this._quaternionStart).multiplyScalar(this._distance).add(this.target), n.rotateTowards(this._targetQuaternion, o), this._updateOrientation(), requestAnimationFrame(() => this.dispatchEvent({ type: "change" })), this._quaternionStart.angleTo(this._quaternionEnd) < lt && (this._controls && (this._controls.enabled = !0), this.animating = !1, this.dispatchEvent({ type: "end" }));
+   }
+   /**
+@@ -1548,7 +1548,7 @@ class Ke extends ft {
+    */
+   _setOrientation(t) {
+     const n = this.camera, i = this.target;
+-    H.copy(t).multiplyScalar(this._distance), q.setPosition(H).lookAt(H, this.position, this.up), this._targetQuaternion.setFromRotationMatrix(q), H.add(i), q.lookAt(H, i, this.up), this._quaternionEnd.setFromRotationMatrix(q), q.setPosition(n.position).lookAt(n.position, i, this.up), this._quaternionStart.setFromRotationMatrix(q), this.animating = !0, this._clock.start(), this.dispatchEvent({ type: "start" });
++    H.copy(t).multiplyScalar(this._distance), q.setPosition(H).lookAt(H, this.position, this.up), this._targetQuaternion.setFromRotationMatrix(q), H.add(i), q.lookAt(H, i, this.up), this._quaternionEnd.setFromRotationMatrix(q), q.setPosition(n.position).lookAt(n.position, i, this.up), this._quaternionStart.setFromRotationMatrix(q), this.animating = !0, this._clock.reset(), this.dispatchEvent({ type: "start" });
+   }
+   /**
+    * Handles the pointer down event for starting drag operations.

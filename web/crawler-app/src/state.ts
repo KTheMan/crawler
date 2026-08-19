@@ -1,7 +1,7 @@
 import type { Selection, TopologyKind } from "./protocol";
 
 export type Readiness = "idle" | "loading" | "ready" | "error";
-export type OperationStatus = "idle" | "preview" | "committed" | "cancelled";
+export type OperationStatus = "idle" | "preview" | "committed" | "cancelled" | "failed";
 
 export interface AppState {
   readiness: Record<"ui" | "wasm" | "worker" | "renderer", Readiness>;

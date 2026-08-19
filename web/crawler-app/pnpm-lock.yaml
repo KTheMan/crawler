@@ -4,13 +4,27 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  three-viewport-gizmo@2.2.0:
+    hash: 1f801527c4541579fbe2eacdbdd0e357ce795856e65f745a90a42d04a33bfdc1
+    path: patches/three-viewport-gizmo@2.2.0.patch
+
 importers:
 
   .:
     dependencies:
+      fflate:
+        specifier: 0.8.3
+        version: 0.8.3
+      lucide:
+        specifier: 0.468.0
+        version: 0.468.0
       three:
         specifier: ^0.185.1
         version: 0.185.1
+      three-viewport-gizmo:
+        specifier: 2.2.0
+        version: 2.2.0(patch_hash=1f801527c4541579fbe2eacdbdd0e357ce795856e65f745a90a42d04a33bfdc1)(three@0.185.1)
     devDependencies:
       '@playwright/test':
         specifier: ^1.56.1
@@ -367,6 +381,9 @@ packages:
     engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
     os: [darwin]
 
+  lucide@0.468.0:
+    resolution: {integrity: sha512-UFbgwji/ZnAV7iTTE4jujyTV7J95AILKyATDUrqOJrMcUGfXvGjw3c1mcuHZUX2oJfkrAGU9KoxkrLQk2jjtiA==}
+
   meshoptimizer@0.22.0:
     resolution: {integrity: sha512-IebiK79sqIy+E4EgOr+CAw+Ke8hAspXKzBd0JdgEmPHiAwmvEj2S4h1rfvo+o/BnfEYd/jAOg5IeeIjzlzSnDg==}
 
@@ -404,6 +421,11 @@ packages:
   source-map-js@1.2.1:
     resolution: {integrity: sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA==}
     engines: {node: '>=0.10.0'}
+
+  three-viewport-gizmo@2.2.0:
+    resolution: {integrity: sha512-Jo9Liur1rUmdKk75FZumLU/+hbF+RtJHi1qsKZpntjKlCYScK6tjbYoqvJ9M+IJphrlQJF5oReFW7Sambh0N4Q==}
+    peerDependencies:
+      three: '>=0.162.0 <1.0.0'
 
   three@0.185.1:
     resolution: {integrity: sha512-5aojFCXKwnjBRZvUnt3WFfEcvUJgkN5LlijRFN95hMy8WVkG4I0QNcJE+OuWvuJ0bOdStrbfXn0pkd6/QyiAlg==}
@@ -682,6 +704,8 @@ snapshots:
   fsevents@2.3.3:
     optional: true
 
+  lucide@0.468.0: {}
+
   meshoptimizer@0.22.0: {}
 
   nanoid@3.3.16: {}
@@ -737,6 +761,10 @@ snapshots:
       fsevents: 2.3.3
 
   source-map-js@1.2.1: {}
+
+  three-viewport-gizmo@2.2.0(patch_hash=1f801527c4541579fbe2eacdbdd0e357ce795856e65f745a90a42d04a33bfdc1)(three@0.185.1):
+    dependencies:
+      three: 0.185.1
 
   three@0.185.1: {}
 
