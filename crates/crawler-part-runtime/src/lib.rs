@@ -4991,7 +4991,7 @@ mod tests {
                     .any(|value| value == kind)
             );
         }
-        assert_eq!(contract["constraint_kinds"].as_array().unwrap().len(), 28);
+        assert_eq!(contract["constraint_kinds"].as_array().unwrap().len(), 29);
         assert!(
             contract["operations"]
                 .as_array()

@@ -39,7 +39,7 @@ finds no material roadmap gap and all commands above pass.
 - `cargo test -p crawler-sketch --offline` with the local Monstertruck patch:
   34 integration tests, 2 DXF workload tests, and the decomposition unit test passed.
 - Focused runtime persistence/contract tests passed for P0 parameter reload/edit,
-  native B-spline knots, and the 28-kind EZPZ graph contract.
+  native B-spline knots, and the 29-kind EZPZ graph contract.
 - `pnpm run test:unit`: 83 passed.
 - `pnpm run build`: TypeScript and Vite production build passed against the
   regenerated release WASM.
