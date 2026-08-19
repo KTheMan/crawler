@@ -13,23 +13,13 @@ stories live in the [implementation backlog](docs/BACKLOG.md).
 ```sh
 git clone https://github.com/KTheMan/crawler.git
 cd crawler
-git submodule update --init vendor/monstertruck
-git -C vendor/monstertruck submodule update --init resources
 ```
 
-Monstertruck also declares a documentation-only `.blueprints` submodule whose
-remote is currently unavailable. It is not required to build the kernel, so the
-bootstrap commands initialize the required geometry resources explicitly.
-
-For an existing clone without the kernel checked out:
-
-```sh
-git submodule update --init vendor/monstertruck
-git -C vendor/monstertruck submodule update --init resources
-```
-
-The kernel is pinned at `vendor/monstertruck`. Update it deliberately and test
-the complete modeling vertical slice before advancing the submodule commit.
+Monstertruck's directly used crates are declared once in the root workspace as
+Git dependencies on its `dev` branch. Cargo records the exact resolved commit
+in `Cargo.lock`, so normal locked builds are repeatable. Advance the kernel
+deliberately with a targeted Cargo update and run the complete modeling
+vertical slice before committing the new lockfile.
 
 ## Kernel contract
 
@@ -41,8 +31,8 @@ complete pin, native-contract, and WASM-compilation gate from PowerShell:
 ./scripts/qualify-kernel.ps1
 ```
 
-The executable contract is Crawler-owned and does not modify the pinned
-Monstertruck submodule. Architecture decisions are indexed in
+The executable contract is Crawler-owned and does not modify Monstertruck.
+Architecture decisions are indexed in
 [`docs/architecture`](docs/architecture/README.md).
 
 ## Part-design alpha

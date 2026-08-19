@@ -8,7 +8,7 @@ test("STEP progress can be cancelled and retained source re-imports with durable
     Object.defineProperty(window, "showOpenFilePicker", { configurable: true, value: undefined });
     Object.defineProperty(window, "showSaveFilePicker", { configurable: true, value: undefined });
   });
-  await page.goto("/?stepImportDelay=1000");
+  await page.goto("/?qualificationReferencePart=1&stepImportDelay=1000");
   await page.waitForFunction(() => Boolean(window.__crawlerApp) && Object.values(window.__crawlerApp.readiness()).every((status) => status === "ready"));
   const step = await readFile("../../fixtures/reference-models/step-roundtrip-cube/samples/cube-brep.step");
   const before = await page.evaluate(() => window.__crawlerApp.durableChecksum());
@@ -51,12 +51,12 @@ test("STEP progress can be cancelled and retained source re-imports with durable
   const exportFailure = page.locator("#safe-mode").waitFor({ state: "visible" }).then(async () => {
     throw new Error(`portable export failed: ${await page.locator("#safe-reason").textContent()}`);
   });
-  await page.locator("#save-as-part").click();
+  await page.keyboard.press("Control+Shift+s");
   const download = await Promise.race([downloadEvent, exportFailure]);
   const portablePath = await download.path();
   expect(portablePath).not.toBeNull();
 
-  await page.locator("#new-part").click();
+  await page.keyboard.press("Control+n");
   await expect(page.locator("#feature-browser")).not.toContainText("cancelled-cube");
   await page.locator("#open-part-file").setInputFiles(portablePath!);
   await expect(page.locator("#storage-status")).toHaveText("opened");

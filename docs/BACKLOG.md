@@ -97,26 +97,26 @@ upgrades are deliberate and regressions are caught before reaching the UI.
 
 **Acceptance criteria:**
 
-- The exact Monstertruck commit and promotion policy are recorded in an ADR.
+- The exact Monstertruck source revision and promotion policy are recorded in
+  `Cargo.lock` and an ADR.
 - Native and `wasm32-unknown-unknown` contract checks cover construction,
   tessellation, booleans, stable IDs, and STEP I/O.
-- A failed contract prevents advancing the submodule pin.
-- The contract suite runs without the unavailable documentation-only nested
-  submodule.
+- A failed contract prevents advancing the locked Git revision.
+- The contract suite runs without nested submodule initialization.
 
 **Status:** Complete (2026-07-31)
 
 **Evidence:**
 
 - [ADR 0001](architecture/adr/0001-monstertruck-kernel-baseline.md) records the
-  exact kernel/resource pins, Phase 5 rationale, promotion policy, gates, and
-  qualified raw-WASM API gaps.
+  initial kernel/resource pins and qualified raw-WASM API gaps; [ADR 0008](architecture/adr/0008-monstertruck-git-dependencies.md)
+  replaces its Git-submodule distribution decision.
 - `contracts/kernel-baseline/tests/kernel_contract.rs` executes six native
   contracts covering profile extrusion, WASM render buffers, booleans, stable
   ID persistence, STEP round-trip behavior, and typed native failures.
-- `./scripts/qualify-kernel.ps1` verifies the pins and clean vendor worktrees,
-  runs the native suite, and compiles it for `wasm32-unknown-unknown` without
-  requiring `.blueprints`.
+- `./scripts/qualify-kernel.ps1` verifies that every Monstertruck package is
+  locked to one `dev` revision, runs the native suite, and compiles it for
+  `wasm32-unknown-unknown`.
 - Browser-boundary follow-up is fulfilled by E00-S02 (versioned worker adapter),
   E00-S03 (topology provenance), and E00-S05 (structured protocol errors).
 

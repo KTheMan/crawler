@@ -3,7 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 test.describe.configure({ timeout: 120_000 });
 
 async function waitForApp(page: Page): Promise<void> {
-  await page.goto("/");
+  await page.goto("/?qualificationReferencePart=1");
   await page.waitForFunction(() => Boolean(window.__crawlerApp) && Object.values(window.__crawlerApp.readiness()).every((status) => status === "ready"));
 }
 
@@ -34,13 +34,14 @@ test("visible controls have accessible names and valid state relationships", asy
   await expect(page.getByRole("main")).toBeVisible();
   await expect(page.getByRole("navigation", { name: "feature browser" })).toBeVisible();
   await expect(page.getByLabel("3D viewport")).toBeVisible();
-  await expect(page.getByRole("region", { name: "Named parameters" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Parameters", exact: true })).toBeVisible();
   await expect(page.locator("#diagnostics")).toHaveAttribute("aria-live", "polite");
 });
 
 test("keyboard reference flow exposes focus, operation, timeline, save, and recovery state", async ({ page }) => {
   await waitForApp(page);
-  await page.locator("#start-rectangle").focus();
+  await page.locator('[data-ribbon-flyout="sketch"]').click();
+  await page.locator('[data-ribbon-run="rectangle"]').focus();
   await page.keyboard.press("Enter");
   await expect(page.locator("#part-width")).toBeFocused();
   await page.locator("#part-width").fill("41");
@@ -58,8 +59,8 @@ test("keyboard reference flow exposes focus, operation, timeline, save, and reco
 
   const accepted = await page.evaluate(() => window.__crawlerApp.durableChecksum());
   await page.evaluate(() => window.__crawlerApp.faultWorker("accessibility recovery probe"));
-  await expect(page.getByRole("alert")).toContainText("Editing paused");
-  await expect(page.getByRole("alert")).toContainText("Recovery source");
+  await expect(page.getByRole("alert")).toContainText("Editing couldn’t continue");
+  await expect(page.getByRole("alert")).toContainText("last completed model state is safe");
   await page.locator("#recover-runtime").focus();
   await page.keyboard.press("Enter");
   await expect.poll(() => page.evaluate(() => window.__crawlerApp.safeMode()), { timeout: 60_000 }).toBe(false);
@@ -77,18 +78,24 @@ test("operation, visibility, and field-error states do not rely on color alone",
 
   const visibility = page.locator('[data-body-visibility="body:part"]');
   await expect(visibility).toHaveAttribute("aria-pressed", "true");
-  await expect(visibility).toHaveText("Visible");
+  await expect(visibility).toHaveAttribute("aria-label", "Hide Part Body");
   await visibility.click();
   await expect(visibility).toHaveAttribute("aria-pressed", "false");
-  await expect(visibility).toHaveText("Hidden");
+  await expect(visibility).toHaveAttribute("aria-label", "Show Part Body");
 
-  await page.locator('[data-feature-id="feature:extrude"]').click();
-  const width = page.locator('[data-parameter-expression="parameter:width"]');
+  await page.locator('[data-feature-id="feature:rectangle-sketch"]:visible').first().click();
+  const dimension = page.locator('[data-sketch-dimension="d1"]');
+  await dimension.getByRole("button", { name: "Define parameter" }).click();
+  await dimension.locator("input").fill("Overall Width");
+  await dimension.getByRole("button", { name: "Define", exact: true }).click();
+  await expect(page.locator("#operation-state")).toContainText("committed", { timeout: 90_000 });
+  await page.locator("[data-open-parameters]:visible").first().click();
+  const width = page.locator('[data-dialog-expression="parameter:width"]');
   const before = await page.evaluate(() => window.__crawlerApp.durableChecksum());
   await width.fill("45 deg");
   await width.press("Enter");
   await expect(width).toHaveAttribute("aria-invalid", "true", { timeout: 60_000 });
-  await expect(page.locator('[data-parameter-error="width"]')).not.toBeEmpty({ timeout: 60_000 });
+  await expect(page.locator('[data-dialog-parameter="parameter:width"] .parameter-description')).not.toBeEmpty({ timeout: 60_000 });
   await expect(page.locator("#operation-state")).toHaveAttribute("data-status", "cancelled", { timeout: 60_000 });
   expect(await page.evaluate(() => window.__crawlerApp.durableChecksum())).toBe(before);
 });
@@ -120,31 +127,32 @@ test("reduced-motion preference suppresses CSS motion while camera commands rema
   expect(await page.evaluate(() => window.__crawlerApp.durableChecksum())).toBe(checksum);
 });
 
-test("onboarding teaches the editable workflow and supports resume, skip, and restart", async ({ page }) => {
+test("onboarding teaches safe sketch entry and supports resume, skip, and restart", async ({ page }) => {
   await waitForApp(page);
   const tour = page.locator("#onboarding");
-  await expect(tour).toContainText("Change Pad length");
+  await expect(tour).toContainText("Choose New Sketch");
   await expect(page.locator("#tour-next")).toBeDisabled();
-  await page.locator("#pad-length").fill("23.75");
-  await page.locator("#start-pad").click();
-  await page.keyboard.press("Enter");
-  await expect(page.locator("#storage-status")).toHaveText("autosaved");
+  await page.locator("#edit-sketch").click();
   await expect(page.locator("#tour-next")).toBeEnabled();
   await page.locator("#tour-next").click();
-  await expect(tour).toContainText("Select a feature in the timeline");
-  await expect(page.locator("[data-timeline-id]").first()).toBeFocused();
+  await expect(tour).toContainText("Choose an origin plane");
+  await expect(page.locator('[data-origin-plane-id="origin-plane:xy"]')).toBeFocused();
   await page.reload();
-  await page.waitForFunction(() => Boolean(window.__crawlerApp));
+  await page.waitForFunction(() => Boolean(window.__crawlerApp) && Object.values(window.__crawlerApp.readiness()).every((status) => status === "ready"));
   await expect(tour).toContainText("Quick tour 2/3");
   await expect(page.locator("#tour-next")).toBeDisabled();
-  await page.locator("[data-timeline-id]").first().click();
+  await page.locator("#edit-sketch").click();
+  await page.locator('[data-origin-plane-id="origin-plane:xy"]').click();
   await expect(page.locator("#tour-next")).toBeEnabled();
   await page.locator("#tour-next").click();
-  await expect(tour).toContainText("Save the part");
-  await page.locator("#tour-skip").click();
+  await expect(tour).toContainText("Discard this empty practice sketch");
+  await page.locator("#active-tool-cancel").click();
+  await expect(page.locator("#tour-next")).toBeEnabled();
+  await page.locator("#tour-exit").click();
   await expect(tour).toBeHidden();
-  await page.locator("#restart-tour").click();
+  await page.locator(".app-menu").filter({ hasText: "Help" }).locator("summary").click();
+  await page.getByRole("menuitem", { name: /Quick tour/ }).click();
   await expect(tour).toContainText("Quick tour 1/3");
   await expect(page.locator("#tour-next")).toBeDisabled();
-  await expect(page.locator("#pad-length")).toBeFocused();
+  await expect(page.locator("#edit-sketch")).toBeFocused();
 });

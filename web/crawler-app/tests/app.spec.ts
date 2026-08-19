@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 
 test.describe.configure({ timeout: 120_000 });
 
-async function tabTo(page: import("@playwright/test").Page, selector: string, attempts = 40): Promise<void> {
+async function tabTo(page: import("@playwright/test").Page, selector: string, attempts = 120): Promise<void> {
   const target = page.locator(selector);
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     if (await target.evaluate((element) => element === document.activeElement)) return;
@@ -12,12 +12,17 @@ async function tabTo(page: import("@playwright/test").Page, selector: string, at
   throw new Error(`keyboard focus did not reach ${selector}`);
 }
 
+async function exportFromFileMenu(page: import("@playwright/test").Page, format: "step" | "stl" | "obj"): Promise<void> {
+  await page.locator(".app-menu:nth-of-type(1) > summary").click();
+  await page.locator(`.app-menu:nth-of-type(1) [data-export-proxy="${format}"]`).click();
+}
+
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
     Object.defineProperty(window, "showOpenFilePicker", { configurable: true, value: undefined });
     Object.defineProperty(window, "showSaveFilePicker", { configurable: true, value: undefined });
   });
-  await page.goto("/");
+  await page.goto("/?qualificationReferencePart=1");
   await page.waitForFunction(() => Boolean(window.__crawlerApp) && Object.values(window.__crawlerApp.readiness()).every((status) => status === "ready"));
 });
 
@@ -38,6 +43,69 @@ test("desktop layout gives the viewport the largest workspace region", async ({ 
   ]);
   const areas = boxes.map((box) => (box?.width ?? 0) * (box?.height ?? 0));
   expect(areas[0]).toBeGreaterThan(Math.max(...areas.slice(1)));
+});
+
+test("interactive Three.js view cube renders and controls the camera", async ({ page }) => {
+  const cube = page.locator("#view-cube > div");
+  await expect(cube).toBeVisible();
+  const bounds = await cube.boundingBox();
+  if (!bounds) throw new Error("view cube bounds are unavailable");
+  const before = await page.evaluate(() => window.__crawlerApp.cameraPosition());
+  await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(bounds.x + bounds.width / 2 + 34, bounds.y + bounds.height / 2 - 22, { steps: 6 });
+  await page.mouse.up();
+  await expect.poll(() => page.evaluate(() => window.__crawlerApp.cameraPosition())).not.toEqual(before);
+});
+
+test("Part Design ribbon opens the wired solid creation operations", async ({ page }) => {
+  await page.locator('.ribbon-tool[data-catalog-operation="crawler.part.revolve"]').click();
+  await expect(page.locator("#inspector h2")).toHaveText("Revolve");
+  await expect(page.locator("#execute-advanced-feature")).toBeVisible();
+
+  await page.locator('[data-ribbon-flyout="add"]').click();
+  const loft = page.locator('[data-ribbon-run="loft"]');
+  await expect(loft).toBeEnabled();
+  await loft.click();
+  await expect(page.locator("#inspector h2")).toHaveText("Loft");
+  await expect(page.locator("#preview-advanced-feature")).toBeVisible();
+});
+
+test("Figma interaction surfaces use live parameters, viewport context, and model state", async ({ page }) => {
+  await page.getByRole("button", { name: "Parameters", exact: true }).click();
+  const parameters = page.getByRole("dialog", { name: "Parameters" });
+  await expect(parameters).toBeVisible();
+  await expect(parameters).toContainText("No defined parameters");
+  await expect(parameters).toContainText("Set up sketch parameters");
+  await page.keyboard.press("Escape");
+  await expect(parameters).toBeHidden();
+
+  await page.locator("#viewport").click({ button: "right", position: { x: 280, y: 220 } });
+  const viewportMenu = page.getByRole("menu", { name: "Viewport context menu" });
+  await expect(viewportMenu).toBeVisible();
+  await expect(viewportMenu.getByRole("menuitem", { name: /Pocket/ })).toHaveCount(0);
+  await viewportMenu.getByRole("menuitem", { name: /Fit All/ }).click();
+  await expect(viewportMenu).toBeHidden();
+
+  await page.locator('[data-feature-id="feature:extrude"]').click({ button: "right" });
+  const treeMenu = page.getByRole("menu", { name: "Model tree context menu" });
+  await expect(treeMenu).toBeVisible();
+  await expect(treeMenu.getByRole("menuitem", { name: "Suppress / activate" })).toBeVisible();
+
+  await page.evaluate(() => window.__crawlerApp.selectFirst("face"));
+  await expect(page.locator("#statusbar-selection")).toContainText("face");
+});
+
+test("model tree context menu displays complete command labels", async ({ page }) => {
+  await page.locator('#feature-browser [data-body-id="body:part"]').click({ button: "right" });
+  const treeMenu = page.getByRole("menu", { name: "Model tree context menu" });
+  await expect(treeMenu).toBeVisible();
+  const labels = treeMenu.locator(":scope > button > span");
+  await expect(labels).toHaveText(["Rename", "Set Appearance", "Hide", "Dependencies", "Properties"]);
+  const overflowedLabels = await labels.evaluateAll((items) =>
+    items.filter((item) => item.scrollWidth > item.clientWidth).map((item) => item.textContent),
+  );
+  expect(overflowedLabels).toEqual([]);
 });
 
 test("browser, timeline, and schema-driven inspector stay synchronized", async ({ page }) => {
@@ -84,9 +152,9 @@ test("hierarchical browser owns body identity, visibility, and pick eligibility"
   await page.locator('[data-feature-action="suppress"]').click();
   await expect(page.locator('[data-body-id="body:part"]')).toHaveAttribute("aria-disabled", "true");
   expect(await page.evaluate(() => window.__crawlerApp.selectFirst("edge"))).toBeNull();
-  await page.locator("#undo").click();
+  await page.keyboard.press("Control+z");
   await expect(page.locator('[data-body-id="body:part"]')).not.toHaveAttribute("aria-disabled", "true");
-  expect((await page.evaluate(() => window.__crawlerApp.selectFirst("body")))?.stableId).toBe("body:part");
+  await expect.poll(() => page.evaluate(() => window.__crawlerApp.selectFirst("body")?.stableId ?? null)).toBe("body:part");
 });
 
 test("body, face, edge, and vertex filters resolve stable IDs with deterministic multi-select", async ({ page }) => {
@@ -138,10 +206,24 @@ test("standard views and fit update transient camera state", async ({ page }) =>
   if (!box) throw new Error("viewport has no bounds");
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await expect(page.locator("#preselection-readout")).not.toHaveText("Hover: none");
-  await page.mouse.down();
+  await page.mouse.down({ button: "left" });
   await page.mouse.move(box.x + box.width / 2 + 90, box.y + box.height / 2 + 35);
-  await page.mouse.up();
-  expect(await page.evaluate(() => window.__crawlerApp.cameraPosition())).not.toEqual(fitted);
+  await page.mouse.up({ button: "left" });
+  expect(await page.evaluate(() => window.__crawlerApp.cameraPosition())).toEqual(fitted);
+
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down({ button: "middle" });
+  await page.mouse.move(box.x + box.width / 2 + 90, box.y + box.height / 2 + 35, { steps: 4 });
+  await page.mouse.up({ button: "middle" });
+  const orbited = await page.evaluate(() => window.__crawlerApp.cameraPosition());
+  expect(orbited).not.toEqual(fitted);
+
+  await page.keyboard.down("Control");
+  await page.mouse.down({ button: "middle" });
+  await page.mouse.move(box.x + box.width / 2 + 130, box.y + box.height / 2 + 60, { steps: 4 });
+  await page.mouse.up({ button: "middle" });
+  await page.keyboard.up("Control");
+  expect(await page.evaluate(() => window.__crawlerApp.cameraPosition())).not.toEqual(orbited);
   const beforeZoom = await page.evaluate(() => window.__crawlerApp.cameraPosition());
   await page.mouse.wheel(0, 220);
   expect(await page.evaluate(() => window.__crawlerApp.cameraPosition())).not.toEqual(beforeZoom);
@@ -163,8 +245,8 @@ test("Enter commits and Escape cancels operation lifecycle without cancel mutati
 test("Extrude viewport manipulator previews worker geometry and restores accepted state", async ({ page }) => {
   const acceptedHash = await page.evaluate(() => window.__crawlerApp.durableChecksum());
   const acceptedDistance = await page.evaluate(() => window.__crawlerApp.dimensions().distanceNanometers);
-  await page.locator("#pad-length").fill("24");
   await page.locator("#start-pad").click();
+  await page.locator("#pad-length").fill("24");
 
   const handle = page.locator("#extrude-manipulator");
   await expect(handle).toBeVisible();
@@ -189,39 +271,45 @@ test("Extrude viewport manipulator previews worker geometry and restores accepte
 
 test("runtime can retry without moving durable state into UI state", async ({ page }) => {
   const checksum = await page.evaluate(() => window.__crawlerApp.durableChecksum());
-  await page.locator("#retry-runtime").click();
+  await page.locator(".app-menu").filter({ hasText: "Help" }).locator("summary").click();
+  await page.locator('.menu-popover [data-invoke="#retry-runtime"]').click();
   await expect.poll(() => page.evaluate(() => window.__crawlerApp.readiness().renderer), { timeout: 60_000 }).toBe("ready");
   expect(await page.evaluate(() => window.__crawlerApp.durableChecksum())).toBe(checksum);
 });
 
 test("panel visibility is transient and does not mutate the document", async ({ page }) => {
   const checksum = await page.evaluate(() => window.__crawlerApp.durableChecksum());
-  await page.locator('[data-panel-toggle="browser"]').click();
+  const toggleBrowser = async () => {
+    await page.locator(".app-menu:nth-of-type(3) > summary").click();
+    await page.getByRole("menuitem", { name: "Task Panel" }).click();
+  };
+  await toggleBrowser();
   expect((await page.evaluate(() => window.__crawlerApp.state())).panels.browser).toBe(false);
   await expect(page.getByTestId("browser-region")).toBeHidden();
-  await page.locator('[data-panel-toggle="browser"]').click();
+  await toggleBrowser();
   await expect(page.getByTestId("browser-region")).toBeVisible();
   expect(await page.evaluate(() => window.__crawlerApp.durableChecksum())).toBe(checksum);
 });
 
 test("explicit save uses the shared storage protocol", async ({ page }) => {
-  await page.locator("#save-part").click();
+  await page.keyboard.press("Control+s");
   await expect(page.locator("#storage-status")).toHaveText("saved");
   expect(await page.evaluate(() => window.__crawlerApp.hasExplicitSave())).toBe(true);
 });
 
 test("startup diagnostics expose the failing stage and retry recovers", async ({ page }) => {
-  await page.goto("/?failWorker=1");
+  await page.goto("/?qualificationReferencePart=1&failWorker=1");
   await expect(page.locator('[data-stage="worker"]')).toHaveAttribute("data-status", "error");
   await expect(page.locator("#diagnostics")).toContainText("diagnostic worker startup failure");
-  await page.locator("#retry-runtime").click();
+  await page.locator(".app-menu").filter({ hasText: "Help" }).locator("summary").click();
+  await page.locator('.menu-popover [data-invoke="#retry-runtime"]').click();
   await expect.poll(() => page.evaluate(() => window.__crawlerApp.readiness().renderer), { timeout: 60_000 }).toBe("ready");
   await expect(page.locator("#diagnostics")).not.toHaveAttribute("data-visible", "");
 });
 
 test("dimension edit recomputes geometry, undo/redo survives recovery, and export is read-only", async ({ page }) => {
-  await page.locator("#pad-length").fill("26.5");
   await page.locator("#start-pad").click();
+  await page.locator("#pad-length").fill("26.5");
   await page.keyboard.press("Enter");
   await expect(page.locator("#operation-state")).toHaveAttribute("data-status", "committed");
   await expect(page.locator("#storage-status")).toHaveText("autosaved");
@@ -234,9 +322,9 @@ test("dimension edit recomputes geometry, undo/redo survives recovery, and expor
   expect((await page.evaluate(() => window.__crawlerApp.performanceEvidence())).timingsMs.recompute).toBeGreaterThanOrEqual(0);
   const committedHash = await page.evaluate(() => window.__crawlerApp.durableChecksum());
 
-  await page.locator("#undo").click();
+  await page.keyboard.press("Control+z");
   await expect.poll(() => page.evaluate(() => window.__crawlerApp.dimensions().distanceNanometers)).toBe(12_000_000);
-  await page.locator("#redo").click();
+  await page.keyboard.press("Control+y");
   await expect.poll(() => page.evaluate(() => window.__crawlerApp.dimensions().distanceNanometers)).toBe(26_500_000);
   expect(await page.evaluate(() => window.__crawlerApp.durableChecksum())).toBe(committedHash);
   await expect(page.locator("#storage-status")).toHaveText("autosaved", { timeout: 60_000 });
@@ -248,7 +336,7 @@ test("dimension edit recomputes geometry, undo/redo survives recovery, and expor
   expect(await page.evaluate(() => window.__crawlerApp.durableChecksum())).toBe(committedHash);
 
   const pending = page.waitForEvent("download");
-  await page.locator('[data-export="obj"]').click();
+  await exportFromFileMenu(page, "obj");
   await pending;
   expect(await page.evaluate(() => window.__crawlerApp.durableChecksum())).toBe(committedHash);
 });
@@ -257,7 +345,8 @@ test("rectangle dimensions commit atomically and drive authoritative model bound
   const before = await page.evaluate(() => window.__crawlerApp.durableChecksum());
   await page.locator("#part-width").fill("52.25");
   await page.locator("#part-height").fill("31.75");
-  await page.locator("#start-rectangle").click();
+  await page.locator('[data-ribbon-flyout="sketch"]').click();
+  await page.locator('[data-ribbon-run="rectangle"]').click();
   await page.keyboard.press("Enter");
   await expect(page.locator("#operation-state")).toHaveAttribute("data-status", "committed");
   await expect.poll(() => page.evaluate(() => window.__crawlerApp.dimensions().widthNanometers)).toBe(52_250_000);
@@ -268,13 +357,21 @@ test("rectangle dimensions commit atomically and drive authoritative model bound
     evaluationOrder: ["feature:rectangle-sketch", "feature:extrude"],
   });
   expect(await page.evaluate(() => window.__crawlerApp.durableChecksum())).not.toBe(before);
-  await page.locator("#undo").click();
+  await page.keyboard.press("Control+z");
   await expect.poll(() => page.evaluate(() => window.__crawlerApp.dimensions().widthNanometers)).toBe(40_000_000);
-  await page.locator("#redo").click();
+  await page.keyboard.press("Control+y");
   await expect.poll(() => page.evaluate(() => window.__crawlerApp.dimensions().heightNanometers)).toBe(31_750_000);
 });
 
-test("manifest, controlling service worker, and cached runtime support an offline reload", async ({ page, context }) => {
+test("development starts without a service worker or persistent application cache", async ({ page }) => {
+  await expect.poll(() => page.evaluate(() => window.__crawlerApp.pwaStatus().cacheVersion)).toBe("development-disabled");
+  expect(await page.evaluate(async () => (await navigator.serviceWorker.getRegistrations()).length)).toBe(0);
+  expect(await page.evaluate(async () => (await caches.keys()).filter((key) => key.startsWith("crawler-alpha-")))).toEqual([]);
+});
+
+test("explicit PWA mode supports an offline reload with a build-versioned cache", async ({ page, context }) => {
+  await page.goto("/?qualificationReferencePart=1&pwa=1");
+  await page.waitForFunction(() => Boolean(window.__crawlerApp) && Object.values(window.__crawlerApp.readiness()).every((status) => status === "ready"));
   expect((await page.request.get("/manifest.webmanifest")).ok()).toBe(true);
   await page.waitForFunction(() => Boolean(navigator.serviceWorker.controller));
   await page.reload();
@@ -282,11 +379,13 @@ test("manifest, controlling service worker, and cached runtime support an offlin
   await context.setOffline(true);
   await page.reload();
   await page.waitForFunction(() => Object.values(window.__crawlerApp.readiness()).every((value) => value === "ready"));
-  expect((await page.evaluate(() => window.__crawlerApp.pwaStatus())).cacheVersion).toBe("crawler-alpha-v2");
+  expect((await page.evaluate(() => window.__crawlerApp.pwaStatus())).cacheVersion).toMatch(/^crawler-alpha-serve-/);
   await context.setOffline(false);
 });
 
 test("offline mode preserves the core new, open, model, undo, save, and recovery workflow", async ({ page, context }) => {
+  await page.goto("/?qualificationReferencePart=1&pwa=1");
+  await page.waitForFunction(() => Boolean(window.__crawlerApp) && Object.values(window.__crawlerApp.readiness()).every((status) => status === "ready"));
   await page.waitForFunction(() => Boolean(navigator.serviceWorker.controller));
   await page.reload();
   await page.waitForFunction(() => Object.values(window.__crawlerApp.readiness()).every((value) => value === "ready"));
@@ -294,7 +393,7 @@ test("offline mode preserves the core new, open, model, undo, save, and recovery
   const originalHash = await page.evaluate(() => window.__crawlerApp.durableChecksum());
   const originalDistance = await page.evaluate(() => window.__crawlerApp.dimensions().distanceNanometers);
   const packageDownload = page.waitForEvent("download");
-  await page.locator("#save-as-part").click();
+  await page.keyboard.press("Control+Shift+s");
   const packagePath = await (await packageDownload).path();
   const portablePackage = await readFile(packagePath!);
 
@@ -312,16 +411,16 @@ test("offline mode preserves the core new, open, model, undo, save, and recovery
     await expect(page.locator("#storage-status")).toHaveText("opened");
     await expect.poll(() => page.evaluate(() => window.__crawlerApp.durableChecksum())).toBe(originalHash);
 
-    await page.locator("#pad-length").fill("31.25");
     await page.locator("#start-pad").click();
+    await page.locator("#pad-length").fill("31.25");
     await page.keyboard.press("Enter");
     await expect.poll(() => page.evaluate(() => window.__crawlerApp.dimensions().distanceNanometers)).toBe(31_250_000);
     await expect(page.locator("#storage-status")).toHaveText("autosaved");
 
-    await page.locator("#undo").click();
+    await page.keyboard.press("Control+z");
     await expect.poll(() => page.evaluate(() => window.__crawlerApp.dimensions().distanceNanometers)).toBe(originalDistance);
     await expect(page.locator("#storage-status")).toHaveText("autosaved");
-    await page.locator("#redo").click();
+    await page.keyboard.press("Control+y");
     await expect.poll(() => page.evaluate(() => window.__crawlerApp.dimensions().distanceNanometers)).toBe(31_250_000);
     const acceptedHash = await page.evaluate(() => window.__crawlerApp.durableChecksum());
 
@@ -370,7 +469,7 @@ test("camera and projection commands are operable from the keyboard alone", asyn
   await expect(page.locator("#projection-mode")).toHaveAttribute("aria-pressed", "true");
   expect(await page.evaluate(() => window.__crawlerApp.projectionMode())).toBe("orthographic");
 
-  await page.keyboard.press("Shift+Tab");
+  await tabTo(page, "#fit-view");
   await expect(page.locator("#fit-view")).toBeFocused();
   await page.keyboard.press("Space");
   const fitted = await page.evaluate(() => window.__crawlerApp.cameraPosition());
@@ -378,13 +477,23 @@ test("camera and projection commands are operable from the keyboard alone", asyn
   expect(fitted[1]).toBeGreaterThan(28);
   expect(fitted[2]).toBeGreaterThan(12);
 
-  for (let index = 0; index < 4; index += 1) await page.keyboard.press("Shift+Tab");
+  await tabTo(page, '[data-view="front"]');
   await expect(page.locator('[data-view="front"]')).toBeFocused();
   await page.keyboard.press("Enter");
   const front = await page.evaluate(() => window.__crawlerApp.cameraPosition());
   expect(front[0]).toBeCloseTo(20);
   expect(front[1]).toBeCloseTo(14);
   expect(front[2]).toBeGreaterThan(12);
+
+  const viewport = page.locator("#viewport");
+  const bounds = await viewport.boundingBox();
+  if (!bounds) throw new Error("viewport bounds are unavailable");
+  await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+  await page.mouse.down({ button: "middle" });
+  await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2 + 48, { steps: 4 });
+  await page.mouse.up({ button: "middle" });
+  const orbitDown = await page.evaluate(() => window.__crawlerApp.cameraPosition());
+  expect(orbitDown[1]).toBeGreaterThan(front[1]);
   expect(await page.evaluate(() => window.__crawlerApp.durableChecksum())).toBe(checksum);
 });
 
@@ -456,9 +565,10 @@ test("semantic accessibility smoke checks cover names, landmarks, states, and di
 test("quick tour can be skipped and restart resets its executable workflow", async ({ page }) => {
   await expect(page.locator("#onboarding")).toBeVisible();
   await expect(page.locator("#tour-next")).toBeDisabled();
-  await page.locator("#tour-skip").click();
+  await page.locator("#tour-exit").click();
   await expect(page.locator("#onboarding")).toBeHidden();
-  await page.locator("#restart-tour").click();
+  await page.locator(".app-menu").filter({ hasText: "Help" }).locator("summary").click();
+  await page.getByRole("menuitem", { name: /Quick tour/ }).click();
   await expect(page.locator("#onboarding")).toContainText("1/3");
   await expect(page.locator("#tour-next")).toBeDisabled();
   expect(await page.evaluate(() => window.__crawlerApp.onboarding())).toEqual({ step: 0, complete: false });
@@ -508,11 +618,15 @@ test("quota guidance, non-color states, and repeatable performance evidence are 
 });
 
 test("worker faults preserve the accepted source and require an explicit safe recovery choice", async ({ page }) => {
-  await page.locator("#pad-length").fill("24"); await page.locator("#start-pad").click(); await page.keyboard.press("Enter");
+  await page.locator("#start-pad").click(); await page.locator("#pad-length").fill("24"); await page.keyboard.press("Enter");
   await expect(page.locator("#storage-status")).toHaveText("autosaved");
   const accepted = await page.evaluate(() => window.__crawlerApp.durableChecksum());
   await page.evaluate(() => window.__crawlerApp.faultWorker("fault one"));
   await expect(page.locator("#safe-mode")).toBeVisible();
+  await expect(page.locator("#safe-mode")).toContainText("Editing couldn’t continue");
+  await expect(page.locator("#safe-mode")).toContainText("last completed model state is safe");
+  await expect(page.locator("#recover-runtime")).toHaveText("Restore and continue");
+  await expect(page.locator("#stay-safe")).toHaveText("View read-only");
   await expect(page.locator("#start-pad")).toBeDisabled();
   expect(await page.evaluate(() => window.__crawlerApp.durableChecksum())).toBe(accepted);
   await page.locator("#recover-runtime").click();
@@ -528,7 +642,7 @@ test("worker faults preserve the accepted source and require an explicit safe re
 test("New, Open, and Save As preserve a portable canonical part through UI and keyboard flows", async ({ page }) => {
   const originalHash = await page.evaluate(() => window.__crawlerApp.durableChecksum());
   const saveDownload = page.waitForEvent("download");
-  await page.locator("#save-as-part").click();
+  await page.keyboard.press("Control+Shift+s");
   const saved = await saveDownload;
   expect(saved.suggestedFilename()).toBe("bracket.crawlerpart");
   const savedPath = await saved.path();
@@ -538,6 +652,12 @@ test("New, Open, and Save As preserve a portable canonical part through UI and k
   await page.keyboard.press("Control+n");
   await expect(page.locator("#storage-status")).toHaveText("new part");
   await expect.poll(() => page.evaluate(() => window.__crawlerApp.durableChecksum())).not.toBe(originalHash);
+  await expect(page.locator("#browser-summary")).toHaveText("0 bodies · 0 sketches · 0 features");
+  await expect(page.locator('[data-body-id="body:part"]')).toHaveCount(0);
+  await expect(page.locator('[data-feature-id="feature:extrude"]')).toHaveCount(0);
+  expect(await page.evaluate(() => window.__crawlerApp.dimensions())).toEqual({ widthNanometers: 0, heightNanometers: 0, distanceNanometers: 0 });
+  await expect(page.locator("#start-pad")).toBeDisabled();
+  await expect(page.locator("#edit-sketch")).toBeEnabled();
 
   await page.locator("#open-part-file").setInputFiles({ name: "bracket.crawlerpart", mimeType: "application/vnd.crawler.part+zip", buffer: canonical });
   await expect(page.locator("#storage-status")).toHaveText("opened");
@@ -550,7 +670,7 @@ test("New, Open, and Save As preserve a portable canonical part through UI and k
 
 test("native file pickers open, Save As, and Save the associated portable part", async ({ page }) => {
   await page.evaluate(() => {
-    const state: { bytes?: Uint8Array; writes: number } = { writes: 0 };
+    const state: { bytes?: Uint8Array; writes: number; openPicks: number } = { writes: 0, openPicks: 0 };
     const handle = {
       name: "native-picker.crawlerpart",
       async getFile() { return new File([state.bytes ?? new Uint8Array()], this.name, { type: "application/vnd.crawler.part+zip" }); },
@@ -562,26 +682,27 @@ test("native file pickers open, Save As, and Save the associated portable part",
       },
     };
     Object.defineProperty(window, "showSaveFilePicker", { configurable: true, value: async () => handle });
-    Object.defineProperty(window, "showOpenFilePicker", { configurable: true, value: async () => [handle] });
+    Object.defineProperty(window, "showOpenFilePicker", { configurable: true, value: async () => { state.openPicks += 1; return [handle]; } });
     (window as unknown as { __nativePickerState: typeof state }).__nativePickerState = state;
   });
   const originalHash = await page.evaluate(() => window.__crawlerApp.durableChecksum());
 
-  await page.locator("#save-as-part").click();
+  await page.keyboard.press("Control+Shift+s");
   await expect.poll(() => page.evaluate(() => (window as unknown as { __nativePickerState: { writes: number } }).__nativePickerState.writes)).toBe(1);
   await expect(page.locator("#storage-status")).toHaveText("saved");
 
-  await page.locator("#new-part").click();
+  await page.keyboard.press("Control+n");
   await expect.poll(() => page.evaluate(() => window.__crawlerApp.durableChecksum())).not.toBe(originalHash);
-  await page.locator("#open-part").click();
+  await page.keyboard.press("Control+o");
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __nativePickerState: { openPicks: number } }).__nativePickerState.openPicks)).toBe(1);
   await expect(page.locator("#storage-status")).toHaveText("opened");
   await expect.poll(() => page.evaluate(() => window.__crawlerApp.durableChecksum())).toBe(originalHash);
 
-  await page.locator("#pad-length").fill("21");
   await page.locator("#start-pad").click();
+  await page.locator("#pad-length").fill("21");
   await page.keyboard.press("Enter");
   await expect(page.locator("#operation-state")).toHaveAttribute("data-status", "committed");
-  await page.locator("#save-part").click();
+  await page.keyboard.press("Control+s");
   await expect.poll(() => page.evaluate(() => (window as unknown as { __nativePickerState: { writes: number } }).__nativePickerState.writes)).toBe(2);
   await expect(page.locator("#storage-status")).toHaveText("saved");
 });
@@ -613,7 +734,7 @@ test("STEP import creates a durable body with authoritative selectable topology"
   await page.locator('[data-feature-action="suppress"]').click();
   await expect(page.locator("#inspector")).toContainText("suppressed");
   await expect.poll(() => page.evaluate(() => window.__crawlerApp.geometryBounds()), { timeout: 60_000 }).toEqual([0, 0, 0, 40, 28, 12]);
-  await page.locator("#undo").click();
+  await page.keyboard.press("Control+z");
   await expect.poll(() => page.evaluate(() => window.__crawlerApp.geometryBounds()[3])).toBe(10);
   await expect.poll(() => page.evaluate(() => window.__crawlerApp.durableChecksum())).toBe(renamed);
   await expect(page.locator("#storage-status")).toHaveText("autosaved");
@@ -629,7 +750,7 @@ for (const [format, extension, marker] of [["step", ".step", "CLOSED_SHELL"], ["
   test(`${format.toUpperCase()} export downloads deterministic geometry without semantic mutation`, async ({ page }) => {
     const checksum = await page.evaluate(() => window.__crawlerApp.durableChecksum());
     const pending = page.waitForEvent("download");
-    await page.locator(`[data-export="${format}"]`).click();
+    await exportFromFileMenu(page, format);
     const download = await pending;
     expect(download.suggestedFilename()).toBe(`bracket${extension}`);
     const path = await download.path();

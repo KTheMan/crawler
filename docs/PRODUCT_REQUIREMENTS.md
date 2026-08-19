@@ -3,7 +3,7 @@
 - Status: Draft 0.1
 - Date: 2026-07-31
 - Product: Crawler
-- Kernel: `vendor/monstertruck`
+- Kernel: locked Cargo Git dependencies from `KTheMan/monstertruck@dev`
 - Surface: Installable browser application (WASM/PWA)
 
 ## 1. Product thesis
@@ -565,5 +565,6 @@ Research checked on 2026-07-31:
   the current stable release when this draft was written.
 - [Fusion modeling modes](https://help.autodesk.com/view/fusion360/ENU/?contextId=ASM-DESIGN-MODELING-MODES)
   — parametric features tracked in the timeline alongside direct modeling modes.
-- [`KTheMan/monstertruck`](https://github.com/KTheMan/monstertruck) — pinned in
-  this repository as the geometry kernel submodule.
+- [`KTheMan/monstertruck`](https://github.com/KTheMan/monstertruck) — consumed
+  as Cargo Git dependencies from `dev`, with the resolved revision in
+  `Cargo.lock`.
