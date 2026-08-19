@@ -143,9 +143,9 @@ checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
 
 [[package]]
 name = "cc"
-version = "1.4.2"
+version = "1.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5d262e149917187838d5b42777c8253bcb64500067342904e7d429499a6f277e"
+checksum = "509591b7bcd67f4ef775afad7662703b4935daaa6ec0e5605cfb1090b32a2b6d"
 dependencies = [
  "find-msvc-tools",
  "shlex",
@@ -191,12 +191,6 @@ dependencies = [
  "wasm-bindgen",
  "windows-link",
 ]
-
-[[package]]
-name = "convert_case"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6245d59a3e82a7fc217c5828a6692dbc6dfb63a0c8c90495621f7b9d79704a0e"
 
 [[package]]
 name = "convert_case"
@@ -533,25 +527,12 @@ checksum = "930c7171c8df9fb1782bdf9b918ed9ed2d33d1d22300abb754f9085bc48bf8e8"
 
 [[package]]
 name = "derive-new"
-version = "0.5.9"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3418329ca0ad70234b9735dc4ceed10af4df60eff9c8e7b06cb5e520d92c3535"
+checksum = "2cdc8d50f426189eef89dac62fabfa0abb27d5cc008f25bf4156a0203325becc"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 1.0.109",
-]
-
-[[package]]
-name = "derive_more"
-version = "0.99.20"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6edb4b64a43d977b8e99788fe3a04d483834fba1215a7e02caa415b626497f7f"
-dependencies = [
- "convert_case 0.4.0",
- "proc-macro2",
- "quote",
- "rustc_version",
  "syn 2.0.119",
 ]
 
@@ -570,7 +551,7 @@ version = "2.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "799a97264921d8623a957f6c3b9011f3b5492f557bbb7a5a19b7fa6d06ba8dcb"
 dependencies = [
- "convert_case 0.10.0",
+ "convert_case",
  "proc-macro2",
  "quote",
  "rustc_version",
@@ -717,9 +698,9 @@ dependencies = [
 
 [[package]]
 name = "find-msvc-tools"
-version = "0.1.10"
+version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "26b73573e6edcd2af0cdf47bd6cb58f0b3839491263c314eaad1ccf24430e1de"
+checksum = "d45db016d36b838f563236e9193d0ee6ce38f3f68b6c94e914b4929c96bbb890"
 
 [[package]]
 name = "foldhash"
@@ -738,9 +719,9 @@ dependencies = [
 
 [[package]]
 name = "futures"
-version = "0.3.33"
+version = "0.3.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a88cf1f829d945f548cf8fec32c61b1f202b6d93b45848602fc02af4b12ad218"
+checksum = "9a31d2a3fbaaeb2af2368bbdd904aa8e812d3c04a1ee10d3171f52d556e5d0a3"
 dependencies = [
  "futures-channel",
  "futures-core",
@@ -752,9 +733,9 @@ dependencies = [
 
 [[package]]
 name = "futures-channel"
-version = "0.3.33"
+version = "0.3.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "262590f4fe6afeb0bc83be1daa64e52657fe185690a958af7f3ad0e92085c5ae"
+checksum = "b1f9e3d69d39e4862ffed03ed071a76f9a13ba1d9109d355b0f0aa6b15e393c4"
 dependencies = [
  "futures-core",
  "futures-sink",
@@ -762,44 +743,44 @@ dependencies = [
 
 [[package]]
 name = "futures-core"
-version = "0.3.33"
+version = "0.3.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2cd50c473c80f6d7c3670a752354b8e569b1a7cbfdc0419ec88e5edad85e0dc7"
+checksum = "92d699e522242e69e3003b94ecc1f960f3a5e015aa7c5d7486e65ad01dd94f5e"
 
 [[package]]
 name = "futures-io"
-version = "0.3.33"
+version = "0.3.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4577ecaa3c4f96589d473f679a71b596316f6641bc350038b962a5daf0085d7a"
+checksum = "53c0fa8157de1303bfffdaa1cc2a673bfffb60102f76b0ef4441659124373fed"
 
 [[package]]
 name = "futures-macro"
-version = "0.3.33"
+version = "0.3.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2d6d3cde68c518367be28956066ddfef33813991b77a55005a69dae04bf3b10b"
+checksum = "9fb9654ba8355388abeb8dcb4fc62f511300867002afc858860463bdd9fe0c44"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.119",
+ "syn 3.0.3",
 ]
 
 [[package]]
 name = "futures-sink"
-version = "0.3.33"
+version = "0.3.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e34418ac499d6305c2fb5ad0ed2f6ac998c5f8ca209b4510f7f94242c647e307"
+checksum = "1944426bf7d03f1d14f708785e4b33efd750b36d48a157b836b3efc15ede8e1d"
 
 [[package]]
 name = "futures-task"
-version = "0.3.33"
+version = "0.3.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b231ed28831efb4a61a08580c4bc233ec56bc009f4cd8f52da2c3cb97df0c109"
+checksum = "cd417de3d1d015fc3bfd2b1ea46dfc7bab72ef86f1cc7cc9c78e728b34a6d1fd"
 
 [[package]]
 name = "futures-util"
-version = "0.3.33"
+version = "0.3.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a77a90a256fce34da66415271e30f94ee91c57b04b8a2c042d9cf3220179deaa"
+checksum = "0d50a92467f8ba5dd6e3ee5d4bd04d73ab2e4e1c44474a0674821dfce14b79bc"
 dependencies = [
  "futures-channel",
  "futures-core",
@@ -1174,7 +1155,7 @@ version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f3bf5ede96b06406bd74351a026f708ae196b7dc262077aee56e6ad7223e7466"
 dependencies = [
- "proc-macro-crate 3.3.0",
+ "proc-macro-crate",
  "proc-macro2",
  "quote",
  "syn 2.0.119",
@@ -1279,18 +1260,18 @@ dependencies = [
 
 [[package]]
 name = "itertools"
-version = "0.10.5"
+version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b0fd2260e829bddf4cb6ea802289de2f86d6a7a690192fbe91b3f46e0f2c8473"
+checksum = "2b192c782037fadd9cfa75548310488aabdbf3d2da73885b31bd0abd03351285"
 dependencies = [
  "either",
 ]
 
 [[package]]
 name = "itertools"
-version = "0.14.0"
+version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2b192c782037fadd9cfa75548310488aabdbf3d2da73885b31bd0abd03351285"
+checksum = "8b4baf93f58d4425749ca49a51c50ebab072c5df6994d08fed93541c331481dc"
 dependencies = [
  "either",
 ]
@@ -1374,14 +1355,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 
 [[package]]
-name = "minimal-lexical"
-version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "68354c5c6bd36d73ff3feceb05efa59b6acb7626617f4962be322a825e61f79a"
-
-[[package]]
 name = "monstertruck-assembly"
-version = "0.3.3"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b8d2cbcea76b9dfd572d71bfcf414428b52fb875ffc161b887e3ff2eb4cfcc4c"
 dependencies = [
  "monstertruck-core",
  "rayon",
@@ -1389,7 +1366,9 @@ dependencies = [
 
 [[package]]
 name = "monstertruck-core"
-version = "0.3.3"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6281db62fe1ed8450d3bc1e8f5d896249903e275a2ba86ee5a05f1330dec9e9c"
 dependencies = [
  "cgmath",
  "matext4cgmath",
@@ -1400,7 +1379,9 @@ dependencies = [
 
 [[package]]
 name = "monstertruck-derive"
-version = "0.3.3"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "06e0d9c3de353a7338e591714b43124539c04f6c5f58f0a9b321e639b02740e7"
 dependencies = [
  "proc-macro-error",
  "proc-macro2",
@@ -1409,8 +1390,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "monstertruck-fillet"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fb13867e3ba8b0f10f2c856bada7bf567982e483b49b3a4aadd9e22b7f01153a"
+dependencies = [
+ "ahash",
+ "derive_more",
+ "getrandom 0.3.4",
+ "itertools 0.14.0",
+ "monstertruck-core",
+ "monstertruck-geometry",
+ "monstertruck-meshing",
+ "monstertruck-topology",
+ "monstertruck-traits",
+ "smallvec",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "monstertruck-geometry"
-version = "0.3.3"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3ad4de0fc3ecb570e723c5b5aa62c7fab68baf524d4878041cce14649ff8f2f7"
 dependencies = [
  "monstertruck-core",
  "monstertruck-traits",
@@ -1421,8 +1423,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "monstertruck-io"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ea6b9d9284cbd2c874246a230662877e03357da6b1f8ee5fe7d424d0c4c5c20a"
+dependencies = [
+ "chrono",
+ "derive_more",
+ "monstertruck-assembly",
+ "monstertruck-core",
+ "monstertruck-derive",
+ "monstertruck-geometry",
+ "monstertruck-mesh",
+ "monstertruck-modeling",
+ "monstertruck-topology",
+ "monstertruck-traits",
+ "serde",
+ "step-p21",
+ "thiserror 2.0.20",
+ "web-time",
+]
+
+[[package]]
 name = "monstertruck-mesh"
-version = "0.3.3"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b4a70be4e9fba214b360d050348496c9f8419c181cf6bd23365803354e31eda5"
 dependencies = [
  "array-macro",
  "bytemuck",
@@ -1437,11 +1463,14 @@ dependencies = [
 
 [[package]]
 name = "monstertruck-meshing"
-version = "0.3.3"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e088d721dc65839c9e8a9c319ecf71078f61117f33a5087742764e527b65a9c8"
 dependencies = [
  "array-macro",
- "derive_more 2.1.1",
+ "derive_more",
  "itertools 0.14.0",
+ "log",
  "monstertruck-core",
  "monstertruck-geometry",
  "monstertruck-mesh",
@@ -1454,28 +1483,33 @@ dependencies = [
 
 [[package]]
 name = "monstertruck-modeling"
-version = "0.3.3"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d58c5d95e71486a4c7d1fe7858f98c4eeec0e33db67e5edbf88f1d732fd49671"
 dependencies = [
- "derive_more 2.1.1",
+ "derive_more",
  "itertools 0.14.0",
  "monstertruck-core",
+ "monstertruck-fillet",
  "monstertruck-geometry",
  "monstertruck-mesh",
- "monstertruck-solid",
  "monstertruck-topology",
  "monstertruck-traits",
  "rayon",
  "rustc-hash",
  "serde",
  "thiserror 2.0.20",
+ "web-time",
 ]
 
 [[package]]
 name = "monstertruck-solid"
-version = "0.3.3"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "285e441125e8aa125880ebeb535ecaaebbeb7bd53353051305b57a269eb64b17"
 dependencies = [
  "ahash",
- "derive_more 2.1.1",
+ "derive_more",
  "getrandom 0.3.4",
  "itertools 0.14.0",
  "monstertruck-core",
@@ -1491,26 +1525,18 @@ dependencies = [
 
 [[package]]
 name = "monstertruck-step"
-version = "0.3.3"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "beb717b27e5ef666afb9249c30a80e9d9526cd09ff8d360bc53348a40b9f204f"
 dependencies = [
- "chrono",
- "derive_more 2.1.1",
- "monstertruck-assembly",
- "monstertruck-derive",
- "monstertruck-geometry",
- "monstertruck-mesh",
- "monstertruck-modeling",
- "monstertruck-topology",
- "monstertruck-traits",
- "ruststep",
- "serde",
- "thiserror 2.0.20",
- "web-time",
+ "monstertruck-io",
 ]
 
 [[package]]
 name = "monstertruck-topology"
-version = "0.3.3"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d77b2b55e68ca24928e53fcfafa257535ff323fdcfd66c9255d188882b49cfe0"
 dependencies = [
  "monstertruck-core",
  "monstertruck-traits",
@@ -1524,7 +1550,9 @@ dependencies = [
 
 [[package]]
 name = "monstertruck-traits"
-version = "0.3.3"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c0236c5f85b0355a176bee52c79b3e2f1f330f14749ba55ea8e4fbe82667157f"
 dependencies = [
  "getrandom 0.4.3",
  "monstertruck-core",
@@ -1536,15 +1564,17 @@ dependencies = [
 
 [[package]]
 name = "monstertruck-wasm"
-version = "0.3.3"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "138094b2c590c0fc66fc4661201592144167e7569f56c53db42cdda281170c08"
 dependencies = [
- "derive_more 2.1.1",
+ "derive_more",
  "gloo",
  "js-sys",
+ "monstertruck-io",
  "monstertruck-meshing",
  "monstertruck-modeling",
  "monstertruck-solid",
- "monstertruck-step",
  "monstertruck-topology",
  "serde_json",
  "wasm-bindgen",
@@ -1628,12 +1658,20 @@ dependencies = [
 
 [[package]]
 name = "nom"
-version = "7.1.3"
+version = "8.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d273983c5a657a70a3e8f2a01329822f3b8c8172b73826411a55751e404a0a4a"
+checksum = "df9761775871bdef83bee530e60050f7e54b1105350d6884eb0fb4f46c2f9405"
 dependencies = [
  "memchr",
- "minimal-lexical",
+]
+
+[[package]]
+name = "nom-language"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2de2bc5b451bfedaef92c90b8939a8fff5770bdcc1fafd6239d086aab8fa6b29"
+dependencies = [
+ "nom",
 ]
 
 [[package]]
@@ -1758,21 +1796,11 @@ dependencies = [
 
 [[package]]
 name = "proc-macro-crate"
-version = "1.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7f4c021e1093a56626774e81216a4ce732a735e5bad4868a03f3ed65ca0c3919"
-dependencies = [
- "once_cell",
- "toml_edit 0.19.15",
-]
-
-[[package]]
-name = "proc-macro-crate"
 version = "3.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "edce586971a4dfaa28950c6f18ed55e0406c1ab88bbce2c6f6293a7aaba73d35"
 dependencies = [
- "toml_edit 0.22.27",
+ "toml_edit",
 ]
 
 [[package]]
@@ -1797,6 +1825,28 @@ dependencies = [
  "proc-macro2",
  "quote",
  "version_check",
+]
+
+[[package]]
+name = "proc-macro-error-attr2"
+version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "96de42df36bb9bba5542fe9f1a054b8cc87e172759a1868aa05c1f3acc89dfc5"
+dependencies = [
+ "proc-macro2",
+ "quote",
+]
+
+[[package]]
+name = "proc-macro-error2"
+version = "2.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "11ec05c52be0a07b08061f7dd003e7d7092e0472bc731b4af7bb1ef876109802"
+dependencies = [
+ "proc-macro-error-attr2",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
 ]
 
 [[package]]
@@ -1985,36 +2035,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ruststep"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5df866eb24b48dd4bb8a3cb0dfeb3a25ff2c251ed93aae1cbfc03eb8ee3c7dcc"
-dependencies = [
- "Inflector",
- "derive-new",
- "derive_more 0.99.20",
- "itertools 0.10.5",
- "nom",
- "ruststep-derive",
- "serde",
- "thiserror 1.0.69",
-]
-
-[[package]]
-name = "ruststep-derive"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "81bfdd035ae42e977d18e3197065392784566ef230eda4241d15799ea2154e84"
-dependencies = [
- "Inflector",
- "proc-macro-crate 1.3.1",
- "proc-macro-error",
- "proc-macro2",
- "quote",
- "syn 2.0.119",
-]
-
-[[package]]
 name = "rustversion"
 version = "1.0.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2161,6 +2181,37 @@ dependencies = [
 ]
 
 [[package]]
+name = "step-p21"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "261fb24eb3fd1de07c36523c41063ea901cde514594603cb6dfe7afe64f1b967"
+dependencies = [
+ "Inflector",
+ "derive-new",
+ "derive_more",
+ "itertools 0.15.0",
+ "nom",
+ "nom-language",
+ "serde",
+ "step-p21-derive",
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "step-p21-derive"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "432f60e41744c351a88a444fbe134ca9bb8d930c6442fe6334728963ba5dd782"
+dependencies = [
+ "Inflector",
+ "proc-macro-crate",
+ "proc-macro-error2",
+ "proc-macro2",
+ "quote",
+ "syn 3.0.3",
+]
+
+[[package]]
 name = "syn"
 version = "1.0.109"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2252,17 +2303,6 @@ name = "toml_datetime"
 version = "0.6.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "22cddaf88f4fbc13c51aebbf5f8eceb5c7c5a9da2ac40a13519eb5b0a0e8f11c"
-
-[[package]]
-name = "toml_edit"
-version = "0.19.15"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1b5bb770da30e5cbfde35a2d7b9b8a2c4b8ef89548a7a6aeab5c9a576e3e7421"
-dependencies = [
- "indexmap",
- "toml_datetime",
- "winnow 0.5.40",
-]
 
 [[package]]
 name = "toml_edit"
@@ -2490,15 +2530,6 @@ dependencies = [
 
 [[package]]
 name = "winnow"
-version = "0.5.40"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f593a95398737aeed53e489c785df13f3618e41dbcd6718c6addbf1395aa6876"
-dependencies = [
- "memchr",
-]
-
-[[package]]
-name = "winnow"
 version = "0.7.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "df79d97927682d2fd8adb29682d1140b343be4ac0f08fd68b7765d9c059d3945"
@@ -2564,11 +2595,3 @@ name = "zmij"
 version = "1.0.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "29666d0abbfad1e3dc4dcf6144730dd3a3ab225bbbdac83319345b1b44ccfc1b"
-
-[[patch.unused]]
-name = "monstertruck-gpu"
-version = "0.3.3"
-
-[[patch.unused]]
-name = "monstertruck-render"
-version = "0.3.3"

@@ -21,29 +21,15 @@ members = [
     "crates/crawler-topology-repair",
     "crates/crawler-versioning",
 ]
-exclude = ["vendor/monstertruck"]
 resolver = "2"
 
 [workspace.dependencies]
-monstertruck-gpu = { git = "https://github.com/KTheMan/monstertruck.git", branch = "dev" }
-monstertruck-mesh = { git = "https://github.com/KTheMan/monstertruck.git", branch = "dev" }
-monstertruck-meshing = { git = "https://github.com/KTheMan/monstertruck.git", branch = "dev" }
-monstertruck-modeling = { git = "https://github.com/KTheMan/monstertruck.git", branch = "dev" }
-monstertruck-render = { git = "https://github.com/KTheMan/monstertruck.git", branch = "dev" }
-monstertruck-solid = { git = "https://github.com/KTheMan/monstertruck.git", branch = "dev" }
-monstertruck-step = { git = "https://github.com/KTheMan/monstertruck.git", branch = "dev" }
-monstertruck-topology = { git = "https://github.com/KTheMan/monstertruck.git", branch = "dev" }
-monstertruck-wasm = { git = "https://github.com/KTheMan/monstertruck.git", branch = "dev" }
-
-# Keep the application's qualified kernel baseline reproducible while the
-# upstream development branch continues to move.
-[patch."https://github.com/KTheMan/monstertruck.git"]
-monstertruck-gpu = { path = "vendor/monstertruck/monstertruck-gpu" }
-monstertruck-mesh = { path = "vendor/monstertruck/monstertruck-mesh" }
-monstertruck-meshing = { path = "vendor/monstertruck/monstertruck-meshing" }
-monstertruck-modeling = { path = "vendor/monstertruck/monstertruck-modeling" }
-monstertruck-render = { path = "vendor/monstertruck/monstertruck-render" }
-monstertruck-solid = { path = "vendor/monstertruck/monstertruck-solid" }
-monstertruck-step = { path = "vendor/monstertruck/monstertruck-step" }
-monstertruck-topology = { path = "vendor/monstertruck/monstertruck-topology" }
-monstertruck-wasm = { path = "vendor/monstertruck/monstertruck-wasm" }
+monstertruck-gpu = "=0.4.0"
+monstertruck-mesh = "=0.4.0"
+monstertruck-meshing = "=0.4.0"
+monstertruck-modeling = "=0.4.0"
+monstertruck-render = "=0.4.0"
+monstertruck-solid = "=0.4.0"
+monstertruck-step = "=0.4.0"
+monstertruck-topology = "=0.4.0"
+monstertruck-wasm = "=0.4.0"

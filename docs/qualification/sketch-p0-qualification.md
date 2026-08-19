@@ -21,14 +21,13 @@
 ## Required release gate
 
 ```powershell
-./scripts/qualify-sketch-p0.ps1 `
-  -MonstertruckCheckout "E:\.cargo\git\checkouts\monstertruck-f028d4cff35aec58\4669392"
+./scripts/qualify-sketch-p0.ps1
 ```
 
-The script validates every pinned local package, creates the exact Cargo patch
-configuration only when the repository has none, regenerates the shipped WASM,
-runs the Rust/runtime/unit/build/browser gates, and removes only the temporary
-configuration it created. `-SkipBrowser` is available for a focused local pass.
+The script uses the exact Monstertruck release pinned by the workspace and
+lockfile, regenerates the shipped WASM, and runs the
+Rust/runtime/unit/build/browser gates. `-SkipBrowser` is available for a
+focused local pass.
 
 The browser gate runs against the generated release WASM, not a TypeScript
 solver substitute. A P0 candidate is accepted only when the independent review
@@ -36,7 +35,7 @@ finds no material roadmap gap and all commands above pass.
 
 ## 2026-08-09 candidate evidence
 
-- `cargo test -p crawler-sketch --offline` with the local Monstertruck patch:
+- `cargo test -p crawler-sketch --offline` with the locked Monstertruck release:
   34 integration tests, 2 DXF workload tests, and the decomposition unit test passed.
 - Focused runtime persistence/contract tests passed for P0 parameter reload/edit,
   native B-spline knots, and the 29-kind EZPZ graph contract.

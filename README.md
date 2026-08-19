@@ -1,7 +1,7 @@
 # Crawler
 
 Crawler is a browser-based, desktop-class parametric CAD application. It uses
-[`monstertruck`](https://github.com/KTheMan/monstertruck) as its geometry kernel
+[`monstertruck`](https://github.com/virtualritz/monstertruck) as its geometry kernel
 and targets WebAssembly for local, responsive modeling.
 
 The [product requirements document](docs/PRODUCT_REQUIREMENTS.md) is the product

@@ -3,13 +3,12 @@ param()
 
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$expectedPrefix = 'git+https://github.com/KTheMan/monstertruck.git?branch=dev#'
+$expectedVersion = '0.4.0'
+$expectedSource = 'registry+https://github.com/rust-lang/crates.io-index'
 $expectedPackages = @(
-    'monstertruck-gpu',
     'monstertruck-mesh',
     'monstertruck-meshing',
     'monstertruck-modeling',
-    'monstertruck-render',
     'monstertruck-solid',
     'monstertruck-step',
     'monstertruck-topology',
@@ -34,23 +33,19 @@ foreach ($name in $expectedPackages) {
     if ($package.Count -ne 1) {
         throw "Expected exactly one resolved $name package; found $($package.Count)."
     }
-    if (-not $package[0].source.StartsWith($expectedPrefix, [StringComparison]::Ordinal)) {
-        throw "$name resolved from '$($package[0].source)' instead of the Monstertruck dev branch."
+    if ($package[0].version -ne $expectedVersion) {
+        throw "$name resolved at version '$($package[0].version)' instead of the qualified $expectedVersion release."
+    }
+    if ($package[0].source -ne $expectedSource) {
+        throw "$name resolved from '$($package[0].source)' instead of the official crates.io registry."
     }
 }
 
 $unexpectedSources = @($resolved | Where-Object {
-    $_.source -and -not $_.source.StartsWith($expectedPrefix, [StringComparison]::Ordinal)
+    $_.source -ne $expectedSource -or $_.version -ne $expectedVersion
 })
 if ($unexpectedSources) {
-    throw "Monstertruck packages resolved from mixed sources: $($unexpectedSources.name -join ', ')."
+    throw "Monstertruck packages resolved from mixed versions or sources: $($unexpectedSources.name -join ', ')."
 }
 
-$revisions = @($resolved | Where-Object source | ForEach-Object {
-    $_.source.Substring($_.source.LastIndexOf('#') + 1)
-} | Sort-Object -Unique)
-if ($revisions.Count -ne 1 -or $revisions[0] -notmatch '^[0-9a-f]{40}$') {
-    throw "Monstertruck packages are not locked to one Git revision: $($revisions -join ', ')."
-}
-
-Write-Host "Monstertruck Git dependencies verified at $($revisions[0])." -ForegroundColor Green
+Write-Host "Official Monstertruck crates verified at release $expectedVersion." -ForegroundColor Green

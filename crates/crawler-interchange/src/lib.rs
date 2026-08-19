@@ -380,6 +380,105 @@ fn csg_block_solid(block: StepCsgBlock) -> Solid {
     builder::extrude(&face, block.z_axis * block.dimensions[2])
 }
 
+fn step_without_comments(source: &str) -> String {
+    let bytes = source.as_bytes();
+    let mut cleaned = Vec::with_capacity(bytes.len());
+    let mut quoted = false;
+    let mut comment = false;
+    let mut index = 0;
+    while index < bytes.len() {
+        if comment {
+            if bytes[index] == b'*' && bytes.get(index + 1) == Some(&b'/') {
+                cleaned.extend_from_slice(b"  ");
+                comment = false;
+                index += 2;
+            } else {
+                cleaned.push(if matches!(bytes[index], b'\r' | b'\n') {
+                    bytes[index]
+                } else {
+                    b' '
+                });
+                index += 1;
+            }
+        } else if quoted {
+            cleaned.push(bytes[index]);
+            if bytes[index] == b'\'' {
+                if bytes.get(index + 1) == Some(&b'\'') {
+                    cleaned.push(b'\'');
+                    index += 2;
+                } else {
+                    quoted = false;
+                    index += 1;
+                }
+            } else {
+                index += 1;
+            }
+        } else if bytes[index] == b'/' && bytes.get(index + 1) == Some(&b'*') {
+            cleaned.extend_from_slice(b"  ");
+            comment = true;
+            index += 2;
+        } else {
+            cleaned.push(bytes[index]);
+            quoted = bytes[index] == b'\'';
+            index += 1;
+        }
+    }
+    String::from_utf8(cleaned).expect("removing bytes from UTF-8 preserves UTF-8")
+}
+
+fn is_legacy_monstertruck_step(source: &str) -> bool {
+    let cleaned = step_without_comments(source);
+    let mut in_header = false;
+    for record in split_step_records(&cleaned) {
+        if record.eq_ignore_ascii_case("HEADER") {
+            in_header = true;
+            continue;
+        }
+        if record.eq_ignore_ascii_case("DATA") || record.eq_ignore_ascii_case("ENDSEC") {
+            if in_header {
+                break;
+            }
+            continue;
+        }
+        if !in_header {
+            continue;
+        }
+        let Some(arguments) = step_record_arguments(record, "FILE_DESCRIPTION") else {
+            continue;
+        };
+        let Some(descriptions) = split_step_arguments(arguments).first().copied() else {
+            return false;
+        };
+        let Some(descriptions) = descriptions
+            .trim()
+            .strip_prefix('(')
+            .and_then(|value| value.strip_suffix(')'))
+        else {
+            return false;
+        };
+        return split_step_arguments(descriptions)
+            .into_iter()
+            .any(|value| value.trim() == "'Shape Data from monstertruck'");
+    }
+    false
+}
+
+fn restore_legacy_monstertruck_face_bounds(boundaries: &mut [CompressedShell]) {
+    for shell in boundaries {
+        for face in &mut shell.faces {
+            if face.orientation {
+                continue;
+            }
+            for boundary in &mut face.boundaries {
+                boundary.reverse();
+                for edge in boundary {
+                    edge.orientation = !edge.orientation;
+                }
+            }
+        }
+    }
+}
+
 /// Parse and inspect every imported shell without changing a part document.
 pub fn inspect_step(
     source_bytes: &[u8],
@@ -591,12 +690,20 @@ pub fn import_step_body(
         })
         .collect::<Result<Vec<_>, _>>()
         .map_err(|error| fail("unsupported_geometry", error))?;
-    let mut solid = Solid::extract(CompressedSolid {
+    let compressed = CompressedSolid {
         boundaries,
         id_allocator: None,
         attributes: None,
-    })
-    .map_err(|error| fail("invalid_topology", error.to_string()))?;
+    };
+    let mut solid = match Solid::extract(compressed.clone()) {
+        Ok(solid) => solid,
+        Err(error) if is_legacy_monstertruck_step(source) => {
+            let mut compatible = compressed;
+            restore_legacy_monstertruck_face_bounds(&mut compatible.boundaries);
+            Solid::extract(compatible).map_err(|_| fail("invalid_topology", error.to_string()))?
+        }
+        Err(error) => return Err(fail("invalid_topology", error.to_string())),
+    };
     solid.ensure_topology_stable_ids();
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -1253,6 +1360,51 @@ mod tests {
 
         let repeated = import_step_body(source, settings, "body:import:cube").unwrap();
         assert_eq!(imported, repeated);
+    }
+
+    #[test]
+    fn legacy_monstertruck_compatibility_requires_the_header_description() {
+        let source = include_str!(
+            "../../../fixtures/reference-models/step-roundtrip-cube/samples/cube-brep.step"
+        );
+        let settings = StepImportSettings {
+            tolerance_nanometers: 10_000,
+        };
+        assert!(is_legacy_monstertruck_step(source));
+        import_step_body(source.as_bytes(), settings, "body:legacy").unwrap();
+
+        let non_legacy = source.replacen(
+            "'Shape Data from monstertruck'",
+            "'Shape Data from another exporter'",
+            1,
+        );
+        assert!(!is_legacy_monstertruck_step(&non_legacy));
+        assert_eq!(
+            import_step_body(non_legacy.as_bytes(), settings, "body:non-legacy")
+                .unwrap_err()
+                .code,
+            "invalid_topology"
+        );
+
+        let comment_spoofed = non_legacy.replacen(
+            "HEADER;",
+            "HEADER;\n/* FILE_DESCRIPTION(('Shape Data from monstertruck'), '2;1'); */",
+            1,
+        );
+        assert!(!is_legacy_monstertruck_step(&comment_spoofed));
+        assert_eq!(
+            import_step_body(comment_spoofed.as_bytes(), settings, "body:comment-spoof")
+                .unwrap_err()
+                .code,
+            "invalid_topology"
+        );
+
+        let data_spoofed = non_legacy.replacen(
+            "DATA;",
+            "DATA;\n#999=FILE_DESCRIPTION(('Shape Data from monstertruck'),'2;1');",
+            1,
+        );
+        assert!(!is_legacy_monstertruck_step(&data_spoofed));
     }
 
     #[test]
