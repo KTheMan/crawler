@@ -3205,10 +3205,43 @@ fn execute_planar_face_negative(id: &str, binding: &FixtureBinding) -> Result<Ob
     }
     if declared.contains("recompute") {
         let mut probe = clone_runtime(&runtime)?;
-        if let Ok(response) = probe.recompute_from_here_json(S4_EXTRUDE_FEATURE) {
-            return Err(format!(
-                "{kind} recompute unexpectedly succeeded: {response}"
-            ));
+        let probe_before = probe.semantic_hash().map_err(|error| error.to_string())?;
+        match probe.recompute_from_here_json(S4_EXTRUDE_FEATURE) {
+            Ok(response) if kind == "planar_face_suppressed_producer_v4" => {
+                let refusal: Value = serde_json::from_str(&response).map_err(|error| {
+                    format!("suppressed-producer recompute returned invalid JSON: {error}")
+                })?;
+                let evaluation_order_is_empty = refusal["plan"]["evaluation_order"]
+                    .as_array()
+                    .is_some_and(Vec::is_empty);
+                if refusal["accepted"] != false
+                    || refusal["error"]["category"] != "reference"
+                    || refusal["error"]["code"] != "suppressed_required_input"
+                    || refusal["error"]["field_path"] != "recompute.required_inputs"
+                    || refusal["error"]["referenced_entity_ids"] != json!([S4_BASE_FEATURE])
+                    || !evaluation_order_is_empty
+                    || refusal["before_hash"].as_str() != Some(probe_before.as_str())
+                    || refusal["document_hash"].as_str() != Some(probe_before.as_str())
+                {
+                    return Err(format!(
+                        "suppressed-producer recompute did not return the expected atomic structured refusal: {refusal}"
+                    ));
+                }
+            }
+            Ok(response) => {
+                return Err(format!(
+                    "{kind} recompute unexpectedly succeeded: {response}"
+                ));
+            }
+            Err(error) if kind == "planar_face_suppressed_producer_v4" => {
+                return Err(format!(
+                    "suppressed-producer recompute returned an engine error instead of its structured refusal: {error}"
+                ));
+            }
+            Err(_) => {}
+        }
+        if probe.semantic_hash().map_err(|error| error.to_string())? != probe_before {
+            return Err(format!("{kind} recompute refusal mutated accepted state"));
         }
         executed.push("recompute".into());
     }
