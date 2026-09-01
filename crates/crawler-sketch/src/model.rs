@@ -713,6 +713,16 @@ pub struct ExternalReference {
     pub stable_kernel_id: String,
 }
 
+fn is_canonical_decimal_u64(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    let has_canonical_syntax = match bytes {
+        [b'0'] => true,
+        [b'1'..=b'9', rest @ ..] => rest.iter().all(u8::is_ascii_digit),
+        _ => false,
+    };
+    has_canonical_syntax && value.parse::<u64>().is_ok()
+}
+
 impl Sketch {
     pub fn new(id: impl Into<String>) -> Self {
         Self {
@@ -865,7 +875,7 @@ impl Sketch {
             ) {
                 return Err(SketchError::WrongGeometryKind(id.clone()));
             }
-            if reference.body.is_empty() || reference.stable_kernel_id.parse::<u64>().is_err() {
+            if reference.body.is_empty() || !is_canonical_decimal_u64(&reference.stable_kernel_id) {
                 return Err(SketchError::InvalidExternalReference(id.clone()));
             }
         }
@@ -1722,4 +1732,102 @@ pub enum SketchError {
     OffsetToleranceUnattainable(String),
     #[error("singular_offset: {0}")]
     SingularOffset(String),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sketch_with_external_reference(stable_kernel_id: &str) -> Sketch {
+        let geometry_id = GeometryId::from("line:external");
+        let mut sketch = Sketch::new("sketch:external-reference");
+        sketch.geometry.insert(
+            geometry_id.clone(),
+            GeometryEntity::new(
+                geometry_id.clone(),
+                Geometry::Line(Line {
+                    start: Point2::new(0, 0),
+                    end: Point2::new(10, 0),
+                }),
+            ),
+        );
+        sketch.external_references.insert(
+            geometry_id,
+            ExternalReference {
+                body: "body:source".to_owned(),
+                stable_kernel_id: stable_kernel_id.to_owned(),
+            },
+        );
+        sketch
+    }
+
+    #[test]
+    fn external_reference_accepts_canonical_u64_bounds_and_reemits_them_unchanged() {
+        for stable_kernel_id in ["0", "18446744073709551615"] {
+            let sketch = sketch_with_external_reference(stable_kernel_id);
+            let bytes = sketch
+                .canonical_bytes()
+                .expect("canonical ID must serialize");
+            let reloaded = Sketch::from_canonical_bytes(&bytes)
+                .expect("canonical ID must deserialize and validate");
+
+            assert_eq!(
+                reloaded.external_references[&GeometryId::from("line:external")].stable_kernel_id,
+                stable_kernel_id
+            );
+            assert_eq!(
+                reloaded
+                    .canonical_bytes()
+                    .expect("reloaded sketch must re-emit"),
+                bytes
+            );
+        }
+    }
+
+    #[test]
+    fn external_reference_rejects_noncanonical_or_out_of_range_kernel_ids() {
+        for stable_kernel_id in [
+            "",
+            "+1",
+            "-1",
+            "00",
+            "01",
+            " 1",
+            "1 ",
+            "18446744073709551616",
+        ] {
+            let sketch = sketch_with_external_reference(stable_kernel_id);
+            assert!(matches!(
+                sketch.validate(),
+                Err(SketchError::InvalidExternalReference(id))
+                    if id == GeometryId::from("line:external")
+            ));
+            assert!(matches!(
+                sketch.canonical_bytes(),
+                Err(SketchError::InvalidExternalReference(id))
+                    if id == GeometryId::from("line:external")
+            ));
+
+            let bytes = serde_json::to_vec(&sketch).expect("typed sketch must serialize");
+            assert!(matches!(
+                Sketch::from_canonical_bytes(&bytes),
+                Err(SketchError::InvalidExternalReference(id))
+                    if id == GeometryId::from("line:external")
+            ));
+        }
+    }
+
+    #[test]
+    fn external_reference_rejects_numeric_kernel_id_during_deserialization() {
+        let sketch = sketch_with_external_reference("6");
+        let mut value = serde_json::to_value(&sketch).expect("typed sketch must serialize");
+        value["external_references"]["line:external"]["stable_kernel_id"] = serde_json::json!(6);
+
+        assert!(matches!(
+            Sketch::from_canonical_bytes(
+                &serde_json::to_vec(&value).expect("mutated JSON must serialize")
+            ),
+            Err(SketchError::Deserialize(_))
+        ));
+    }
 }

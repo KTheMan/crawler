@@ -4,7 +4,9 @@ fn assert_canonical(fixture: &str) {
     let document: Document =
         serde_json::from_str(fixture.trim_end()).expect("fixture must deserialize");
     let canonical = serde_json::to_string(&document).expect("document must serialize");
-    assert_eq!(format!("{canonical}\n"), fixture);
+    // The canonical contract is the JSON payload; accept either checkout line
+    // ending for the fixture's single trailing record terminator.
+    assert_eq!(canonical, fixture.trim_end());
 }
 
 #[test]

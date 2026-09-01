@@ -1,0 +1,204 @@
+{
+  "schema_version": 1,
+  "document_schema_version": 1,
+  "feature_request_schema_version": 1,
+  "policy": "preserve_without_implicit_migration",
+  "operations": [
+    {
+      "id": "extrude",
+      "schema_id": "crawler.part.extrude",
+      "disposition": "preserve_v1",
+      "open": "editable",
+      "save": "preserve_v1",
+      "operation": {
+        "kind": "extrude",
+        "profiles_nm": [[[0, 0, 0], [3000000, 0, 0], [3000000, 2000000, 0], [0, 2000000, 0]]],
+        "direction_nm": [0, 0, 2000000],
+        "tolerance_nm": 10000
+      },
+      "edit_operation": {
+        "kind": "extrude",
+        "profiles_nm": [[[0, 0, 0], [3000000, 0, 0], [3000000, 2000000, 0], [0, 2000000, 0]]],
+        "direction_nm": [0, 0, 3000000],
+        "tolerance_nm": 10000
+      },
+      "expected": {
+        "created_body_digest": "fnv1a64:9a8b6e4687ed85e0",
+        "edited_body_digest": "fnv1a64:00023952f3e7aee4",
+        "final_document_sha256": "a3e866b0a2ca0c568cbb72a3e7a45dd112de804c68b9e0b7ec2cfd4f4f957b6d"
+      }
+    },
+    {
+      "id": "extrude-cut",
+      "schema_id": "crawler.part.extrude.cut",
+      "disposition": "preserve_v1",
+      "open": "editable",
+      "save": "preserve_v1",
+      "operation": {
+        "kind": "extrude_cut",
+        "target": { "$body": "base" },
+        "profiles_nm": [[[2000000, 2000000, -1000000], [4000000, 2000000, -1000000], [4000000, 4000000, -1000000], [2000000, 4000000, -1000000]]],
+        "direction_nm": [0, 0, 12000000],
+        "tolerance_nm": 10000
+      },
+      "edit_operation": {
+        "kind": "extrude_cut",
+        "target": { "$body": "base" },
+        "profiles_nm": [[[2000000, 2000000, -1000000], [5000000, 2000000, -1000000], [5000000, 4000000, -1000000], [2000000, 4000000, -1000000]]],
+        "direction_nm": [0, 0, 12000000],
+        "tolerance_nm": 10000
+      },
+      "expected": {
+        "created_body_digest": "fnv1a64:c34cdd4103343475",
+        "edited_body_digest": "fnv1a64:a9ff4564b40122f2",
+        "final_document_sha256": "cd010f3152bcafa450327f62785eab3366f76b9126800b953ba6704d9f78416d"
+      }
+    },
+    {
+      "id": "revolve",
+      "schema_id": "crawler.part.revolve",
+      "disposition": "preserve_v1",
+      "open": "editable",
+      "save": "preserve_v1",
+      "operation": {
+        "kind": "revolve",
+        "axis_origin_nm": [0, 0, 0],
+        "axis": "z",
+        "inner_radius_nm": 1000000,
+        "outer_radius_nm": 2000000,
+        "axial_start_nm": 0,
+        "axial_end_nm": 3000000,
+        "sweep_microdegrees": 360000000,
+        "divisions": 16,
+        "tolerance_nm": 10000
+      },
+      "edit_operation": {
+        "kind": "revolve",
+        "axis_origin_nm": [0, 0, 0],
+        "axis": "z",
+        "inner_radius_nm": 1000000,
+        "outer_radius_nm": 2500000,
+        "axial_start_nm": 0,
+        "axial_end_nm": 3000000,
+        "sweep_microdegrees": 360000000,
+        "divisions": 16,
+        "tolerance_nm": 10000
+      },
+      "expected": {
+        "created_body_digest": "fnv1a64:0907618f18f15568",
+        "edited_body_digest": "fnv1a64:1b22aa0cc3b0f9ff",
+        "final_document_sha256": "967b26039fbfcf400e9379c84bde2035513d0a0b4408605fd6a603e7f50a3655"
+      }
+    },
+    {
+      "id": "revolve-cut",
+      "schema_id": "crawler.part.revolve.cut",
+      "disposition": "preserve_v1",
+      "open": "editable",
+      "save": "preserve_v1",
+      "operation": {
+        "kind": "revolve_cut",
+        "target": { "$body": "base" },
+        "profile_nm": [[5000000, 5000000, -1000000], [6000000, 5000000, -1000000], [6000000, 5000000, 11000000], [5000000, 5000000, 11000000]],
+        "axis_origin_nm": [5000000, 5000000, 0],
+        "axis_direction_nm": [0, 0, 1000000],
+        "sweep_microdegrees": 360000000,
+        "divisions": 24,
+        "tolerance_nm": 10000
+      },
+      "edit_operation": {
+        "kind": "revolve_cut",
+        "target": { "$body": "base" },
+        "profile_nm": [[5000000, 5000000, -1000000], [6500000, 5000000, -1000000], [6500000, 5000000, 11000000], [5000000, 5000000, 11000000]],
+        "axis_origin_nm": [5000000, 5000000, 0],
+        "axis_direction_nm": [0, 0, 1000000],
+        "sweep_microdegrees": 360000000,
+        "divisions": 24,
+        "tolerance_nm": 10000
+      },
+      "expected": {
+        "created_body_digest": "fnv1a64:2c6d8cf36c2e4207",
+        "edited_body_digest": "fnv1a64:513c69333fd5abe0",
+        "final_document_sha256": "a4ce608cf5cb7e4c37182151aec3b73602bc85c586cbb087284ecad80d1e78bf"
+      }
+    },
+    {
+      "id": "loft",
+      "schema_id": "crawler.part.loft",
+      "disposition": "preserve_v1",
+      "open": "editable",
+      "save": "preserve_v1",
+      "operation": {
+        "kind": "loft",
+        "profiles_nm": [
+          [[0, 0, 0], [2000000, 0, 0], [2000000, 2000000, 0], [0, 2000000, 0]],
+          [[0, 0, 3000000], [3000000, 0, 3000000], [3000000, 3000000, 3000000], [0, 3000000, 3000000]]
+        ],
+        "tolerance_nm": 10000
+      },
+      "edit_operation": {
+        "kind": "loft",
+        "profiles_nm": [
+          [[0, 0, 0], [2000000, 0, 0], [2000000, 2000000, 0], [0, 2000000, 0]],
+          [[0, 0, 4000000], [3000000, 0, 4000000], [3000000, 3000000, 4000000], [0, 3000000, 4000000]]
+        ],
+        "tolerance_nm": 10000
+      },
+      "expected": {
+        "created_body_digest": "fnv1a64:abad279bb248e57b",
+        "edited_body_digest": "fnv1a64:a184214fa7c17e4a",
+        "final_document_sha256": "6c20da744baa430782eee0afe495d002864185734fa5a670c3299f91cc897e08"
+      }
+    },
+    {
+      "id": "sweep",
+      "schema_id": "crawler.part.sweep",
+      "disposition": "preserve_v1",
+      "open": "editable",
+      "save": "preserve_v1",
+      "operation": {
+        "kind": "sweep",
+        "profile_nm": [[0, 0, 0], [2000000, 0, 0], [2000000, 2000000, 0], [0, 2000000, 0]],
+        "path_nm": [[0, 0, 0], [0, 0, 3000000]],
+        "tolerance_nm": 10000
+      },
+      "edit_operation": {
+        "kind": "sweep",
+        "profile_nm": [[0, 0, 0], [2000000, 0, 0], [2000000, 2000000, 0], [0, 2000000, 0]],
+        "path_nm": [[0, 0, 0], [0, 0, 4000000]],
+        "tolerance_nm": 10000
+      },
+      "expected": {
+        "created_body_digest": "fnv1a64:070128e437357a96",
+        "edited_body_digest": "fnv1a64:375225f6276f4119",
+        "final_document_sha256": "b5f43a0495928c58b77edbf687f0432e0d6d7787a064315f96b046e422a0062e"
+      }
+    },
+    {
+      "id": "boolean",
+      "schema_id": "crawler.part.boolean",
+      "disposition": "preserve_v1",
+      "open": "editable",
+      "save": "preserve_v1",
+      "operation": {
+        "kind": "boolean",
+        "operation": "union",
+        "target": { "$body": "base" },
+        "tools": [{ "$body": "tool" }],
+        "tolerance_nm": 10000
+      },
+      "edit_operation": {
+        "kind": "boolean",
+        "operation": "intersect",
+        "target": { "$body": "base" },
+        "tools": [{ "$body": "tool" }],
+        "tolerance_nm": 10000
+      },
+      "expected": {
+        "created_body_digest": "fnv1a64:151b058284ae343d",
+        "edited_body_digest": "fnv1a64:4fab9da42365e783",
+        "final_document_sha256": "1cde0f9a948bcf83d094cf32ba1e19a2f86df5721f1c5a9014c66d72c9b7c5e7"
+      }
+    }
+  ]
+}

@@ -64,7 +64,12 @@ fn same_new_part_command_has_same_fixture_and_semantic_hash() {
     ));
 
     let fixture = include_bytes!("../../crawler-document/tests/fixtures/new-part-cube.json");
-    assert_eq!(first.canonical_document_bytes().unwrap(), fixture);
+    assert_eq!(
+        String::from_utf8(first.canonical_document_bytes().unwrap())
+            .unwrap()
+            .trim_end(),
+        std::str::from_utf8(fixture).unwrap().trim_end()
+    );
     let parsed: Document = serde_json::from_slice(fixture).unwrap();
     assert_eq!(&parsed, first.document());
 

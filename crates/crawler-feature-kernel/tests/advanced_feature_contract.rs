@@ -24,6 +24,10 @@ fn box_snapshot(body_id: &str, origin: [f64; 3], size: f64) -> BodySnapshot {
                 max: origin.map(|value| ((value + size) * 1_000_000.0).round() as i64),
             },
             volume_model_units3: volume,
+
+            surface_area_nm2: None,
+
+            centroid_nm: None,
             deterministic_digest: "fixture".to_owned(),
         },
     }
@@ -629,6 +633,116 @@ fn shell_rejects_a_missing_face_without_mutating_the_exact_input() {
     let reference = error.problematic_reference.unwrap();
     assert_eq!(reference.kind, ReferenceKind::Face);
     assert_eq!(reference.stable_id, face_id.to_string());
+}
+
+#[test]
+fn persisted_advanced_topology_ids_are_canonical_decimal_string_arrays() {
+    let body = box_snapshot("topology-id-source", [0.0, 0.0, 0.0], 1.0);
+    let cases = [
+        (
+            request(FeatureOperation::Draft(DraftInput {
+                target: body.clone(),
+                face_stable_ids: vec![0, u64::MAX],
+                pull_direction: PrincipalAxis::Z,
+                neutral_plane_origin_nm: [0, 0, 0],
+                angle_microdegrees: 1,
+                tolerance_nm: TOLERANCE_NM,
+            })),
+            "face_stable_ids",
+        ),
+        (
+            request(FeatureOperation::Fillet(EdgeTreatmentInput {
+                target: body.clone(),
+                edge_stable_ids: vec![0, u64::MAX],
+                radius_nm: 1,
+                divisions: 1,
+                tolerance_nm: TOLERANCE_NM,
+            })),
+            "edge_stable_ids",
+        ),
+        (
+            request(FeatureOperation::Shell(ShellInput {
+                target: body,
+                removed_face_stable_ids: vec![0, u64::MAX],
+                wall_thickness_nm: 1,
+                tolerance_nm: TOLERANCE_NM,
+            })),
+            "removed_face_stable_ids",
+        ),
+    ];
+
+    for (original, field) in cases {
+        let encoded = serde_json::to_value(&original).unwrap();
+        assert_eq!(
+            encoded["operation"][field],
+            serde_json::json!(["0", "18446744073709551615"]),
+            "{field} must be persisted losslessly"
+        );
+        let decoded: FeatureRequest = serde_json::from_value(encoded).unwrap();
+        assert_eq!(decoded, original);
+    }
+}
+
+#[test]
+fn persisted_advanced_topology_ids_fail_closed_on_noncanonical_or_non_string_values() {
+    let body = box_snapshot("topology-id-source", [0.0, 0.0, 0.0], 1.0);
+    let bases = [
+        (
+            request(FeatureOperation::Draft(DraftInput {
+                target: body.clone(),
+                face_stable_ids: vec![1],
+                pull_direction: PrincipalAxis::Z,
+                neutral_plane_origin_nm: [0, 0, 0],
+                angle_microdegrees: 1,
+                tolerance_nm: TOLERANCE_NM,
+            })),
+            "face_stable_ids",
+        ),
+        (
+            request(FeatureOperation::Fillet(EdgeTreatmentInput {
+                target: body.clone(),
+                edge_stable_ids: vec![1],
+                radius_nm: 1,
+                divisions: 1,
+                tolerance_nm: TOLERANCE_NM,
+            })),
+            "edge_stable_ids",
+        ),
+        (
+            request(FeatureOperation::Shell(ShellInput {
+                target: body,
+                removed_face_stable_ids: vec![1],
+                wall_thickness_nm: 1,
+                tolerance_nm: TOLERANCE_NM,
+            })),
+            "removed_face_stable_ids",
+        ),
+    ];
+    let invalid_values = [
+        serde_json::json!(""),
+        serde_json::json!("00"),
+        serde_json::json!("01"),
+        serde_json::json!("+1"),
+        serde_json::json!("-1"),
+        serde_json::json!(" 1"),
+        serde_json::json!("1 "),
+        serde_json::json!("1.0"),
+        serde_json::json!("18446744073709551616"),
+        serde_json::json!(1),
+        serde_json::json!(1.0),
+        serde_json::Value::Null,
+    ];
+    for (base, field) in bases {
+        let mut encoded = serde_json::to_value(base).unwrap();
+        for invalid in &invalid_values {
+            encoded["operation"][field] = serde_json::json!([invalid]);
+            assert!(
+                serde_json::from_value::<FeatureRequest>(encoded.clone()).is_err(),
+                "accepted malformed {field}: {}",
+                encoded["operation"][field]
+            );
+        }
+    }
 }
 
 #[test]

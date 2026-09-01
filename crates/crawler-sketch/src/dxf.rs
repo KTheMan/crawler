@@ -358,6 +358,7 @@ fn push_header(output: &mut String, kind: &str, id: &str, layer: &str) {
     ));
 }
 
+#[allow(clippy::too_many_arguments)]
 fn push_control_spline(
     output: &mut String,
     id: &str,
@@ -410,10 +411,10 @@ fn push_control_spline(
     if let Some(marker) = marker {
         output.push_str(&format!("1000\n{marker}\n"));
     }
-    if let Some(weights) = weights {
-        if let Some(weight) = weights.get(1) {
-            output.push_str(&format!("1071\n{weight}\n"));
-        }
+    if let Some(weights) = weights
+        && let Some(weight) = weights.get(1)
+    {
+        output.push_str(&format!("1071\n{weight}\n"));
     }
 }
 
@@ -433,6 +434,7 @@ fn push_fit_spline(output: &mut String, id: &str, layer: &str, points: &[Point2]
     output.push_str("1000\nCRAWLER:FIT_POINT_SPLINE\n");
 }
 
+#[allow(clippy::too_many_arguments)]
 fn push_ellipse(
     output: &mut String,
     id: &str,

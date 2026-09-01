@@ -377,19 +377,24 @@ test("invalid STEP returns diagnosed source bytes and never acknowledges", async
   assert.equal(runtime.acknowledgedState("step-document"), undefined);
 });
 
-test("Crawler CSG STEP compatibility fixture fails closed as unsupported", async () => {
+test("Crawler CSG STEP compatibility fixture materializes through real WASM", async () => {
   const sourceBytes = new Uint8Array(await readFile(crawlerCsgStepCubeUrl));
-  const expected = sourceBytes.slice();
+  const expectedLength = sourceBytes.byteLength;
   const events = await collectWorkerEvents(
     stepCommand({ requestId: "step-csg", sourceBytes }),
   );
   const terminal = events.at(-1);
 
-  assert.equal(terminal.event, "error");
-  assert.equal(terminal.code, "unsupported_import");
-  assert.equal(terminal.preserved_source.constructor, Uint8Array);
-  assert.deepEqual(terminal.preserved_source, expected);
-  assert.match(terminal.source_sha256, /^[0-9a-f]{64}$/);
+  assert.equal(terminal.event, "result", JSON.stringify(terminal));
+  assert.equal(terminal.result.kind, "step_import");
+  assert.equal(terminal.result.provenance.source_bytes, expectedLength);
+  assert.equal(terminal.result.provenance.shell_count, 1);
+  assert.equal(terminal.result.provenance.face_count, 6);
+  assert.ok(terminal.result.provenance.triangle_count >= 12);
+  assert.deepEqual(terminal.result.body.evidence.bounds_nm, {
+    min: [0, 0, 0],
+    max: [10_000_000, 10_000_000, 10_000_000],
+  });
 });
 
 test("STEP cancellation at a yielded phase leaves import unacknowledged", async () => {

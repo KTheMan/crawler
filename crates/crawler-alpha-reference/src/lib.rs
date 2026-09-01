@@ -4,7 +4,7 @@
 use crawler_document::{
     ComponentId, Document, DocumentChange, EntityId, Feature, FeatureId, FeatureInput,
     FeatureRecomputeState, OperationReference, ParameterId, ParameterValue, SketchElement,
-    TopologyReference, TopologyReferenceId, TransactionId,
+    TopologyReference, TopologyReferenceId, TopologyReferenceVersion, TransactionId,
 };
 use crawler_feature_graph::{
     FeatureGraphDocument, FeatureTimingDiagnostic, RollbackPosition, RuntimeDiagnostics,
@@ -131,9 +131,39 @@ pub struct ProvenanceEvidence {
 pub struct TopologyEvidence {
     pub id: String,
     pub kind: String,
+    #[serde(with = "canonical_u64_decimal")]
     pub stable_kernel_id: u64,
     pub stable_token: String,
     pub signature_sha256: String,
+}
+
+mod canonical_u64_decimal {
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S>(value: &u64, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&value.to_string())
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<u64, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        if value.is_empty()
+            || (value.len() > 1 && value.starts_with('0'))
+            || !value.bytes().all(|byte| byte.is_ascii_digit())
+        {
+            return Err(serde::de::Error::custom(
+                "expected a canonical u64 decimal string",
+            ));
+        }
+        value
+            .parse::<u64>()
+            .map_err(|_| serde::de::Error::custom("expected a canonical u64 decimal string"))
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -1074,6 +1104,10 @@ fn rectangular_prism(
                 max: max_nm,
             },
             volume_model_units3,
+
+            surface_area_nm2: None,
+
+            centroid_nm: None,
             deterministic_digest: sha256_hex(&solid_json),
         },
         solid_json,
@@ -1125,6 +1159,8 @@ fn compose_fixture_shells(
                 .iter()
                 .map(|input| input.evidence.volume_model_units3)
                 .sum(),
+            surface_area_nm2: None,
+            centroid_nm: None,
             deterministic_digest: sha256_hex(&solid_json),
         },
         solid_json,
@@ -1306,7 +1342,9 @@ fn qualify_repair(document: &Document) -> Result<(RepairEvidence, Document), Qua
 
 fn replacement(expected: &TopologyReference, id: &str, stable_kernel_id: u64) -> TopologyReference {
     TopologyReference {
+        schema_version: TopologyReferenceVersion::V1,
         id: id.into(),
+        component: expected.component.clone(),
         body: expected.body.clone(),
         producer: expected.producer.clone(),
         kind: expected.kind,
@@ -1514,4 +1552,61 @@ pub enum QualificationError {
     Contract(String),
     #[error("qualification serialization failed: {0}")]
     Serialization(#[from] serde_json::Error),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn topology_evidence(stable_kernel_id: Value) -> Value {
+        json!({
+            "id": "topology:test",
+            "kind": "face",
+            "stable_kernel_id": stable_kernel_id,
+            "stable_token": "test:face",
+            "signature_sha256": "00"
+        })
+    }
+
+    #[test]
+    fn topology_evidence_kernel_id_serializes_as_canonical_decimal_string() {
+        let evidence = TopologyEvidence {
+            id: "topology:test".into(),
+            kind: "face".into(),
+            stable_kernel_id: u64::MAX,
+            stable_token: "test:face".into(),
+            signature_sha256: "00".into(),
+        };
+        let serialized = serde_json::to_value(&evidence).unwrap();
+        assert_eq!(
+            serialized["stable_kernel_id"],
+            Value::String(u64::MAX.to_string())
+        );
+        assert_eq!(
+            serde_json::from_value::<TopologyEvidence>(serialized)
+                .unwrap()
+                .stable_kernel_id,
+            u64::MAX
+        );
+    }
+
+    #[test]
+    fn topology_evidence_kernel_id_rejects_numbers_and_malformed_strings() {
+        for invalid in [
+            json!(0),
+            json!(""),
+            json!("00"),
+            json!("06"),
+            json!("+1"),
+            json!("-1"),
+            json!(" 1"),
+            json!("1 "),
+            json!("18446744073709551616"),
+        ] {
+            assert!(
+                serde_json::from_value::<TopologyEvidence>(topology_evidence(invalid)).is_err()
+            );
+        }
+    }
 }

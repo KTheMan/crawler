@@ -12,6 +12,7 @@ mod dxf;
 mod ezpz_backend;
 mod model;
 mod profile;
+mod region;
 mod solver;
 
 pub use command::{CommandApplication, CommandDiagnostic, SketchCommand, TrimOperation};
@@ -31,6 +32,7 @@ pub use model::{
     SketchError, SketchOperation, SketchRecipe,
 };
 pub use profile::{ProfileDiagnostic, ProfileReport};
+pub use region::{ProfileRegion, RegionDiagnostic, RegionReport};
 pub use solver::{
     ConflictReason, ConflictSet, ConstrainedDragResult, DragRequest, EzpzSolver, SketchSolver,
     SolveResult, SolveState, SolvedSketch, SolverContract,

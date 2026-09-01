@@ -11,6 +11,13 @@
       "allowed_kinds": ["sketch_profile"],
       "minimum_count": 1,
       "maximum_count": 1
+    },
+    {
+      "key": "target_body",
+      "label": "Target body",
+      "allowed_kinds": ["body"],
+      "minimum_count": 0,
+      "maximum_count": 1
     }
   ],
   "parameters": [
@@ -22,6 +29,42 @@
       "bounds": { "minimum": 1000, "maximum": 1000000000000 },
       "choices": [],
       "advanced_group": null
+    },
+    {
+      "key": "direction",
+      "label": "Direction",
+      "value_kind": "text",
+      "default": { "kind": "text", "value": "positive" },
+      "bounds": null,
+      "choices": ["positive", "negative", "symmetric"],
+      "advanced_group": null
+    },
+    {
+      "key": "result_mode",
+      "label": "Result mode",
+      "value_kind": "text",
+      "default": { "kind": "text", "value": "new_body" },
+      "bounds": null,
+      "choices": ["new_body", "cut"],
+      "advanced_group": null
+    }
+  ],
+  "invocation_constraints": [
+    {
+      "kind": "input_count_when_text_parameter",
+      "parameter": "result_mode",
+      "equals": "new_body",
+      "input": "target_body",
+      "minimum_count": 0,
+      "maximum_count": 0
+    },
+    {
+      "kind": "input_count_when_text_parameter",
+      "parameter": "result_mode",
+      "equals": "cut",
+      "input": "target_body",
+      "minimum_count": 1,
+      "maximum_count": 1
     }
   ],
   "preview": {
