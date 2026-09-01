@@ -18,3 +18,4 @@ web/crawler-app/.vite*.log
 /CODEXSAVER_SMOKE_TEST.md
 /spikes/e00-s03-renderer/pnpm-local.exe
 spikes/e00-s03-renderer/src/generated/packet/crawler_render_packet.wasm
+/artifacts/
