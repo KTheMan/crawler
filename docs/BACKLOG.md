@@ -620,12 +620,307 @@ repair path when upstream topology changes.
 - A missing face stops at the sketch and offers explicit candidate rebinding.
 - Repair recomputes downstream features and records the rebind transaction.
 
+**Bounded Sprint 4 status (Attempt 42 closeout complete and qualified):** A
+current analytic planar-face support can drive Blind New Body Extrude, and a
+missing support can be explicitly previewed and atomically rebound only to a
+compatible face on the same body, producer, and component. This bounded path
+over qualified line, arc, circle, and hole profiles and current
+native/release-WASM frame authority passed the fresh 28/28 source-bound gate
+with 35 records and 163 checksummed files in
+`artifacts/solid-feature-qualification/runs/20260829T103331Z-solid-feature-sprint-4-r1`,
+but Attempt 31 rejected that bundle for final qualification.
+The initial 25/25 bundle rejected for nine findings, the first 27/27 remediated
+bundle rejected for a TypeScript fail-closed defect, and the second 27/27 bundle
+rejected for the inverse Rust fail-closed mismatch remain immutable history,
+with every finding and remediation retained in the append-only qualification
+ledger. Rust rejected numeric `external_line.stable_kernel_id`, whereas the
+Attempt 30 TypeScript boundary parsed and then serialized it lossily and storage
+accepted it. Exact six-field, safe-coordinate-pair, canonical-`u64`, lossless
+document 11/11 and storage 19/19 remediation passes. Attempt 33 then found five
+additional persisted-ID paths.
+Attempt 34 closes them at focused scope: crawler-sketch 3/3; feature-kernel
+29/29 plus 2/2; app builder 20/20 plus TypeScript compilation; runtime 2/2;
+WASM/native evidence 1/1 each; alpha 5/5; corrected history typing; and
+document/storage 11/11 and 19/19. Attempt 35 is only the administrative
+`20260829T113815838Z-incomplete` archive of the old completed Attempt 30 mirror.
+Attempt 36 (`20260829T115821960Z-incomplete`) rejected the current source at
+17/18 commands on sandbox `C:\Volta` resolution. Attempt 37
+(`20260829T121358296Z-incomplete`) reached 24/25 commands but parity rejected two
+repair evidence documents at 8/10 because native and release-WASM used different
+broken-reference sentinels. Attempt 38 changes native evidence to canonical
+`u64::MAX.to_string()` and focused native/release-WASM export plus comparison
+passes 10/10 under `target/sprint4-focused-parity-20260829T121122215Z`.
+Attempt 39 (`20260829T122635405Z-incomplete`) passed its 26-command prefix but
+the mandatory preflight source-integrity check rejected four tracked completion
+documents that changed during the run. Attempt 40 reran the stable exact source
+and passed 28/28 commands plus isolated validation, sealing 35 passed records
+and 163 checksum entries at
+`artifacts/solid-feature-qualification/runs/20260829T123714Z-solid-feature-sprint-4-r1`.
+Fresh independent Attempt 41 returned exact standalone `ZERO FINDINGS` for the
+Attempt 40 exact state. Final documentation-only Attempt 42 by the same reviewer
+also returned exact standalone `ZERO FINDINGS` after reviewing the reconciled
+documents and `git diff --check`. The bounded path is **COMPLETE AND
+QUALIFIED**. No deferred support or repair class is promoted.
+E04-S05 remains open for generalized sketch attachment and repair: curved or
+nonanalytic supports, automatic healing, split/merge or topology-changing
+rebind, and cross-component/cross-support/general rebind are deferred.
+
 ---
 
 ## E05 — Solid feature modeling
 
 **Outcome:** Users can build useful mechanical parts through editable,
 schema-driven features.
+
+**Current planning supplements:** The committed foundations and exact Extrude
+vertical slice are defined in
+[Solid Feature Foundations — Sprint 1](specs/solid-feature-modernization-sprint.md).
+
+Preceding qualified follow-on sprint:
+[Offset Construction-Plane Extrude — Sprint 3](specs/solid-feature-modernization-sprint-3.md),
+with status and evidence tracked in
+[Solid Feature Sprint 3 Qualification](qualification/solid-feature-sprint-3-qualification.md).
+Candidate `solid-feature-sprint-3` revision 1 implemented signed origin-relative
+offset planes and blind New Body Extrude and passed its automated gate, but
+independent review rejected that evidence and superseded the revision. Its
+immutable automated run remains historical at
+`artifacts/solid-feature-qualification/runs/20260828T111633Z-solid-feature-sprint-3-r1`,
+locked to build `solid-feature-sprint-3-r1-20260828` and generated release-WASM
+SHA-256
+`5b2b656fce6efb81cadff92f71521610159a87f019925e5ba782f83d9f968177`.
+All 25/25 revision 1 commands passed, producing 28 passed records and 121 checksummed files;
+web units passed 226/226, worker tests 13/13, native and release-WASM fixture
+oracles 4/4 each, parity 4/4 with zero differences, and production browser 2/2.
+All three revision 1 locked performance workloads completed two warmups, ten measured
+samples, and 50 edit/cancel cycles with zero violations. None of those records
+qualifies revision 2.
+
+At its prequalification checkpoint, candidate revision 2 was qualification-ready
+but **not qualified**. It remediates
+executed lifecycle evidence, real preview operations, typed UI/worker
+diagnostics at the boundaries actually tested, suppression/null protocol that
+removes the candidate datum preview and blocks dependent recompute while the
+last accepted body/packet/hash remains unchanged, selection clearing, transitive
+topological recompute, exact zero offset, wrong-type and unsafe offsets at the
+exact `±9,007,199,254,740,991` nanometer range, missing/suppressed/invalid
+support, reachable existing-plane missing-parameter editing, repaired-runtime
+evidence, native/WASM sequence/category alignment, checked BigInt scaling,
+atomic commit preflight, and equality of the tested offset-plane tool-first/
+selection-first request fields and typed plane/parameter ID shapes. Production
+generated-worker lifecycle coverage now also compares selection-first/tool-first unique-
+profile Extrude preview bindings: the accepted semantic hash, stable sketch ID/
+geometry IDs, explicit `profileGeometryIds`, exact construction-plane support,
+direction, and nanometer distance are the same; newly allocated feature/body/
+transaction values differ but retain matching typed ID shapes. Construction-
+plane datum selection clears selected feature, sketch, and explicit profile
+context; the browser asserts the exact empty Extrude selection context before
+tool-first launch, whose unique-profile resolution emits explicit
+`profileGeometryIds`. The shared edit helper accepts direction-sensitive
+`Distance` and symmetric `Total length` input labels. Plane suppression removes the candidate
+datum preview and blocks dependent recompute without posting an empty
+replacement packet, retaining the last accepted body/packet/hash until valid
+recompute. The focused production browser check passed 1/1 in 17.3 seconds; at
+that checkpoint, the complete source-bound browser/full automated gate remained
+pending. Missing base, parameter, and support faults
+cross the real worker/runtime; wrong-type
+coverage is a typed UI-boundary injection backed by real native/release-WASM
+fixtures. Invalid dependency is rejected on `load`; the invalid document is not
+saved or reopened. The unchanged last-valid accepted document is saved/reopened
+before valid dependency repair, and no invalid runtime reaches preview. The
+manifest is `contracts/solid-feature-candidate/sprint-3.json`; the next gates
+were a fresh complete revision 2 automated run, isolated bundle validation, and
+a mandatory fresh zero-finding independent review. All six revision 1
+attempts and all existing deferrals remain in the append-only qualification
+ledger.
+
+Revision 2 subsequently passed automated qualification in immutable run
+`artifacts/solid-feature-qualification/runs/20260828T135258Z-solid-feature-sprint-3-r2`.
+All 25/25 logged commands passed: application units 232/232, worker tests 13/13,
+parity self-tests 11/11, non-parity self-tests 6/6, native/release-WASM fixture
+parity 9/9, and production browser 2/2. Native and release-WASM oracle
+validators, candidate QualificationReady validation, and isolated bundle
+validation passed. The bundle contains 33 records and 141 checksummed files.
+Runtime build `solid-feature-sprint-3-r2-20260828` locks WASM SHA-256
+`865834b5265f23d7ba2348549a93b5d44613a0fd52a34778b3b274ba609a4499`;
+manifest SHA-256 is
+`97bf837d2c8d8031252acc93484e9e4372d69e3dcee5ba3f6d17aef76267b545`.
+The 584-file source snapshot and dirty-source hash are both
+`e2501912b71848beb3ec70a2640446d6abc9f17bcf09da40d0940304fe79e96f`.
+Locked performance recorded zero violations and a 0 ms maximum Long Task:
+origin rectangle preview 52.3/54.0 ms p50/p95, recompute 11.9/16.6 ms,
+cancel max 56.7 ms, heap growth 1,466,100 bytes; annulus 52.8/57.1 ms,
+21.2/30.2 ms, 57.3 ms, and heap growth 1,667,588 bytes; offset-plane rectangle
+46.8/56.0 ms, 11.7/19.9 ms, 62.1 ms, and heap growth 1,672,728 bytes.
+
+At the automated-gate checkpoint, the decision was **AUTOMATED QUALIFICATION
+PASSED — INDEPENDENT REVIEW PENDING** and revision 2 was **NOT YET QUALIFIED**.
+Revision 1 remained rejected historical evidence, and all explicit deferrals
+remained unchanged.
+
+On 2026-08-28, the mandatory independent reviewer audited the exact revision 2
+source, contracts, tests, isolated immutable bundle, and completion documents
+and returned exact **ZERO FINDINGS**. The current Sprint 3 revision 2 decision is
+**QUALIFIED** for only the frozen offset-plane and blind New Body Extrude scope.
+The immutable run, counts, hashes, validators, and performance evidence above
+remain unchanged; revision 1 and all earlier attempts/findings/remediations
+remain append-only history. Explicit deferrals remain unchanged and unqualified:
+angled/arbitrary/tangent/three-point/face-derived planes; support rebinding;
+cross-support profile replacement; two-side/start/target extents;
+Join/Cut/Intersect; handles/taper/thin; Revolve/Sweep/Loft. No deferred work is
+included in this qualification.
+
+The current scope-frozen follow-on is
+[Planar-Face Extrude and Explicit Support Repair — Sprint 4](specs/solid-feature-modernization-sprint-4.md),
+tracked append-only in
+[Solid Feature Sprint 4 Qualification](qualification/solid-feature-sprint-4-qualification.md)
+with candidate `contracts/solid-feature-candidate/sprint-4.json` revision 1.
+Revision 1's initial complete source-bound automated gate and isolated
+immutable-bundle validation in
+`artifacts/solid-feature-qualification/runs/20260829T052403Z-solid-feature-sprint-4-r1`:
+25/25 commands, 35 records, and 160 checksummed files. Independent review then
+rejected the bundle with nine findings. That run remains immutable historical
+evidence, and all nine findings/remediations remain in the append-only Sprint 4
+qualification ledger. The remediated revision 1 source passed a fresh 27/27
+source-bound automated gate and isolated validation with 35 records and 162
+checksummed files at
+`artifacts/solid-feature-qualification/runs/20260829T075140Z-solid-feature-sprint-4-r1`.
+Independent review rejected that first remediated bundle for one cross-language
+fail-closed persistence defect. After the P1 fix, another complete 27/27
+source-bound gate and isolated validation passed with 35 records and 162
+checksummed files at
+`artifacts/solid-feature-qualification/runs/20260829T084448Z-solid-feature-sprint-4-r1`.
+Independent exact-state review rejected the newest bundle because Rust accepted
+noncanonical decimal kernel IDs and unknown fallback-signature keys that the
+TypeScript document and storage boundaries reject. After Rust was aligned to
+the same fail-closed domain, the exact remediated source passed 28/28 commands
+and isolated validation with 35 records and 163 checksummed files at
+`artifacts/solid-feature-qualification/runs/20260829T103331Z-solid-feature-sprint-4-r1`.
+The bundle binds manifest SHA-256
+`2dd9a81be451d011792eb46ac86275da092f16a20302f14e17c5de4433e16f79`,
+source SHA-256
+`419dd8c4d9baa4f386b6cbebc0c406935e1a88f3c009780879304ad4a84b0a96`
+over 870 entries/files with zero deletions, Git commit
+`3f2ec88b4687c15cd8721f840ed21b293955f95e`, runtime build
+`solid-feature-sprint-4-r1-20260828`, and release-WASM SHA-256
+`c8932ce766f9dd9e2e5e27f1fee8ad4fc462b21c3754297c66621cdd0b130c58`
+at 10,887,489 bytes. Native/release-WASM fixtures and parity passed 10/10;
+browser passed 2/2 with eight unobscured screenshots; both locked workloads
+completed 2/10/50 with zero budget violations and zero Long Tasks. Extrude
+preview/recompute p50/p95 were 50.9000000953674/56.6000001430511 ms and
+17.2/22.7 ms, with 52 ms maximum cancellation and 1,342,896 bytes heap growth;
+repair was 62.5/112.799999952316 ms and
+133.299999952316/203.299999952316 ms, with 35.7000000476837 ms maximum
+cancellation, 860,652 bytes heap growth, one candidate, and 62 ranking
+observations. Independent
+exact-state review then rejected Attempt 30. The persisted `external_line`
+variant was strict in Rust, absent and lossy in the TypeScript type/codec, and
+numerically permissive in storage. The adversarial probe returned `parsed:
+true` and `stored: true`; TypeScript serialization silently dropped `body` and
+`stable_kernel_id`. Attempt 30 remains immutable rejected history.
+
+Focused remediation now requires exactly `kind`, `id`, `start_nanometers`,
+`end_nanometers`, `body`, and `stable_kernel_id`; each coordinate field is an
+exact pair of safe integers; kernel identity is a canonical decimal-string
+`u64`; invalid, numeric, noncanonical, missing, unknown, and malformed values
+fail closed; and document/package serialization retains all fields without
+loss. Document protocol passes 11/11 and storage protocol passes 19/19. A fresh
+persisted-ID audit then recorded five Attempt 33 findings: crawler-sketch
+`ExternalReference` accepted padded and signed strings through `parse::<u64>()`;
+advanced-feature request topology vectors persisted JSON numbers; Sprint 4
+WASM evidence converted identities through `Number` while native evidence
+accepted numeric values; alpha-reference raw evidence used a number; and a
+history regression test typed the persisted identity numerically.
+
+At the Attempt 33 checkpoint, crawler-sketch accepted only canonical decimal strings, proved `0` and
+`u64::MAX`, rejected padded/signed/empty/whitespace/numeric/out-of-range forms,
+and passed 3/3. The advanced-request, Sprint 4 WASM/native-evidence, alpha-raw-
+evidence, and history-test findings remained under remediation. Advanced
+operations remain functionally
+deferred, but their persisted request vectors are shared infrastructure and the
+deferral is not a persistence waiver. A fresh complete source-bound no-waiver
+bundle, isolated validation, reconciled documents, and independent exact-state
+`ZERO FINDINGS` review remain required.
+
+Attempt 34 closes the focused matrix. Feature-kernel Draft, edge-treatment, and
+Shell topology arrays use canonical strings and pass 29/29 contracts plus 2/2
+persistence tests; the app builder passes 20/20 plus TypeScript compilation;
+runtime passes 2/2; release-WASM preserves strings/`BigInt` at 1/1; native
+evidence is string-only at 1/1; alpha passes 5/5; history typing is corrected;
+and document/storage remain 11/11 and 19/19. Advanced features remain
+functionally deferred; canonical shared persistence does not qualify them and
+is not a persistence waiver. Attempts 35–37 retain the old completed-current
+administrative archive, the 17/18 sandbox-resolution rejection, and the 24/25
+run rejected at 8/10 parity. Attempt 38 aligns the native broken-reference
+sentinel to canonical `u64::MAX` and passes focused 10/10 native/release-WASM
+parity under `target/sprint4-focused-parity-20260829T121122215Z`. Sprint 4 is
+then represented by Attempt 39's source-integrity rejection after its passing
+26-command prefix and Attempt 40's stable-source 28/28 pass plus isolated
+validation. The immutable 35-record, 163-checksum-entry bundle is
+`artifacts/solid-feature-qualification/runs/20260829T123714Z-solid-feature-sprint-4-r1`.
+Fresh independent Attempt 41 returned exact standalone `ZERO FINDINGS` for the
+Attempt 40 exact state. Sprint 4 is **QUALIFIED** for only this bounded scope;
+final documentation-only Attempt 42 by the same reviewer also returned exact
+standalone `ZERO FINDINGS` for the reconciled documents and `git diff --check`.
+Sprint 4 bounded closeout is complete; the program next step is to select the
+highest-priority dependency-ready unqualified tranche.
+The boundary remains analytic planar-face-supported
+Blind New Body Extrude over qualified line, arc, circle, and hole profiles plus
+explicit compatible same-body/producer/component face repair under current
+native/release-WASM frame authority. Sprint 3 remains qualified. Arbitrary,
+angled, tangent,
+three-point, and face-derived datum planes; curved/nonanalytic supports;
+automatic healing and split/merge/topology-changing rebind;
+cross-component/cross-support/general rebind; two-side/start/target extents;
+Join/Cut/Intersect/targets; handles, draft/thin; Revolve, Sweep, and Loft remain
+deferred and unqualified.
+
+**Selected Sprint 5 follow-on (scope frozen; implementation and qualification pending):**
+On 2026-08-31 the next dependency-ready P0 slice was frozen as
+[Single-Target Blind Cut — Sprint 5](specs/solid-feature-modernization-sprint-5.md),
+tracked append-only in
+[Solid Feature Sprint 5 Qualification](qualification/solid-feature-sprint-5-qualification.md).
+It subtracts one qualified line/arc/circle/hole region from exactly one
+explicitly selected current target body in the same component; supports the
+qualified origin, signed-offset, and current analytic planar-face frames plus
+Blind Forward/Reverse/Symmetric; retains the target body identity; creates no
+new body; and requires native/generated release-WASM, production-browser, and
+locked-performance qualification. This is a selection checkpoint only: the
+candidate manifest, code, tests, evidence, immutable bundle, and independent
+review remain pending and no Sprint 5 behavior is qualified.
+
+Join/Intersect; multi, implicit, overlap-inferred, or cross-component targets;
+two-side/start/target and Through All/Next/Object extents; handles/draft/thin;
+extra datum planes and curved/nonanalytic supports; generalized repair;
+unqualified profile families; and Revolve/Sweep/Loft remain deferred and
+unqualified.
+
+The preceding qualified prerequisite is
+[Extrude Direction Modes — Sprint 2](specs/solid-feature-modernization-sprint-2.md),
+tracked in
+[Solid Feature Sprint 2 Qualification](qualification/solid-feature-sprint-2-qualification.md).
+Candidate `solid-feature-sprint-2` revision 1 passed its complete automated gate
+and isolated immutable-bundle validation, and its fresh independent completion
+re-review returned zero findings. It is qualified for only durable
+Forward/Reverse/Symmetric blind New Body Extrude on origin XY/XZ/YZ and does not
+complete the broader angled/construction-plane boundary from E3D-S1-09.
+The corrected source-bound evidence is
+`artifacts/solid-feature-qualification/runs/20260828T035943Z-solid-feature-sprint-2-r1`:
+25/25 commands, 25 passed records, 109 checksummed files, 219/219 application
+units, 13/13 worker tests, 2/2 native/release-WASM parity fixtures, and 2/2
+production browser suites. The earlier 23-record bundle is retained but
+ineligible after independent review found its two missing subject records.
+The broader Extrude, Cut, Revolve, Sweep, and Loft epics and follow-on stories
+are defined in the
+[Solid Feature Modernization Initiative Backlog](specs/solid-feature-modernization-initiative.md).
+Candidate `solid-feature-sprint-1` revision 5 is qualified and complete for the
+exact origin-plane, positive blind, New Body Extrude slice after a zero-finding
+independent review. The superseded revision 3 automated run,
+revision 2 automated run, and all retained failure/remediation history are recorded in
+[Solid Feature Sprint 1 Qualification](qualification/solid-feature-sprint-qualification.md).
+Angled/arbitrary construction-plane and planar-face supports, cross-sketch
+replacement, support rebinding, two-side/start/target extents, Join, Cut, dedicated
+locate/remove/target chips, result modes, Revolve, Sweep, and Loft are explicitly
+deferred and are not implied by the Sprint 1 implementation.
 
 ### E05-S01 — Extrude a sketch into the reference cube
 
@@ -643,6 +938,63 @@ so the first complete parametric solid exists.
 - Manipulator drag and numeric entry update the same distance value.
 - Preview is cancellable and commit creates one editable timeline feature.
 - Editing width, height, or distance recomputes the expected cube dimensions.
+
+**Status:** Revision 5 qualified; the independent review reported zero findings
+and satisfied the completion gate. Revision 3 was rejected for its remaining
+E3D-S1-11 selected-replacement evidence gap. Revision 4 closed that gap, but its
+independent audit found that a profile from another sketch/support could enter
+timeline replacement despite the deferred cross-sketch boundary. Both immutable
+bundles remain historical evidence at
+`artifacts/solid-feature-qualification/runs/20260826T094412Z-solid-feature-sprint-1-r3`
+and
+`artifacts/solid-feature-qualification/runs/20260826T105732Z-solid-feature-sprint-1-r4`.
+Revision 5 requires the exact source sketch ID and ready, equal resolved support
+frames; an incompatible selection blocks with an explicit reason before preview
+or commit. Production evidence records zero preview/commit dispatches and
+unchanged hash, references, feature/body IDs, bounds, and count through
+recompute/reload. The automated bundle is
+`artifacts/solid-feature-qualification/runs/20260826T115242Z-solid-feature-sprint-1-r5`:
+25/25 commands, 55 records, 169 checksummed files, application 214/214, worker
+13/13, native/release-WASM parity 15/15, comparator 7/7, non-parity 6/6, and
+production browser 6/6 across all four manifest IDs. Cross-sketch replacement,
+support rebinding, and all prior deferred scope remain unqualified. The revision
+2 bundle and all earlier failures remain documented and are not erased.
+
+**Bounded Sprint 4 extension (Attempt 42 closeout complete and qualified):**
+The same typed Extrude path now accepts a current analytic planar-face-supported
+qualified line, arc, circle, or hole profile for Blind New Body creation and
+retains deterministic create, edit,
+upstream recompute, undo/redo, save/reopen, and failure behavior. The generated
+release-WASM and production-browser evidence for the remediated source is sealed
+in
+`artifacts/solid-feature-qualification/runs/20260829T103331Z-solid-feature-sprint-4-r1`
+(28/28 commands, 35 records, 163 checksummed files) under current
+native/release-WASM frame authority, but Attempt 31 rejected it for the
+`external_line` Rust/TypeScript/storage mismatch and lossy TypeScript round trip.
+All four bundles remain immutable rejected history with their findings and
+remediations preserved. Focused document 11/11 and storage 19/19 remediation
+passes, and crawler-sketch canonical identity passes 3/3. Attempt 33's numeric
+advanced-request, Sprint 4 WASM/native evidence, alpha raw evidence, and
+history-test paths are closed by Attempt 34's feature-kernel 29/29 plus 2/2,
+builder 20/20 plus TypeScript compilation, runtime 2/2, WASM/native 1/1 each,
+alpha 5/5, and corrected history typing. Attempts 35–37 retain the
+administrative old-current archive, sandbox-resolution rejection at 17/18, and
+parity rejection at 24/25 with 8/10 fixtures. Attempt 38 uses canonical
+`u64::MAX` in native broken-reference evidence and passes focused 10/10 parity
+under `target/sprint4-focused-parity-20260829T121122215Z`. The full bundle was
+then attempted twice: Attempt 39 passed its 26 recorded commands through
+browser but failed the mandatory preflight source-integrity comparison after
+four tracked completion documents changed, while Attempt 40 passed the stable
+28/28 gate and isolated validation with 35 passed records and 163 checksum
+entries at
+`artifacts/solid-feature-qualification/runs/20260829T123714Z-solid-feature-sprint-4-r1`.
+Fresh independent Attempt 41 returned exact standalone `ZERO FINDINGS`, so this
+extension is **QUALIFIED** for its frozen boundary. Final documentation-only
+Attempt 42 by the same reviewer returned exact standalone `ZERO FINDINGS` after
+reviewing the reconciled documents and `git diff --check`; bounded closeout is
+complete. E05-S01 remains broadly open:
+Join/Cut/Intersect and target selection, independent two-side/start/target
+extents, model-space handles, draft, and thin features are not included.
 
 ### E05-S02 — Add revolve and axis selection
 
@@ -796,6 +1148,40 @@ so an upstream edit does not force me to rebuild the model blindly.
   without applying a silent match.
 - Explicit rebind is previewed, committed as a transaction, and undoable.
 - Downstream recovery is summarized after recompute.
+
+**Bounded Sprint 4 status (Attempt 42 closeout complete and qualified):**
+Read-only candidate ranking, explicit preview, and atomic repair passed for a
+missing analytic planar-face Extrude support when the replacement is current
+and belongs to the same body, producer, and component. The immutable automated
+evidence is
+`artifacts/solid-feature-qualification/runs/20260829T103331Z-solid-feature-sprint-4-r1`
+(28/28 commands, 35 records, 163 checksummed files) over the qualified planar
+profile families and current native/release-WASM frame authority, but Attempt
+31 rejected it for the `external_line` Rust/TypeScript/storage mismatch and
+lossy TypeScript serialization. All four bundles remain immutable rejected
+history, with all findings and remediations preserved. Focused exact-six-field,
+safe-pair, canonical-`u64`, no-loss document 11/11 and storage 19/19 remediation
+passes, and crawler-sketch canonical identity passes 3/3. Attempt 33's advanced-
+request vectors, Sprint 4 WASM/native evidence, alpha raw evidence, and history-
+test typing are closed by Attempt 34's feature-kernel 29/29 plus 2/2, builder
+20/20 plus TypeScript compilation, runtime 2/2, WASM/native 1/1 each, alpha 5/5,
+and corrected history typing. Attempts 35–37 preserve the administrative old-current
+archive, sandbox-resolution rejection at 17/18, and parity rejection at 24/25
+with 8/10 fixtures. Attempt 38 aligns native broken-reference evidence to
+canonical `u64::MAX` and passes focused 10/10 native/release-WASM parity under
+`target/sprint4-focused-parity-20260829T121122215Z`. Attempt 39 passed its 26
+recorded commands but failed mandatory source-integrity preflight when four
+tracked completion documents changed during execution. Attempt 40 passed the
+stable-source 28/28 gate and isolated validation in the 35-record,
+163-checksum-entry immutable bundle at
+`artifacts/solid-feature-qualification/runs/20260829T123714Z-solid-feature-sprint-4-r1`.
+Fresh independent Attempt 41 returned exact standalone `ZERO FINDINGS`, so the
+bounded repair path is **QUALIFIED**. Final documentation-only Attempt 42 by the
+same reviewer also returned exact standalone `ZERO FINDINGS` after reviewing
+the reconciled documents and `git diff --check`; bounded closeout is complete.
+E06-S04 remains open for
+edge repair, automatic healing, split/merge or topology-changing rebind,
+cross-component/cross-support/general rebind, and other repair classes.
 
 ### E06-S05 — Explain dependencies and compute cost
 
@@ -1306,3 +1692,101 @@ remaining product gates:
 
 The evidence template and exact pending checks live in
 [manual alpha validation](manual-alpha-validation.md).
+
+## 2026-08-31 — Sprint 5 revision-3 prequalification checkpoint
+
+The earlier Sprint 5 selection checkpoint is retained as history, but its
+statement that the manifest, code, tests, and evidence are all pending is no
+longer the current state. Candidate `solid-feature-sprint-5` revision 3 now
+freezes nineteen native/generated release-WASM parity fixtures, one production-
+browser lifecycle fixture, and three performance workloads for the bounded
+single-explicit-target Blind Cut slice. Fresh native and release-WASM evidence
+validates and compares 19/19 with zero differences against the independent
+oracles. The generated release runtime is locked to build ID
+`solid-feature-sprint-5-r3-20260831` and SHA-256
+`38de6df2ef1e2fc6543fa01e1483981a4c7bcbcabe79e5c71aadcf031f540313`.
+
+Revision-3 review remediation now proves exact invalid support/profile
+refusals without claiming a Boolean attempt, a complete two-body pre-state and
+unchanged unrelated body, actual Cut repair evaluation with transaction/result
+binding, and the same authoritative recovery evidence through the generated
+worker in production. The focused lifecycle/recovery artifact at
+`artifacts/solid-feature-qualification/focused-s5-r3-review-remediation-recompute`
+passes 2/2. The hardened performance result passes all three workloads with
+zero invalid topology transitions, Long Tasks, or budget violations; its twelve
+failure/recovery samples all record the real refusal, exact state restoration,
+repair/retry, diagnostic, and request pairs.
+
+This remains a prequalification checkpoint. The new source-bound immutable
+revision-3 bundle, isolated bundle validation, independent exact-state
+`ZERO FINDINGS`, reconciled final completion ledger, and final documentation-
+only re-review remain open. Sprint 5 is **UNQUALIFIED** and every exclusion in
+the frozen Sprint 5 specification remains deferred.
+
+## 2026-09-01 — Sprint 5 full qualification checkpoint
+
+Candidate `solid-feature-sprint-5` revision 3 has passed its complete
+source-bound automated qualification and sealed the immutable evidence bundle
+at
+`artifacts/solid-feature-qualification/runs/20260901T070012Z-solid-feature-sprint-5-r3`.
+The successful run validates nineteen native and nineteen generated
+release-WASM fixtures with 19/19 parity and zero differences, passes all 3
+production-browser tests, indexes 45 records, checksums 213 files, and passes a
+separate isolated-bundle validation. The locked runtime remains build
+`solid-feature-sprint-5-r3-20260831`, SHA-256
+`38de6df2ef1e2fc6543fa01e1483981a4c7bcbcabe79e5c71aadcf031f540313`.
+
+The immediately preceding full attempt passed all substantive commands but was
+correctly rejected at completeness because the shared evidence schema omitted
+the new revision-3 recovery-result fields. It produced no qualified bundle and
+is preserved at
+`artifacts/solid-feature-qualification/runs/20260901T064850080Z-incomplete`.
+The schema and a revision-bounded positive/negative regression now close that
+gap.
+
+All three performance workloads pass their frozen limits with zero violations
+and zero attributed Long Tasks. Rectangle preview/recompute p50/p95 is
+51.9/67.2 ms and 25.0/35.8 ms; annulus is 59.5/69.7 ms and 31.2/49.9 ms;
+failure/recovery preview is 60.0/66.3 ms and the complete sequence is
+484.4/864.7 ms against 750/1200 ms. All twelve recovery samples prove the real
+worker refusal, accepted-state preservation, exact diagnostic/request pair,
+and repaired retry.
+
+No implementation or automated-qualification shortcoming remains inside the
+bounded single-explicit-target Blind Cut slice. Join/Intersect, broader target
+selection, additional extents, draft/thin behavior, generalized repair,
+additional supports and profile families, and Revolve/Sweep/Loft remain
+deferred. Sprint 5 is still **NOT YET QUALIFIED** solely because the mandatory
+independent exact-state review and final documentation-only re-review have not
+yet returned exact `ZERO FINDINGS`.
+
+## 2026-09-01 — Sprint 5 independent review checkpoint
+
+The mandatory reviewer found no implementation or immutable-evidence defect,
+but initially rejected the completion update because status/table edits inside
+the pre-run specification and qualification ledger violated their strict
+append-only policy. Those pre-existing bytes were restored. The frozen prefixes
+of the specification, qualification ledger, and backlog now reproduce their
+Attempt 13 source-snapshot hashes exactly; all later qualification and review
+facts remain appended tails.
+
+The reviewer then repeated the exact-state audit and returned exact
+`ZERO FINDINGS`. Candidate qualification-ready validation, isolated bundle
+validation at 45 records/213 checksummed files, and `git diff --check` pass.
+No product or evidence shortcoming remains in the bounded Sprint 5 slice, and
+all earlier deferrals remain unchanged. Sprint 5 is **NOT YET QUALIFIED** only
+until the separately required final documentation-only re-review returns exact
+`ZERO FINDINGS` for these reconciled append-only records.
+
+## 2026-09-01 — Sprint 5 qualified closeout
+
+The final independent documentation-only re-review returned exact
+`ZERO FINDINGS`. Candidate `solid-feature-sprint-5` revision 3 is therefore
+**COMPLETE AND QUALIFIED** for the frozen single-explicit-target Blind Cut
+boundary, with all five Sprint 5 stories complete. The immutable qualifying
+bundle remains
+`artifacts/solid-feature-qualification/runs/20260901T070012Z-solid-feature-sprint-5-r3`
+at 45 records and 213 checksummed files. All failed attempts, the append-only
+documentation finding and remediation, shortcomings, and deferrals remain in
+the Sprint 5 qualification ledger. No deferred target, extent, repair, support,
+profile, or Revolve/Sweep/Loft behavior is promoted.
