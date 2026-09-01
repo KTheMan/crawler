@@ -13,7 +13,9 @@ export class WasmPartRuntime {
     bodySnapshotJson(body_id: string): string;
     commitChangesJson(transaction_json: string): string;
     commitLength(parameter_id: string, value_nanometers: bigint): string;
+    commitOffsetConstructionPlaneJson(request_json: string): string;
     commitSketchExtrudeJson(request_json: string): string;
+    constructionPlaneFrameJson(plane_id: string): string;
     decomposeSketchJson(request_json: string): string;
     dimensionsJson(): string;
     documentJson(): string;
@@ -34,10 +36,13 @@ export class WasmPartRuntime {
     constructor(document_id: string, display_name: string);
     static newValidationRectangularPart(document_id: string, display_name: string, width_nanometers: bigint, height_nanometers: bigint, distance_nanometers: bigint): WasmPartRuntime;
     parametersJson(): string;
+    planarFaceFrameJson(body_id: string, face_stable_id_decimal: string): string;
     prepareSketchFeatureEnvelopeJson(request_json: string): string;
     previewExtrudeJson(value_nanometers: bigint, tolerance: number): string;
     previewFeatureJson(envelope_json: string): string;
+    previewOffsetConstructionPlaneJson(request_json: string): string;
     previewSketchExtrudeJson(request_json: string): string;
+    previewTopologyRebindJson(request_json: string): string;
     promoteOrReuseParameterJson(request_json: string): string;
     recomputeFromHereJson(selected: string): string;
     redo(): string;
@@ -51,7 +56,9 @@ export class WasmPartRuntime {
     sketchSolverContractJson(): string;
     solveSketchJson(request_json: string): string;
     timelineRollbackJson(): string;
+    topologySupportDiagnosticJson(reference_id: string, expected_component_id: string): string;
     undo(): string;
+    validateSingleTargetCutTargetsJson(request_json: string): string;
 }
 
 /**
@@ -126,7 +133,9 @@ export interface InitOutput {
     readonly wasmpartruntime_bodySnapshotJson: (a: number, b: number, c: number) => [number, number, number, number];
     readonly wasmpartruntime_commitChangesJson: (a: number, b: number, c: number) => [number, number, number, number];
     readonly wasmpartruntime_commitLength: (a: number, b: number, c: number, d: bigint) => [number, number, number, number];
+    readonly wasmpartruntime_commitOffsetConstructionPlaneJson: (a: number, b: number, c: number) => [number, number, number, number];
     readonly wasmpartruntime_commitSketchExtrudeJson: (a: number, b: number, c: number) => [number, number, number, number];
+    readonly wasmpartruntime_constructionPlaneFrameJson: (a: number, b: number, c: number) => [number, number, number, number];
     readonly wasmpartruntime_decomposeSketchJson: (a: number, b: number, c: number) => [number, number, number, number];
     readonly wasmpartruntime_dimensionsJson: (a: number) => [number, number, number, number];
     readonly wasmpartruntime_documentJson: (a: number) => [number, number, number, number];
@@ -147,10 +156,13 @@ export interface InitOutput {
     readonly wasmpartruntime_new: (a: number, b: number, c: number, d: number) => [number, number, number];
     readonly wasmpartruntime_newValidationRectangularPart: (a: number, b: number, c: number, d: number, e: bigint, f: bigint, g: bigint) => [number, number, number];
     readonly wasmpartruntime_parametersJson: (a: number) => [number, number, number, number];
+    readonly wasmpartruntime_planarFaceFrameJson: (a: number, b: number, c: number, d: number, e: number) => [number, number, number, number];
     readonly wasmpartruntime_prepareSketchFeatureEnvelopeJson: (a: number, b: number, c: number) => [number, number, number, number];
     readonly wasmpartruntime_previewExtrudeJson: (a: number, b: bigint, c: number) => [number, number, number, number];
     readonly wasmpartruntime_previewFeatureJson: (a: number, b: number, c: number) => [number, number, number, number];
+    readonly wasmpartruntime_previewOffsetConstructionPlaneJson: (a: number, b: number, c: number) => [number, number, number, number];
     readonly wasmpartruntime_previewSketchExtrudeJson: (a: number, b: number, c: number) => [number, number, number, number];
+    readonly wasmpartruntime_previewTopologyRebindJson: (a: number, b: number, c: number) => [number, number, number, number];
     readonly wasmpartruntime_promoteOrReuseParameterJson: (a: number, b: number, c: number) => [number, number, number, number];
     readonly wasmpartruntime_recomputeFromHereJson: (a: number, b: number, c: number) => [number, number, number, number];
     readonly wasmpartruntime_redo: (a: number) => [number, number, number, number];
@@ -164,7 +176,9 @@ export interface InitOutput {
     readonly wasmpartruntime_sketchSolverContractJson: (a: number) => [number, number, number, number];
     readonly wasmpartruntime_solveSketchJson: (a: number, b: number, c: number) => [number, number, number, number];
     readonly wasmpartruntime_timelineRollbackJson: (a: number) => [number, number, number, number];
+    readonly wasmpartruntime_topologySupportDiagnosticJson: (a: number, b: number, c: number, d: number, e: number) => [number, number, number, number];
     readonly wasmpartruntime_undo: (a: number) => [number, number, number, number];
+    readonly wasmpartruntime_validateSingleTargetCutTargetsJson: (a: number, b: number, c: number) => [number, number, number, number];
     readonly __wbg_wasmrenderpacket_free: (a: number, b: number) => void;
     readonly wasmrenderpacket_bounds: (a: number) => [number, number];
     readonly wasmrenderpacket_edgePositions: (a: number) => [number, number];

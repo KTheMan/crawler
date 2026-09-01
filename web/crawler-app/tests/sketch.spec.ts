@@ -87,6 +87,29 @@ test("edits and atomically commits an origin-plane sketch", async ({ page }) => 
   await expect(page.getByLabel("Editable sketch geometry").locator(".sketch-entity")).toHaveCount(acceptedEntityCount + 1);
 });
 
+test("reopening a committed closed sketch renders profile fills before any edit command", async ({ page }) => {
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(window.__crawlerApp) && Object.values(window.__crawlerApp.readiness()).every((status) => status === "ready"));
+  await page.locator("#edit-sketch").click();
+  await chooseOriginPlane(page, "xy");
+  await page.evaluate(async () => window.__crawlerApp.applySketchCommands([{
+    kind: "add_geometry",
+    entity: { id: "reopen:circle", geometry: { kind: "circle", center: { x_nm: 0, y_nm: 0 }, radius_nm: 10_000_000 } },
+  }]));
+  const overlay = page.getByLabel("Editable sketch geometry");
+  await expect(overlay.locator(".sketch-profile-fill")).toHaveCount(1, { timeout: 60_000 });
+  const acceptedRevision = await page.evaluate(() => window.__crawlerApp.sketchDraft()?.revision);
+  await page.locator("#finish-sketch-ribbon").click();
+  await expect(page.locator("#operation-state")).toHaveAttribute("data-status", "committed", { timeout: 60_000 });
+
+  await selectCreatedSketch(page);
+  await page.locator("#edit-sketch").click();
+
+  await expect(overlay.locator(".sketch-profile-fill")).toHaveCount(1, { timeout: 60_000 });
+  await expect(overlay.locator('[data-profile-geometry-ids*="reopen:circle"]')).toBeVisible();
+  expect(await page.evaluate(() => window.__crawlerApp.sketchDraft()?.revision)).toBe(acceptedRevision);
+});
+
 test("press-drag rectangles and lines remain visible and degenerate retries stay inside sketch edit", async ({ page }) => {
   await page.goto("/");
   await page.waitForFunction(() => Boolean(window.__crawlerApp) && Object.values(window.__crawlerApp.readiness()).every((status) => status === "ready"));

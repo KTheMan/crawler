@@ -249,6 +249,66 @@ export function closedProfilePolylines(sketch: Sketch, profiles: readonly Stable
   });
 }
 
+/** A profile identity is topological: editing coordinates does not change it. */
+export function sketchProfileId(sketchId: StableId, geometryIds: readonly StableId[]): string {
+  return `${encodeURIComponent(sketchId)}/profile:${[...new Set(geometryIds)].sort().map(encodeURIComponent).join("|")}`;
+}
+
+/**
+ * Mirrors the kernel's current profile grouping closely enough to resolve a
+ * retained profile against an accepted sketch without relying on coordinates
+ * captured when the profile was selected.
+ */
+export function closedProfileGeometryIds(sketch: Sketch): StableId[][] {
+  const entities = Object.values(sketch.geometry).filter((entity) => !entity.construction);
+  const profiles = entities
+    .filter((entity) => ["rectangle", "circle", "ellipse"].includes(entity.geometry.kind))
+    .map((entity) => [entity.id]);
+  const edges = entities.filter((entity) => !["rectangle", "circle", "ellipse", "sketch_point"].includes(entity.geometry.kind));
+  const endpointKey = (point: Point2) => `${point.x_nm}:${point.y_nm}`;
+  const endpoints = new Map<string, StableId[]>();
+  const edgeEndpoints = new Map<StableId, [string, string]>();
+  for (const entity of edges) {
+    const exactEndpoints = profileGeometryEndpoints(entity.geometry);
+    if (!exactEndpoints) continue;
+    const start = endpointKey(exactEndpoints[0]);
+    const end = endpointKey(exactEndpoints[1]);
+    edgeEndpoints.set(entity.id, [start, end]);
+    for (const key of [start, end]) endpoints.set(key, [...(endpoints.get(key) ?? []), entity.id]);
+  }
+  const unseen = new Set(edgeEndpoints.keys());
+  while (unseen.size) {
+    const seed = unseen.values().next().value as StableId;
+    const component: StableId[] = [];
+    const queue = [seed];
+    while (queue.length) {
+      const id = queue.pop()!;
+      if (!unseen.delete(id)) continue;
+      component.push(id);
+      for (const endpoint of edgeEndpoints.get(id) ?? []) {
+        for (const neighbor of endpoints.get(endpoint) ?? []) if (unseen.has(neighbor)) queue.push(neighbor);
+      }
+    }
+    if (component.length && component.every((id) => (edgeEndpoints.get(id) ?? []).every((endpoint) => endpoints.get(endpoint)?.length === 2))) {
+      profiles.push(component);
+    }
+  }
+  return profiles.map((profile) => [...profile].sort()).sort((a, b) => sketchProfileId(sketch.id, a).localeCompare(sketchProfileId(sketch.id, b)));
+}
+
+function profileGeometryEndpoints(geometry: Geometry): readonly [Point2, Point2] | undefined {
+  if (geometry.kind === "line" || geometry.kind === "arc" || geometry.kind === "elliptical_arc" || geometry.kind === "conic") return [geometry.start, geometry.end];
+  if (geometry.kind === "control_point_spline") {
+    const start = geometry.control_points[0]; const end = geometry.control_points.at(-1);
+    return start && end ? [start, end] : undefined;
+  }
+  if (geometry.kind === "fit_point_spline") {
+    const start = geometry.fit_points[0]; const end = geometry.fit_points.at(-1);
+    return start && end ? [start, end] : undefined;
+  }
+  return undefined;
+}
+
 function annotationForConstraint(sketch: Sketch, id: StableId, constraint: Constraint, reference: boolean): ConstraintAnnotation | undefined {
   const measured = reference ? measuredConstraintValue(sketch, constraint) : undefined;
   if (constraint.kind === "point_on_origin") return atPoint(sketch, id, "O", constraint.point);

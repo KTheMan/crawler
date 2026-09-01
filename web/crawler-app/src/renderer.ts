@@ -1,7 +1,8 @@
 import * as THREE from "three";
 import { ViewportGizmo } from "three-viewport-gizmo";
 
-import type { RenderPacket, Selection, TopologyKind } from "./protocol";
+import type { OffsetConstructionPlaneFrame, RenderPacket, Selection, TopologyKind } from "./protocol";
+import { renderPacketTopologyFingerprint } from "./render-packet-fingerprint";
 import { viewportGridMetrics, viewportModelRadius, viewportPointerAction, wheelZoomScale, type ViewportPointerAction } from "./renderer-navigation";
 import { intersectRayWithSketchPlane, planarFaceEvidenceKey, planeLocalToWorldMillimeters, type CurrentPlanarFaceEvidence, type CurrentPlanarFaceEvidenceLookup, type ResolvedSketchPlane } from "./sketch-plane";
 import type { Point2, Sketch } from "./sketch-editor";
@@ -16,6 +17,7 @@ import {
 
 const kindByCode: Record<number, TopologyKind> = { 1: "face", 2: "edge", 3: "vertex" };
 const SELECTION_DRAG_THRESHOLD_PX = 5;
+let workspaceRendererInstanceSequence = 0;
 
 export interface RenderBodyContext {
   readonly id: string;
@@ -25,7 +27,16 @@ export interface RenderBodyContext {
 
 export type SketchSupportPick =
   | { kind: "origin_plane"; plane: "xy" | "xz" | "yz" }
+  | { kind: "construction_plane"; plane: string }
   | { kind: "face"; selection: Selection };
+
+export type ConstructionPlaneDisplay = {
+  id: string;
+  frame: OffsetConstructionPlaneFrame;
+  visible?: boolean;
+  selected?: boolean;
+  preview?: boolean;
+};
 
 export type PlanarFaceEvidence = {
   centroid_nanometers: [number, number, number];
@@ -43,7 +54,35 @@ export type CommittedSketchDisplay = {
   visible?: boolean;
 };
 
+export type WorkspacePacketResourceState = {
+  instanceId: number;
+  packetRevision: number;
+  packetInstallCount: number;
+  packetDisposeCount: number;
+  bodyId: string;
+  modelRadius: number;
+  gridScale: number;
+  faceRangeCount: number;
+  edgeObjectCount: number;
+  vertexObjectCount: number;
+  facePickRecordCount: number;
+  edgePickRecordCount: number;
+  vertexPickRecordCount: number;
+};
+
+export type CutRemovalPreviewState = {
+  visible: boolean;
+  topologyFingerprint: string;
+  triangleCount: number;
+  color: "#f97316";
+  opacity: number;
+};
+
 export class WorkspaceRenderer {
+  private readonly instanceId = ++workspaceRendererInstanceSequence;
+  private packetInstallCount = 0;
+  private packetDisposeCount = 0;
+  private packetTopologyFingerprintValue = "";
   private readonly renderer: THREE.WebGLRenderer;
   private readonly scene = new THREE.Scene();
   private camera: THREE.PerspectiveCamera | THREE.OrthographicCamera = new THREE.PerspectiveCamera(38, 1, 0.001, 10_000);
@@ -56,13 +95,16 @@ export class WorkspaceRenderer {
   private readonly pointer = new THREE.Vector2();
   private readonly faceMesh: THREE.Mesh;
   private readonly faceMaterial = new THREE.MeshStandardMaterial({ color: 0x6c93cf, roughness: 0.62, side: THREE.DoubleSide });
+  private readonly cutRemovalGroup = new THREE.Group();
   private readonly baseFaceColor = new THREE.Color(0x6c93cf);
   private readonly grid: THREE.GridHelper;
   private readonly edges: THREE.LineSegments[] = [];
   private readonly vertices: THREE.Points[] = [];
-  private readonly faceRanges: Uint32Array;
+  private faceRanges: Uint32Array = new Uint32Array();
   private readonly sketchSupportGroup = new THREE.Group();
   private readonly sketchSupportPlanes: THREE.Mesh[] = [];
+  private readonly constructionPlaneGroup = new THREE.Group();
+  private readonly constructionPlaneSurfaces: THREE.Mesh[] = [];
   private readonly committedSketchGroup = new THREE.Group();
   private sketchSupportSelection = false;
   private sketchSupportListener: ((pick: SketchSupportPick) => void) | undefined;
@@ -74,9 +116,11 @@ export class WorkspaceRenderer {
   private viewCubeInteracting = false;
   private readonly renderScheduler: DemandRenderScheduler;
   private displayMode: "shaded-edges" | "shaded" | "wireframe" | "hidden-line" | "no-shading" = "shaded-edges";
+  private appearanceEdgesVisible = true;
   private viewChanged: () => void = () => {};
   private readonly modelGridPosition = new THREE.Vector3();
   private readonly modelGridQuaternion = new THREE.Quaternion();
+  private authoredWorkspaceRadius = 1;
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -118,6 +162,7 @@ export class WorkspaceRenderer {
     light.position.set(4, 5, 6);
     this.scene.add(light);
     const gridMetrics = viewportGridMetrics(this.modelRadius);
+    this.authoredWorkspaceRadius = this.modelRadius;
     this.grid = new THREE.GridHelper(gridMetrics.size, gridMetrics.divisions, 0x27384d, 0x182331);
     this.grid.position.y = boundsMin.y;
     this.modelGridPosition.copy(this.grid.position);
@@ -126,44 +171,14 @@ export class WorkspaceRenderer {
     this.committedSketchGroup.renderOrder = 3;
     this.scene.add(this.committedSketchGroup);
 
-    for (let offset = 0; offset < packet.pickTable.length; offset += 4) {
-      const token = packet.pickTable[offset];
-      const kind = kindByCode[packet.pickTable[offset + 1]];
-      const stableId = ((BigInt(packet.pickTable[offset + 3]) << 32n) | BigInt(packet.pickTable[offset + 2])).toString();
-      this.records.set(token, { token, kind, stableId });
-    }
-    this.faceRanges = packet.faceRanges;
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute("position", new THREE.BufferAttribute(packet.positions, 3));
-    geometry.setAttribute("normal", new THREE.BufferAttribute(packet.normals, 3));
-    geometry.setIndex(new THREE.BufferAttribute(packet.triangleIndices, 1));
-    for (let offset = 0; offset < packet.faceRanges.length; offset += 3) geometry.addGroup(packet.faceRanges[offset], packet.faceRanges[offset + 1], 0);
-    this.faceMesh = new THREE.Mesh(geometry, this.faceMaterial);
+    this.faceMesh = new THREE.Mesh(new THREE.BufferGeometry(), this.faceMaterial);
     this.scene.add(this.faceMesh);
+    this.cutRemovalGroup.renderOrder = 6;
+    this.scene.add(this.cutRemovalGroup);
     this.createOriginPlaneSurfaces();
-
-    for (let offset = 0; offset < packet.edgeRanges.length; offset += 3) {
-      const first = packet.edgeRanges[offset];
-      const count = packet.edgeRanges[offset + 1];
-      const item = new THREE.LineSegments(
-        new THREE.BufferGeometry().setAttribute("position", new THREE.BufferAttribute(packet.edgePositions.subarray(first * 3, (first + count) * 3), 3)),
-        new THREE.LineBasicMaterial({ color: 0xe8f0ff }),
-      );
-      item.userData.pickToken = packet.edgeRanges[offset + 2];
-      this.edges.push(item);
-      this.scene.add(item);
-    }
-    for (let index = 0; index < packet.vertexPickTokens.length; index += 1) {
-      const item = new THREE.Points(
-        new THREE.BufferGeometry().setAttribute("position", new THREE.BufferAttribute(packet.vertexPositions.subarray(index * 3, index * 3 + 3), 3)),
-        new THREE.PointsMaterial({ color: 0xffffff, size: this.modelRadius * 0.07, sizeAttenuation: true }),
-      );
-      item.userData.pickToken = packet.vertexPickTokens[index];
-      this.vertices.push(item);
-      this.scene.add(item);
-    }
-    this.raycaster.params.Line = { threshold: this.modelRadius * 0.04 };
-    this.raycaster.params.Points = { threshold: this.modelRadius * 0.065 };
+    this.scene.add(this.constructionPlaneGroup);
+    this.faceMesh.geometry.dispose();
+    this.installPacketResources(packet);
     this.unsubscribeViewportState = this.viewportState.subscribe((snapshot) => this.applyViewportState(snapshot), true);
     this.installNavigation();
     this.resizeObserver = new ResizeObserver(() => this.resize());
@@ -173,6 +188,54 @@ export class WorkspaceRenderer {
   }
 
   setFilters(filters: Record<TopologyKind, boolean>): void { this.filters = { ...filters }; }
+
+  /** Draw the swept Cut tool separately from the retained target result. */
+  setCutRemovalPreview(packet?: RenderPacket): void {
+    this.disposeCutRemovalPreview();
+    if (!packet) {
+      this.render();
+      return;
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.BufferAttribute(packet.positions, 3));
+    if (packet.normals.length === packet.positions.length) geometry.setAttribute("normal", new THREE.BufferAttribute(packet.normals, 3));
+    geometry.setIndex(new THREE.BufferAttribute(packet.triangleIndices, 1));
+    geometry.userData.topologyFingerprint = renderPacketTopologyFingerprint(packet);
+    geometry.userData.triangleCount = packet.triangleIndices.length / 3;
+    const material = new THREE.MeshBasicMaterial({
+      color: 0xf97316,
+      transparent: true,
+      opacity: 0.34,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      depthTest: true,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -1,
+    });
+    material.clippingPlanes = this.faceMaterial.clippingPlanes;
+    const volume = new THREE.Mesh(geometry, material);
+    volume.renderOrder = 6;
+    const outline = new THREE.LineSegments(
+      new THREE.EdgesGeometry(geometry),
+      new THREE.LineBasicMaterial({ color: 0xffb15c, transparent: true, opacity: 0.96, depthTest: false }),
+    );
+    outline.renderOrder = 7;
+    volume.add(outline);
+    this.cutRemovalGroup.add(volume);
+    this.render();
+  }
+
+  cutRemovalPreviewState(): CutRemovalPreviewState {
+    const volume = this.cutRemovalGroup.children[0] as THREE.Mesh | undefined;
+    return {
+      visible: Boolean(volume),
+      topologyFingerprint: String(volume?.geometry.userData.topologyFingerprint ?? ""),
+      triangleCount: Number(volume?.geometry.userData.triangleCount ?? 0),
+      color: "#f97316",
+      opacity: volume ? Number((volume.material as THREE.MeshBasicMaterial).opacity) : 0,
+    };
+  }
 
   setSketchSlice(plane: ResolvedSketchPlane | undefined, enabled: boolean): void {
     const clipping = enabled && plane ? [new THREE.Plane(
@@ -286,6 +349,63 @@ export class WorkspaceRenderer {
 
   isSketchSupportSelectionActive(): boolean { return this.sketchSupportSelection; }
 
+  /** Replace document-derived datum visuals without touching body packet resources. */
+  setConstructionPlanes(planes: readonly ConstructionPlaneDisplay[]): void {
+    for (const surface of this.constructionPlaneSurfaces) {
+      this.constructionPlaneGroup.remove(surface);
+      surface.geometry.dispose();
+      (surface.material as THREE.Material).dispose();
+      for (const child of surface.children) {
+        if (!(child instanceof THREE.LineSegments)) continue;
+        child.geometry.dispose();
+        (child.material as THREE.Material).dispose();
+      }
+    }
+    this.constructionPlaneSurfaces.length = 0;
+    const size = viewportGridMetrics(this.modelRadius).originPlaneSize * 0.72;
+    for (const definition of planes) {
+      if (definition.visible === false) continue;
+      const geometry = new THREE.PlaneGeometry(size, size);
+      const material = new THREE.MeshBasicMaterial({
+        color: definition.preview ? 0x60a5fa : definition.selected ? 0x22d3ee : 0x38bdf8,
+        transparent: true,
+        opacity: definition.preview || definition.selected ? 0.2 : 0.08,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+        depthTest: true,
+        polygonOffset: true,
+        polygonOffsetFactor: 1,
+        polygonOffsetUnits: 1,
+      });
+      const surface = new THREE.Mesh(geometry, material);
+      const x = new THREE.Vector3(...definition.frame.x_axis_millionths).normalize();
+      const y = new THREE.Vector3(...definition.frame.y_axis_millionths).normalize();
+      const normal = new THREE.Vector3(...definition.frame.normal_millionths).normalize();
+      surface.setRotationFromMatrix(new THREE.Matrix4().makeBasis(x, y, normal));
+      surface.position.fromArray(definition.frame.origin_nanometers).multiplyScalar(1 / 1_000_000);
+      surface.userData.constructionPlane = definition.id;
+      surface.userData.constructionPlanePreview = Boolean(definition.preview);
+      surface.renderOrder = 4;
+      const outline = new THREE.LineSegments(
+        new THREE.EdgesGeometry(geometry),
+        new THREE.LineBasicMaterial({ color: definition.preview ? 0x93c5fd : 0x38bdf8, transparent: true, opacity: definition.selected ? 1 : 0.82, depthTest: false }),
+      );
+      outline.renderOrder = 5;
+      surface.add(outline);
+      this.constructionPlaneSurfaces.push(surface);
+      this.constructionPlaneGroup.add(surface);
+    }
+    this.render();
+  }
+
+  constructionPlaneState(): readonly { id: string; visible: boolean; preview: boolean }[] {
+    return this.constructionPlaneSurfaces.map((surface) => ({
+      id: String(surface.userData.constructionPlane),
+      visible: surface.visible,
+      preview: Boolean(surface.userData.constructionPlanePreview),
+    }));
+  }
+
   setViewChangedListener(listener: () => void): void { this.viewChanged = listener; }
 
   sharedViewportState(): ViewportStateController { return this.viewportState; }
@@ -323,6 +443,7 @@ export class WorkspaceRenderer {
     this.faceMaterial.color.copy(this.baseFaceColor);
     this.faceMaterial.opacity = THREE.MathUtils.clamp(opacity, 0.05, 1);
     this.faceMaterial.transparent = this.faceMaterial.opacity < 1;
+    this.appearanceEdgesVisible = edgesVisible;
     for (const edge of this.edges) edge.userData.appearanceVisible = edgesVisible;
     this.applyBodyVisibility();
   }
@@ -371,6 +492,60 @@ export class WorkspaceRenderer {
       this.showPreselection(null);
       this.onPreselection(null);
     }
+  }
+
+  /**
+   * Swap model packet resources in place while retaining the renderer, camera,
+   * navigation listeners, view cube, and durable viewport state.
+   */
+  replacePacket(packet: RenderPacket, body: RenderBodyContext): void {
+    this.disposeCutRemovalPreview();
+    this.disposePacketResources();
+    this.body = body;
+
+    const hasBounds = packet.bounds.length >= 6;
+    const boundsMin = hasBounds
+      ? new THREE.Vector3(packet.bounds[0], packet.bounds[1], packet.bounds[2])
+      : new THREE.Vector3();
+    const boundsMax = hasBounds
+      ? new THREE.Vector3(packet.bounds[3], packet.bounds[4], packet.bounds[5])
+      : new THREE.Vector3();
+    this.modelRadius = viewportModelRadius(boundsMin.distanceTo(boundsMax));
+    const workspaceScale = this.modelRadius / this.authoredWorkspaceRadius;
+    this.grid.scale.setScalar(workspaceScale);
+    this.sketchSupportGroup.scale.setScalar(workspaceScale);
+    this.modelGridPosition.y = boundsMin.y;
+    if (!this.viewportState.snapshot().workingSketchFrame) this.grid.position.copy(this.modelGridPosition);
+
+    this.installPacketResources(packet);
+    this.configureCameraClipping();
+    this.showPreselection(null);
+    this.onPreselection(null);
+    this.applyBodyVisibility();
+  }
+
+  packetResourceState(): WorkspacePacketResourceState {
+    const recordCount = (kind: TopologyKind) => [...this.records.values()].filter((record) => record.kind === kind).length;
+    return {
+      instanceId: this.instanceId,
+      packetRevision: this.packetInstallCount,
+      packetInstallCount: this.packetInstallCount,
+      packetDisposeCount: this.packetDisposeCount,
+      bodyId: this.body.id,
+      modelRadius: this.modelRadius,
+      gridScale: this.grid.scale.x,
+      faceRangeCount: this.faceRanges.length / 3,
+      edgeObjectCount: this.edges.length,
+      vertexObjectCount: this.vertices.length,
+      facePickRecordCount: recordCount("face"),
+      edgePickRecordCount: recordCount("edge"),
+      vertexPickRecordCount: recordCount("vertex"),
+    };
+  }
+
+  /** Read-only test instrumentation for the packet currently drawn on screen. */
+  packetTopologyFingerprint(): string {
+    return this.packetTopologyFingerprintValue;
   }
 
   selectFirst(kind: TopologyKind, additive = false): Selection | null {
@@ -425,16 +600,22 @@ export class WorkspaceRenderer {
     this.camera.updateMatrixWorld();
     this.raycaster.setFromCamera(this.pointer, this.camera);
 
+    const constructionIntersection = this.raycaster.intersectObjects(this.constructionPlaneSurfaces, false)[0];
+    const constructionPlane = (constructionIntersection?.object as THREE.Mesh | undefined)?.userData.constructionPlane as string | undefined;
     const planeIntersection = this.raycaster.intersectObjects(this.sketchSupportPlanes, false)[0];
     const plane = (planeIntersection?.object as THREE.Mesh | undefined)?.userData.originPlane as "xy" | "xz" | "yz" | undefined;
+    const datumIntersection = constructionIntersection && (!planeIntersection || constructionIntersection.distance <= planeIntersection.distance)
+      ? constructionIntersection
+      : planeIntersection;
     // A visible planar model face wins only when it is actually in front of the datum surface.
     if (this.body.visible && this.body.selectable) {
       const faceIntersection = this.raycaster.intersectObject(this.faceMesh, false)[0];
       const face = this.faceSelectionFromIntersection(faceIntersection);
-      if (face && this.faceTokenIsPlanar(face.token) && (!planeIntersection || faceIntersection.distance <= planeIntersection.distance)) {
+      if (face && this.faceTokenIsPlanar(face.token) && (!datumIntersection || faceIntersection.distance <= datumIntersection.distance)) {
         return { kind: "face", selection: face };
       }
     }
+    if (datumIntersection === constructionIntersection && constructionPlane) return { kind: "construction_plane", plane: constructionPlane };
     return plane ? { kind: "origin_plane", plane } : undefined;
   }
 
@@ -623,13 +804,98 @@ export class WorkspaceRenderer {
       });
     }
   }
+
+  private installPacketResources(packet: RenderPacket): void {
+    this.packetTopologyFingerprintValue = renderPacketTopologyFingerprint(packet);
+    for (let offset = 0; offset < packet.pickTable.length; offset += 4) {
+      const token = packet.pickTable[offset];
+      const kind = kindByCode[packet.pickTable[offset + 1]];
+      const stableId = ((BigInt(packet.pickTable[offset + 3]) << 32n) | BigInt(packet.pickTable[offset + 2])).toString();
+      this.records.set(token, { token, kind, stableId });
+    }
+
+    this.faceRanges = packet.faceRanges;
+    const faceGeometry = new THREE.BufferGeometry();
+    faceGeometry.setAttribute("position", new THREE.BufferAttribute(packet.positions, 3));
+    faceGeometry.setAttribute("normal", new THREE.BufferAttribute(packet.normals, 3));
+    faceGeometry.setIndex(new THREE.BufferAttribute(packet.triangleIndices, 1));
+    for (let offset = 0; offset < packet.faceRanges.length; offset += 3) {
+      faceGeometry.addGroup(packet.faceRanges[offset], packet.faceRanges[offset + 1], 0);
+    }
+    this.faceMesh.geometry = faceGeometry;
+
+    const clippingPlanes = this.faceMaterial.clippingPlanes;
+    for (let offset = 0; offset < packet.edgeRanges.length; offset += 3) {
+      const first = packet.edgeRanges[offset];
+      const count = packet.edgeRanges[offset + 1];
+      const material = new THREE.LineBasicMaterial({ color: 0xe8f0ff });
+      material.clippingPlanes = clippingPlanes;
+      const item = new THREE.LineSegments(
+        new THREE.BufferGeometry().setAttribute("position", new THREE.BufferAttribute(packet.edgePositions.subarray(first * 3, (first + count) * 3), 3)),
+        material,
+      );
+      item.userData.pickToken = packet.edgeRanges[offset + 2];
+      item.userData.appearanceVisible = this.appearanceEdgesVisible;
+      this.edges.push(item);
+      this.scene.add(item);
+    }
+    for (let index = 0; index < packet.vertexPickTokens.length; index += 1) {
+      const item = new THREE.Points(
+        new THREE.BufferGeometry().setAttribute("position", new THREE.BufferAttribute(packet.vertexPositions.subarray(index * 3, index * 3 + 3), 3)),
+        new THREE.PointsMaterial({ color: 0xffffff, size: this.modelRadius * 0.07, sizeAttenuation: true }),
+      );
+      item.userData.pickToken = packet.vertexPickTokens[index];
+      this.vertices.push(item);
+      this.scene.add(item);
+    }
+    this.raycaster.params.Line = { threshold: this.modelRadius * 0.04 };
+    this.raycaster.params.Points = { threshold: this.modelRadius * 0.065 };
+    this.packetInstallCount += 1;
+  }
+
+  private disposePacketResources(): void {
+    this.faceMesh.geometry.dispose();
+    for (const edge of this.edges) {
+      this.scene.remove(edge);
+      edge.geometry.dispose();
+      (edge.material as THREE.Material).dispose();
+    }
+    this.edges.length = 0;
+    for (const vertex of this.vertices) {
+      this.scene.remove(vertex);
+      vertex.geometry.dispose();
+      (vertex.material as THREE.Material).dispose();
+    }
+    this.vertices.length = 0;
+    this.faceRanges = new Uint32Array();
+    this.records.clear();
+    this.packetDisposeCount += 1;
+  }
+
+  private disposeCutRemovalPreview(): void {
+    for (const child of [...this.cutRemovalGroup.children]) {
+      this.cutRemovalGroup.remove(child);
+      child.traverse((object) => {
+        if (object instanceof THREE.Mesh || object instanceof THREE.LineSegments) {
+          object.geometry.dispose();
+          const materials = Array.isArray(object.material) ? object.material : [object.material];
+          for (const material of materials) material.dispose();
+        }
+      });
+    }
+  }
+
   dispose(): void {
     this.unsubscribeViewportState();
+    this.setConstructionPlanes([]);
     this.renderScheduler.dispose();
     this.eventController.abort();
     this.resizeObserver.disconnect();
     this.viewCube?.dispose();
     this.viewCube = undefined;
+    this.disposeCutRemovalPreview();
+    this.disposePacketResources();
+    this.faceMaterial.dispose();
     this.renderer.dispose();
   }
 
@@ -730,7 +996,7 @@ export class WorkspaceRenderer {
       if (!this.drag || this.drag.pointerId !== event.pointerId) {
         if (this.sketchSupportSelection) {
           const pick = this.resolveSketchSupportAt(event.clientX, event.clientY);
-          this.highlightSketchSupport(pick?.kind === "origin_plane" ? pick.plane : undefined);
+          this.highlightSketchSupport(pick?.kind === "origin_plane" ? pick.plane : pick?.kind === "construction_plane" ? pick.plane : undefined);
           const selection = pick?.kind === "face" ? pick.selection : null;
           this.showPreselection(selection);
           this.onPreselection(selection);
@@ -877,12 +1143,18 @@ export class WorkspaceRenderer {
     this.scene.add(this.sketchSupportGroup);
   }
 
-  private highlightSketchSupport(plane: "xy" | "xz" | "yz" | undefined): void {
+  private highlightSketchSupport(plane: "xy" | "xz" | "yz" | string | undefined): void {
     for (const surface of this.sketchSupportPlanes) {
       const active = surface.userData.originPlane === plane;
       (surface.material as THREE.MeshBasicMaterial).opacity = active ? 0.25 : 0.09;
       const outline = surface.children[0] as THREE.LineSegments | undefined;
       if (outline) (outline.material as THREE.LineBasicMaterial).opacity = active ? 1 : 0.78;
+    }
+    for (const surface of this.constructionPlaneSurfaces) {
+      const active = surface.userData.constructionPlane === plane;
+      (surface.material as THREE.MeshBasicMaterial).opacity = active ? 0.25 : surface.userData.constructionPlanePreview ? 0.2 : 0.08;
+      const outline = surface.children[0] as THREE.LineSegments | undefined;
+      if (outline) (outline.material as THREE.LineBasicMaterial).opacity = active ? 1 : 0.82;
     }
   }
 

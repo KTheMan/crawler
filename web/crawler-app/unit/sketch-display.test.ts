@@ -40,17 +40,24 @@ test("committed line, circle, and arc geometry stays on every resolved 3D sketch
   }
 });
 
-test("construction-plane origins and axes are honored rather than flattened to XY", () => {
+test("construction-plane origin is derived from its durable base and signed offset", () => {
   const resolved = resolveSketchPlane({ kind: "construction_plane_reference", plane: "plane:offset" }, {
+    origin_planes: {
+      "origin-plane:xy": { id: "origin-plane:xy", component: "component:root", plane: "xy" },
+    },
     construction_planes: {
       "plane:offset": {
-        origin_nanometers: [10_000_000, 20_000_000, 30_000_000],
-        x_axis_millionths: [0, 1_000_000, 0],
-        normal_millionths: [0, 0, 1_000_000],
+        schema_version: 1,
+        id: "plane:offset",
+        component: "component:root",
+        definition: { kind: "offset", base_plane: "origin-plane:xy", offset: "parameter:plane-offset" },
       },
+    },
+    parameters: {
+      "parameter:plane-offset": { value: { kind: "length_nanometers", value: 30_000_000 } },
     },
   });
   assert.equal(resolved.status, "ready");
   if (resolved.status !== "ready") return;
-  assert.deepEqual(committedSketchWorldPolylines(sketch, resolved.plane)[0].points, [[8, 21, 30], [4, 24, 30]]);
+  assert.deepEqual(committedSketchWorldPolylines(sketch, resolved.plane)[0].points, [[1, 2, 30], [4, 6, 30]]);
 });

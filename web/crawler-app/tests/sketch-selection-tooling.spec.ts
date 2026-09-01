@@ -14,18 +14,12 @@ async function openSketch(page: Page): Promise<{ canvas: Locator; overlay: Locat
 }
 
 test("hover rails, persistent add/remove, and lazy overlap UI keep selection intent visible", async ({ page }) => {
-  const { canvas, overlay, box } = await openSketch(page);
-  const point = (x: number, y: number) => ({ x: box.width * x, y: box.height * y });
+  const { overlay } = await openSketch(page);
 
-  await canvas.click({ position: point(.34, .48) });
-  await canvas.click({ position: point(.48, .42) });
-  await page.keyboard.press("Enter");
-  await page.keyboard.press("Escape");
-  await page.locator('[data-sketch-tool="line"]').first().click();
-  await canvas.click({ position: point(.51, .58) });
-  await canvas.click({ position: point(.59, .52) });
-  await page.keyboard.press("Enter");
-  await page.keyboard.press("Escape");
+  await page.evaluate(async () => window.__crawlerApp.applySketchCommands([
+    { kind: "add_geometry", entity: { id: "selection:line:a", geometry: { kind: "line", start: { x_nm: -8_000_000, y_nm: 3_000_000 }, end: { x_nm: 2_000_000, y_nm: 8_000_000 } } } },
+    { kind: "add_geometry", entity: { id: "selection:line:b", geometry: { kind: "line", start: { x_nm: 4_000_000, y_nm: -7_000_000 }, end: { x_nm: 10_000_000, y_nm: -1_000_000 } } } },
+  ]));
 
   const visible = overlay.locator(".sketch-entity[data-sketch-geometry]");
   const first = visible.nth(0);
@@ -88,13 +82,11 @@ test("marquee direction publishes containment/crossing semantics before commit",
 });
 
 test("Select context keeps selection state primary and support secondary", async ({ page }) => {
-  const { canvas, box } = await openSketch(page);
-  const point = (x: number, y: number) => ({ x: box.width * x, y: box.height * y });
-
-  await canvas.click({ position: point(.36, .52) });
-  await canvas.click({ position: point(.50, .45) });
-  await page.keyboard.press("Enter");
-  await page.keyboard.press("Escape");
+  const { overlay } = await openSketch(page);
+  await page.evaluate(async () => window.__crawlerApp.applySketchCommands([
+    { kind: "add_geometry", entity: { id: "selection:context-line", geometry: { kind: "line", start: { x_nm: -8_000_000, y_nm: 2_000_000 }, end: { x_nm: 8_000_000, y_nm: 7_000_000 } } } },
+  ]));
+  await overlay.locator('[data-sketch-hit-geometry="selection:context-line"]').click({ force: true });
 
   const inspector = page.getByLabel("Sketch tool properties");
   const selection = page.getByLabel("Sketch selection properties");
@@ -157,7 +149,9 @@ test("constraint glyphs follow selection and constrained arc sections resolve in
   ]));
 
   await expect(overlay).toHaveAttribute("data-annotation-density", "selection");
-  await expect(overlay.locator(".sketch-constraint-annotation")).toHaveCount(0);
+  await expect(overlay.locator(".sketch-constraint-annotation")).toHaveCount(1);
+  await expect(overlay.locator('[data-sketch-constraint-id="visual:diameter"]')).toBeVisible();
+  await expect(overlay.locator('[data-sketch-constraint-id="visual:join"]')).toHaveCount(0);
 
   await page.keyboard.press("Escape");
   const arc = overlay.locator('[data-sketch-geometry="visual:arc"]');
@@ -207,11 +201,78 @@ test("constraint glyphs follow selection and constrained arc sections resolve in
   await expect(overlay.locator('[data-sketch-constraint-id="visual:diameter"]')).toHaveAttribute("data-constraint-state", "driving");
   await expect(arc).toHaveClass(/constraint-target/);
   await page.getByLabel("Sketch selection properties").getByRole("button", { name: "Clear" }).click();
-  await expect(overlay.locator(".sketch-constraint-annotation")).toHaveCount(0);
+  await expect(overlay.locator(".sketch-constraint-annotation")).toHaveCount(1);
+  await expect(overlay.locator('[data-sketch-constraint-id="visual:diameter"]')).toBeVisible();
+});
+
+test("fully constrained geometry cannot be displaced by a body drag", async ({ page }) => {
+  const { overlay } = await openSketch(page);
+  await page.evaluate(async () => window.__crawlerApp.applySketchCommands([
+    { kind: "add_geometry", entity: { id: "defined:line", geometry: { kind: "line", start: { x_nm: 0, y_nm: 0 }, end: { x_nm: 20_000_000, y_nm: 0 } } } },
+    { kind: "add_constraint", id: "defined:origin", constraint: { kind: "point_on_origin", point: { geometry: "defined:line", anchor: "start" } } },
+    { kind: "add_constraint", id: "defined:horizontal", constraint: { kind: "horizontal", line: "defined:line" } },
+    { kind: "add_constraint", id: "defined:length", constraint: { kind: "distance", a: { geometry: "defined:line", anchor: "start" }, b: { geometry: "defined:line", anchor: "end" }, distance_nm: 20_000_000 } },
+  ]));
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Escape");
+
+  await expect.poll(() => page.evaluate(() => window.__crawlerApp.sketchSolve()?.state)).toBe("fully_constrained");
+  await expect(overlay.locator('[data-sketch-constraint-id="defined:length"]')).toBeVisible();
+  const line = overlay.locator('[data-sketch-geometry="defined:line"]');
+  const before = await page.evaluate(() => window.__crawlerApp.sketchDraft()!.geometry["defined:line"].geometry);
+  const center = await line.evaluate((element) => {
+    const geometry = element as SVGGeometryElement;
+    const point = geometry.getPointAtLength(geometry.getTotalLength() / 2).matrixTransform(geometry.getScreenCTM()!);
+    return { x: point.x, y: point.y };
+  });
+  await page.mouse.move(center.x, center.y);
+  await page.mouse.down();
+  await page.mouse.move(center.x + 80, center.y + 50, { steps: 4 });
+  await expect(line).not.toHaveAttribute("transform", /translate/);
+  await page.mouse.up();
+
+  await expect.poll(() => page.evaluate(() => window.__crawlerApp.sketchDraft()!.geometry["defined:line"].geometry)).toEqual(before);
+  await expect(overlay.locator('[data-sketch-constraint-id="defined:length"]')).toBeVisible();
+});
+
+test("body dragging an under-constrained curve preserves its defined position relations", async ({ page }) => {
+  const { overlay } = await openSketch(page);
+  await page.evaluate(async () => window.__crawlerApp.applySketchCommands([
+    { kind: "add_geometry", entity: { id: "anchored:line", geometry: { kind: "line", start: { x_nm: 0, y_nm: 0 }, end: { x_nm: 20_000_000, y_nm: 0 } } } },
+    { kind: "add_constraint", id: "anchored:origin", constraint: { kind: "point_on_origin", point: { geometry: "anchored:line", anchor: "start" } } },
+    { kind: "add_constraint", id: "anchored:horizontal", constraint: { kind: "horizontal", line: "anchored:line" } },
+  ]));
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Escape");
+
+  const line = overlay.locator('[data-sketch-geometry="anchored:line"]');
+  const dragPoint = await line.evaluate((element) => {
+    const geometry = element as SVGGeometryElement;
+    const point = geometry.getPointAtLength(geometry.getTotalLength() * .75).matrixTransform(geometry.getScreenCTM()!);
+    return { x: point.x, y: point.y };
+  });
+  await page.mouse.move(dragPoint.x, dragPoint.y);
+  await page.mouse.down();
+  await page.mouse.move(dragPoint.x + 80, dragPoint.y + 50, { steps: 4 });
+  await page.mouse.up();
+
+  await expect.poll(() => page.evaluate(() => {
+    const geometry = window.__crawlerApp.sketchDraft()!.geometry["anchored:line"].geometry;
+    return geometry.kind === "line" ? geometry.end.x_nm : 0;
+  })).toBeGreaterThan(20_000_000);
+  const after = await page.evaluate(() => window.__crawlerApp.sketchDraft()!.geometry["anchored:line"].geometry);
+  expect(after.kind).toBe("line");
+  if (after.kind === "line") {
+    expect(after.start).toEqual({ x_nm: 0, y_nm: 0 });
+    expect(after.end.y_nm).toBe(0);
+  }
+  await expect.poll(() => page.evaluate(() => window.__crawlerApp.sketchSolve()?.conflicts.length)).toBe(0);
 });
 
 test("cursor inference previews use constraint glyphs instead of text placeholders", async ({ page }) => {
   const { canvas, overlay, box } = await openSketch(page);
+  await page.locator('[data-sketch-tool="line"]').first().click();
+  await expect(page.locator('[data-sketch-tool="line"]').first()).toHaveAttribute("aria-pressed", "true");
   const first = { x: box.width * .38, y: box.height * .52 };
   const second = { x: box.width * .62, y: box.height * .52 };
   await canvas.click({ position: first });

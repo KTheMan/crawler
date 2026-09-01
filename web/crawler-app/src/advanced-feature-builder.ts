@@ -7,7 +7,6 @@ import type {
 
 const DEFAULT_TOLERANCE_NM = 10_000;
 const MAX_U64 = 18_446_744_073_709_551_615n;
-const U64_MARKER = "__crawler_exact_u64__";
 
 export interface BodySnapshot {
   body_id: string;
@@ -58,10 +57,6 @@ interface DocumentView {
   features?: Record<string, StoredFeature>;
   parameters?: Record<string, { value?: { kind?: string; value?: number | boolean | string } }>;
   transactions?: Array<{ changes?: Array<{ kind?: string; feature?: string; request_json?: string }> }>;
-}
-
-interface ExactU64 {
-  readonly [U64_MARKER]: string;
 }
 
 export interface AdvancedFeatureEnvelope {
@@ -175,12 +170,9 @@ export function buildAdvancedFeatureEditEnvelope(
   };
 }
 
-/** Serialize stable topology IDs as exact JSON u64 numbers, not lossy JS numbers. */
+/** Serialize stable topology IDs in their lossless canonical string form. */
 export function serializeAdvancedFeatureEnvelope(envelope: AdvancedFeatureEnvelope): string {
-  return JSON.stringify(envelope).replace(
-    new RegExp(`\\{\\"${U64_MARKER}\\":\\"([0-9]+)\\"\\}`, "g"),
-    "$1",
-  );
+  return JSON.stringify(envelope);
 }
 
 function parameterBindings(
@@ -298,12 +290,21 @@ function applyAdvancedParameterEdits(
       operation.direction_nm = resizedVector(operation.direction_nm, values.distance as number, "operation.direction_nm");
       break;
     case "draft": {
+      operation.face_stable_ids = persistedStableIds(operation.face_stable_ids, "operation.face_stable_ids");
       const magnitude = checkedDraftMagnitude(values.angle, "parameters.angle");
       operation.angle_microdegrees = values.reverse === true ? -magnitude : magnitude;
       break;
     }
-    case "fillet": operation.radius_nm = values.radius; operation.divisions = values.divisions; break;
-    case "chamfer": operation.radius_nm = values.distance; operation.divisions = values.divisions; break;
+    case "fillet":
+      operation.edge_stable_ids = persistedStableIds(operation.edge_stable_ids, "operation.edge_stable_ids");
+      operation.radius_nm = values.radius;
+      operation.divisions = values.divisions;
+      break;
+    case "chamfer":
+      operation.edge_stable_ids = persistedStableIds(operation.edge_stable_ids, "operation.edge_stable_ids");
+      operation.radius_nm = values.distance;
+      operation.divisions = values.divisions;
+      break;
     case "transform": operation.translation_nm = [values.x, values.y, values.z]; break;
     case "linear_pattern": {
       const oldStep = operation.step_nm as number[];
@@ -318,7 +319,10 @@ function applyAdvancedParameterEdits(
       operation.instance_body_ids = resizedInstanceIds(operation.instance_body_ids, values.count as number);
       operation.step_microdegrees = Math.round((values.angle as number) / (values.count as number));
       break;
-    case "shell": operation.wall_thickness_nm = values.thickness; break;
+    case "shell":
+      operation.removed_face_stable_ids = persistedStableIds(operation.removed_face_stable_ids, "operation.removed_face_stable_ids");
+      operation.wall_thickness_nm = values.thickness;
+      break;
   }
   return operation;
 }
@@ -559,14 +563,21 @@ function boundsNanometers(active: ActiveBodyState): [number, number, number, num
   return bounds.map((value) => Math.round(value * 1_000_000)) as [number, number, number, number, number, number];
 }
 
-function exactStableIds(values: readonly string[] | undefined, field: string, requireOne: boolean): ExactU64[] {
+function exactStableIds(values: readonly string[] | undefined, field: string, requireOne: boolean): string[] {
   if (requireOne && (!values || values.length === 0)) fail("invalid_input", field, "at least one stable topology reference is required", "select one or more edges and retry");
   return (values ?? []).map((value, index) => {
-    if (!/^[0-9]+$/.test(value)) fail("invalid_input", `${field}[${index}]`, "stable topology IDs must be unsigned decimal integers", "select topology from the accepted render packet and retry");
+    if (!/^(0|[1-9][0-9]*)$/.test(value)) fail("invalid_input", `${field}[${index}]`, "stable topology IDs must be canonical unsigned decimal integers", "select topology from the accepted render packet and retry");
     const parsed = BigInt(value);
     if (parsed === 0n || parsed > MAX_U64) fail("invalid_input", `${field}[${index}]`, "stable topology ID is outside the valid u64 range", "select topology from the accepted render packet and retry");
-    return { [U64_MARKER]: value } as ExactU64;
+    return value;
   });
+}
+
+function persistedStableIds(value: unknown, field: string): string[] {
+  if (!Array.isArray(value) || value.some((entry) => typeof entry !== "string")) {
+    fail("invalid_input", field, "stored stable topology IDs must be canonical decimal strings", "recreate the feature from accepted topology and retry");
+  }
+  return exactStableIds(value as string[], field, true);
 }
 
 function integerParameter(values: Readonly<Record<string, number | boolean | string>>, key: string, fallback: number, minimum?: number): number {

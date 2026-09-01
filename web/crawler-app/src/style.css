@@ -328,6 +328,9 @@ button.quiet { background: transparent; }
 #preselection-readout { bottom: 45px; color: #72869e; }
 .extrude-manipulator { position: absolute; z-index: 4; left: 58%; top: 32%; display: grid; grid-template-columns: auto auto; align-items: center; gap: 2px 7px; min-width: 132px; padding: 9px 11px; border: 1px solid #70d7ff; border-radius: 9px; color: #e8f8ff; background: #12364bea; box-shadow: 0 0 0 2px #102433, 0 8px 24px #0008; cursor: ns-resize; touch-action: none; user-select: none; }
 .extrude-manipulator[hidden] { display: none; }.extrude-manipulator > span { grid-row: 1 / 3; color: #70d7ff; font-size: 24px; line-height: 1; }.extrude-manipulator output { font-weight: 700; text-align: left; }.extrude-manipulator small { color: #acd9ec; font-size: 10px; white-space: nowrap; }
+.extrude-manipulator[data-result-mode="cut"] { border-color: #ff9c70; background: #4b241bea; box-shadow: 0 0 0 2px #331a14, 0 8px 24px #0008; }
+.extrude-manipulator[data-result-mode="cut"] > span { color: #ff9c70; }
+.extrude-manipulator[data-result-mode="cut"] small { color: #f2b7a0; }
 #sketch-overlay { position: absolute; inset: 0; z-index: 6; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
 #sketch-overlay[hidden] { display: none; }
 #sketch-overlay .sketch-entity { fill: none; stroke: #ffd166; stroke-width: 2; vector-effect: non-scaling-stroke; pointer-events: stroke; cursor: pointer; }
@@ -351,7 +354,10 @@ button.quiet { background: transparent; }
 #sketch-overlay .sketch-origin-reference.selected circle { fill: #ffd166; stroke: #fff; stroke-width: 3; }
 #sketch-overlay .sketch-origin-reference.selected path { stroke: #ffd166; stroke-width: 3.5; }
 #sketch-overlay .sketch-origin-reference:focus { outline: none; filter: drop-shadow(0 0 4px #fff); }
-#sketch-overlay .sketch-profile-fill { fill: rgba(124, 138, 224, .18); stroke: none; pointer-events: none; }
+#sketch-overlay .sketch-profile-fill { fill: rgba(124, 138, 224, .18); stroke: transparent; stroke-width: 1.5; pointer-events: visiblePainted; cursor: pointer; vector-effect: non-scaling-stroke; }
+#sketch-overlay .sketch-profile-fill.preselected { fill: rgba(125, 211, 252, .28); stroke: #7dd3fc; }
+#sketch-overlay .sketch-profile-fill.selected { fill: rgba(255, 209, 102, .3); stroke: #ffd166; stroke-width: 2.5; }
+#sketch-overlay .sketch-profile-fill:focus { outline: none; filter: drop-shadow(0 0 4px #ffd166); }
 #sketch-overlay .sketch-entity.under-constrained { stroke: #dce6ff; }
 #sketch-overlay .sketch-entity.fully-constrained { stroke: #78d6a0; }
 #sketch-overlay .sketch-entity.constraint-target { stroke: #050505; }
@@ -596,7 +602,7 @@ button.quiet { background: transparent; }
 .tree-row.selected { background: #20344e; box-shadow: inset 3px 0 #61a0ef; }
 .component-row { color: #f0f5fc; font-weight: 700; }
 .component-row i { background: transparent; color: #8da9cc; }
-.body-tree-item { position: relative; padding-right: 58px; }
+.body-tree-item, .sketch-tree-item, .construction-plane-tree-item { position: relative; padding-right: 58px; }
 .visibility-toggle { position: absolute; top: 5px; right: 5px; width: 54px; padding: 3px 5px; color: #9eb1ca; background: #151f2c; font-size: 9px; text-transform: uppercase; }
 .visibility-toggle[aria-pressed="false"] { color: #ffb0ba; text-decoration: line-through; }
 .body-row[aria-disabled="true"] { color: #7f8da1; }
@@ -954,6 +960,10 @@ html, body, #app, .shell { width: 100%; min-width: 0; max-width: 100vw; }
 .dimension-panel[data-operation="pad"] .rectangle-dimension { display: none; }
 .dimension-panel .dimension-control { display: grid; grid-template-columns: minmax(72px, 1fr) 72px 20px; align-items: center; gap: 6px; }
 .dimension-panel .dimension-control input { min-width: 0; height: 25px; color: var(--text); border: 1px solid var(--border-strong); border-radius: 4px; background: var(--bg); text-align: right; }
+.dimension-panel .extrude-direction-control select { min-width: 108px; height: 25px; color: var(--text); border: 1px solid var(--border-strong); border-radius: 4px; background: var(--bg); }
+.dimension-panel .extrude-direction-control { grid-template-columns: minmax(72px, 1fr) minmax(108px, 1fr); }
+.dimension-panel .extrude-normalization-status { grid-column: 1 / -1; min-height: 12px; color: var(--accent); font-size: 9px; text-align: center; }
+.dimension-panel .extrude-normalization-status:empty { display: none; }
 .dimension-panel .dimension-control b { color: var(--muted-dim); font-size: 8px; }
 .dimension-panel .operation-dimension-hint { grid-column: 1 / -1; color: var(--muted-dim); font-size: 9px; text-align: center; }
 .command-search-hint { display: none; }
@@ -1098,7 +1108,7 @@ html, body, #app, .shell { width: 100%; min-width: 0; max-width: 100vw; }
 .tree-group-label:hover { color: #98a5b8; background: var(--hover-fill); }
 .tree-group-label i { width: 9px; color: var(--muted-faint); font-style: normal; }
 .tree-group-label span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.body-tree-item { padding-right: 0; }
+.body-tree-item, .sketch-tree-item, .construction-plane-tree-item { padding-right: 24px; }
 .visibility-toggle {
   top: 3px;
   right: 4px;
@@ -1113,6 +1123,8 @@ html, body, #app, .shell { width: 100%; min-width: 0; max-width: 100vw; }
   opacity: 0;
 }
 .body-tree-item:hover .visibility-toggle,
+.sketch-tree-item:hover .visibility-toggle,
+.construction-plane-tree-item:hover .visibility-toggle,
 .visibility-toggle:focus-visible { opacity: 1; }
 .visibility-toggle svg { width: 11px; height: 11px; }
 .visibility-toggle[aria-pressed="false"] { color: var(--muted-faint); text-decoration: none; }
@@ -2240,6 +2252,36 @@ html, body, #app, .shell { width: 100%; min-width: 0; max-width: 100vw; }
   background: color-mix(in srgb, var(--chrome-raised) 96%, transparent);
   box-shadow: 0 -8px 18px rgba(0,0,0,.16);
   backdrop-filter: blur(10px);
+}
+
+.offset-construction-plane-editor {
+  display: grid;
+  gap: 12px;
+}
+
+.offset-construction-plane-editor > label:not(.construction-plane-suppression) {
+  display: grid;
+  gap: 6px;
+}
+
+.offset-construction-plane-editor select,
+.offset-construction-plane-editor input {
+  min-width: 0;
+}
+
+.offset-construction-plane-editor output {
+  min-height: 2.5em;
+  color: var(--muted, #94a3b8);
+}
+
+.construction-plane-suppression {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.construction-plane-row > i {
+  color: #38bdf8;
 }
 .operation-actions button { min-height: 36px; font-size: 11px; font-weight: 650; }
 .operation-actions button:nth-child(2):not(:disabled) { color: #fff; border-color: var(--accent-strong); background: var(--accent-strong); }

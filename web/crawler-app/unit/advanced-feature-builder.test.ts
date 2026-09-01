@@ -134,7 +134,7 @@ for (const [operationId, kind] of [
   });
 }
 
-test("fillet and chamfer preserve u64 topology identities in serialized JSON", () => {
+test("fillet and chamfer preserve u64 topology identities as canonical JSON strings", () => {
   const { runtime } = runtimeView();
   const stableId = "18446744073709551614";
   for (const [operationId, parameter, value] of [
@@ -146,9 +146,61 @@ test("fillet and chamfer preserve u64 topology identities in serialized JSON", (
       selection: { edgeStableIds: [stableId] },
     }));
     const json = serializeAdvancedFeatureEnvelope(envelope);
-    assert.match(json, new RegExp(`"edge_stable_ids":\\[${stableId}\\]`));
-    assert.doesNotMatch(json, /__crawler_exact_u64__/);
+    assert.match(json, new RegExp(`"edge_stable_ids":\\["${stableId}"\\]`));
     assert.equal(envelope.request.operation.radius_nm, value);
+  }
+});
+
+test("advanced topology selections reject noncanonical, zero, and out-of-range u64 text", () => {
+  const { runtime } = runtimeView();
+  for (const stableId of ["", "00", "01", "+1", "-1", " 1", "1 ", "1.0", "abc", "0", "18446744073709551616"]) {
+    assert.throws(
+      () => buildAdvancedFeatureEnvelope(runtime, command("crawler.part.fillet", {
+        selection: { edgeStableIds: [stableId] },
+      })),
+      (error: unknown) => error instanceof AdvancedFeatureBuildError
+        && error.detail.category === "invalid_input"
+        && error.detail.field === "selection.edgeStableIds[0]",
+      stableId,
+    );
+  }
+});
+
+test("advanced topology selection arrays retain canonical u64 strings before serialization", () => {
+  const { runtime } = runtimeView();
+  const maximum = "18446744073709551615";
+  const fillet = buildAdvancedFeatureEnvelope(runtime, command("crawler.part.fillet", {
+    selection: { edgeStableIds: [maximum] },
+  }));
+  const draft = buildAdvancedFeatureEnvelope(runtime, command("crawler.part.draft", {
+    selection: { draftFaceStableIds: [maximum] },
+  }));
+  const shell = buildAdvancedFeatureEnvelope(runtime, command("crawler.part.shell", {
+    selection: { removedFaceStableIds: [maximum] },
+  }));
+  assert.deepEqual(fillet.request.operation.edge_stable_ids, [maximum]);
+  assert.deepEqual(draft.request.operation.face_stable_ids, [maximum]);
+  assert.deepEqual(shell.request.operation.removed_face_stable_ids, [maximum]);
+});
+
+test("advanced feature edits fail closed on numeric or noncanonical stored topology identities", () => {
+  for (const [operationId, operation, parameters] of [
+    ["crawler.part.draft", { kind: "draft", target: body("body:target"), face_stable_ids: [42], pull_direction: "z", neutral_plane_origin_nm: [0, 0, 0], angle_microdegrees: 1_000_000, tolerance_nm: 10_000 }, { angle: 1_000_000, reverse: false }],
+    ["crawler.part.fillet", { kind: "fillet", target: body("body:target"), edge_stable_ids: ["01"], radius_nm: 10, divisions: 5, tolerance_nm: 10_000 }, { radius: 10, divisions: 5, tolerance: 10_000 }],
+    ["crawler.part.chamfer", { kind: "chamfer", target: body("body:target"), edge_stable_ids: [42], radius_nm: 10, divisions: 5, tolerance_nm: 10_000 }, { distance: 10, divisions: 5, tolerance: 10_000 }],
+    ["crawler.part.shell", { kind: "shell", target: body("body:target"), removed_face_stable_ids: [42], wall_thickness_nm: 10, tolerance_nm: 10_000 }, { thickness: 10, tolerance: 10_000 }],
+  ] as const) {
+    const accepted = acceptedOperation(operationId, operation, parameters);
+    assert.throws(
+      () => buildAdvancedFeatureEditEnvelope(accepted.view.runtime, command(operationId, {
+        type: "edit-advanced-feature",
+        featureId: accepted.featureId,
+      })),
+      (error: unknown) => error instanceof AdvancedFeatureBuildError
+        && error.detail.category === "invalid_input"
+        && error.detail.field?.startsWith("operation.") === true,
+      operationId,
+    );
   }
 });
 
@@ -244,7 +296,7 @@ test("shell builds a qualified exact prismatic request from one stable face", ()
     selection: { removedFaceStableIds: ["42"] },
   }));
   assert.equal(envelope.request.operation.kind, "shell");
-  assert.match(serializeAdvancedFeatureEnvelope(envelope), /"removed_face_stable_ids":\[42\]/);
+  assert.match(serializeAdvancedFeatureEnvelope(envelope), /"removed_face_stable_ids":\["42"\]/);
 });
 
 test("invalid selections return structured recovery without mutating the runtime view", () => {
@@ -442,7 +494,7 @@ test("Draft creation and edit use exact selected faces, target, pull axis, neutr
   assert.equal(created.request.operation.pull_direction, "y");
   assert.deepEqual(created.request.operation.neutral_plane_origin_nm, [10, 20, 30]);
   assert.equal(created.request.operation.angle_microdegrees, -3_000_000);
-  assert.match(serializeAdvancedFeatureEnvelope(created), /"face_stable_ids":\[42,18446744073709551614\]/);
+  assert.match(serializeAdvancedFeatureEnvelope(created), /"face_stable_ids":\["42","18446744073709551614"\]/);
 
   const accepted = acceptedOperation("crawler.part.draft", created.request.operation, {
     angle: 3_000_000,
@@ -455,7 +507,7 @@ test("Draft creation and edit use exact selected faces, target, pull axis, neutr
   }));
   assert.equal(edited.request.operation.angle_microdegrees, 7_500_000);
   assert.deepEqual(edited.request.operation.target, created.request.operation.target);
-  assert.match(serializeAdvancedFeatureEnvelope(edited), /"face_stable_ids":\[42,18446744073709551614\]/);
+  assert.match(serializeAdvancedFeatureEnvelope(edited), /"face_stable_ids":\["42","18446744073709551614"\]/);
   assert.equal(edited.request.operation.pull_direction, "y");
   assert.deepEqual(edited.request.operation.neutral_plane_origin_nm, [10, 20, 30]);
   assert.deepEqual(edited.feature.parameters, accepted.feature.parameters);

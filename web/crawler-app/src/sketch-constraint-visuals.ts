@@ -306,6 +306,24 @@ export function selectedConstraintIds(
   return ids;
 }
 
+/**
+ * Relations that belong on the sketch canvas. Explicit dimensions remain
+ * visible as persistent sketch documentation, while geometric relation glyphs
+ * continue to follow the focused selection to keep dense sketches readable.
+ */
+export function visibleConstraintIds(
+  sketch: Pick<Sketch, "constraints">,
+  selectedGeometry: readonly string[],
+  selectedPoints: readonly PointRef[],
+  selectedConstraint?: string,
+): ReadonlySet<string> {
+  const ids = new Set(selectedConstraintIds(sketch, selectedGeometry, selectedPoints, selectedConstraint));
+  for (const [id, constraint] of Object.entries(sketch.constraints)) {
+    if (isDimensionalConstraint(constraint)) ids.add(id);
+  }
+  return ids;
+}
+
 function geometryAnchors(sketch: Sketch, geometryId: string): readonly string[] {
   const geometry = sketch.geometry[geometryId]?.geometry;
   if (!geometry) return [];

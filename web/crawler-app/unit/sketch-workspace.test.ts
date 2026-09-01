@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { Sketch } from "../src/sketch-editor.ts";
 import { SketchSnapSpatialIndex } from "../src/sketch-snap-spatial-index.ts";
-import { closedProfilePolylines, closestPointOnGeometry, constraintAnnotations, inferSketchPoint, pointForRef, sketchGeometrySelectionPath } from "../src/sketch-workspace.ts";
+import { closedProfileGeometryIds, closedProfilePolylines, closestPointOnGeometry, constraintAnnotations, inferSketchPoint, pointForRef, sketchGeometrySelectionPath, sketchProfileId } from "../src/sketch-workspace.ts";
 
 function sketch(): Sketch {
   return {
@@ -116,6 +116,41 @@ test("closed profile shading chains unordered solver component geometry", () => 
   assert.equal(profiles.length, 1);
   assert.deepEqual(profiles[0][0], profiles[0].at(-1));
   assert.equal(profiles[0].length, 5);
+});
+
+test("closed profile identity is stable across coordinates and collision-safe", () => {
+  const value: Sketch = {
+    id: "sketch:profiles/a|b",
+    revision: 1,
+    geometry: {
+      "profile|left": { id: "profile|left", geometry: { kind: "rectangle", min: { x_nm: 0, y_nm: 0 }, max: { x_nm: 2_000_000, y_nm: 2_000_000 } } },
+      "profile%right": { id: "profile%right", geometry: { kind: "circle", center: { x_nm: 10_000_000, y_nm: 0 }, radius_nm: 1_000_000 } },
+      axis: { id: "axis", construction: true, geometry: { kind: "line", start: { x_nm: 0, y_nm: -5_000_000 }, end: { x_nm: 0, y_nm: 5_000_000 } } },
+    },
+    constraints: {},
+  };
+  const profiles = closedProfileGeometryIds(value);
+  assert.deepEqual(profiles, [["profile%right"], ["profile|left"]]);
+  assert.equal(sketchProfileId(value.id, ["b", "a", "a"]), sketchProfileId(value.id, ["a", "b"]));
+  assert.notEqual(sketchProfileId(value.id, ["a|b", "c"]), sketchProfileId(value.id, ["a", "b|c"]));
+  const identity = sketchProfileId(value.id, profiles[0]);
+  const circle = value.geometry["profile%right"].geometry;
+  if (circle.kind === "circle") circle.center.x_nm += 3_000_000;
+  assert.equal(sketchProfileId(value.id, closedProfileGeometryIds(value)[0]), identity);
+});
+
+test("profile grouping uses exact stored curved endpoints like the kernel", () => {
+  const value: Sketch = {
+    id: "sketch:stored-arc-endpoints",
+    revision: 0,
+    geometry: {
+      arc: { id: "arc", geometry: { kind: "arc", center: { x_nm: 0, y_nm: 0 }, start: { x_nm: 10, y_nm: 0 }, end: { x_nm: 0, y_nm: 11 }, clockwise: false } },
+      closeA: { id: "closeA", geometry: { kind: "line", start: { x_nm: 0, y_nm: 11 }, end: { x_nm: 0, y_nm: 0 } } },
+      closeB: { id: "closeB", geometry: { kind: "line", start: { x_nm: 0, y_nm: 0 }, end: { x_nm: 10, y_nm: 0 } } },
+    },
+    constraints: {},
+  };
+  assert.deepEqual(closedProfileGeometryIds(value), [["arc", "closeA", "closeB"]]);
 });
 
 test("constraint annotations expose canvas dimensions and geometric glyphs", () => {

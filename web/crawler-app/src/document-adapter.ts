@@ -1,5 +1,8 @@
+import { visibleExtrudeDistance, type ExtrudeDirection } from "./extrude-direction.ts";
+
 export type DurableFeatureType =
   | "origin"
+  | "construction_plane"
   | "sketch"
   | "pad"
   | "revolve"
@@ -48,6 +51,15 @@ export interface DurableOriginPlane {
   readonly name: string;
 }
 
+export interface DurableConstructionPlane {
+  readonly id: string;
+  readonly name: string;
+  readonly basePlaneId: string;
+  readonly offsetParameterId: string;
+  readonly offsetNanometers: number;
+  readonly suppressed: boolean;
+}
+
 export interface DurableComponent {
   readonly id: string;
   readonly name: string;
@@ -57,6 +69,7 @@ export interface DurableComponent {
   readonly sketches: readonly DurableSketch[];
   readonly featureIds: readonly string[];
   readonly originPlanes: readonly DurableOriginPlane[];
+  readonly constructionPlanes: readonly DurableConstructionPlane[];
 }
 
 export interface DurableDocumentSnapshot {
@@ -93,6 +106,7 @@ const fixture: DurableDocumentSnapshot = Object.freeze({
         Object.freeze({ id: "origin-plane:xz", name: "XZ plane" }),
         Object.freeze({ id: "origin-plane:yz", name: "YZ plane" }),
       ]),
+      constructionPlanes: Object.freeze([]),
     }),
   ]),
 });
@@ -130,6 +144,7 @@ interface SemanticComponent {
   body_order?: string[];
   sketch_order?: string[];
   feature_order?: string[];
+  construction_plane_order?: string[];
 }
 
 interface SemanticBody {
@@ -146,16 +161,35 @@ interface SemanticOriginPlane {
   plane?: string;
 }
 
+interface SemanticConstructionPlane {
+  schema_version?: number;
+  id?: string;
+  component?: string;
+  definition?: { kind?: string; base_plane?: string; offset?: string };
+  suppressed?: boolean;
+}
+
+interface SemanticFeatureDefinitionV2 {
+  operation?: {
+    kind?: string;
+    extent?: { kind?: string; distance?: string; direction?: string };
+  };
+  result?: { mode?: string; body?: string };
+  participant_bodies?: { role?: string; body?: string }[];
+}
+
 interface SemanticDocument {
   schema_version?: number;
   id: string;
   display_name?: string;
   root_component?: string;
   origin_planes?: Record<string, SemanticOriginPlane>;
+  construction_planes?: Record<string, SemanticConstructionPlane>;
   components?: Record<string, SemanticComponent>;
   bodies?: Record<string, SemanticBody>;
   sketches?: Record<string, SemanticSketch>;
   features?: Record<string, SemanticFeature>;
+  feature_definitions_v2?: Record<string, SemanticFeatureDefinitionV2>;
   parameters?: Record<string, SemanticParameter>;
   recompute?: { features?: Record<string, { status?: string } | string> };
 }
@@ -221,8 +255,13 @@ export function adapterFromRuntime(runtime: PartRuntimePort): DocumentAdapter {
   return adapterFromWorkerSnapshot(runtime.documentJson(), runtime.semanticHash(), "{}");
 }
 
-export function adapterFromWorkerSnapshot(documentJson: string, semanticHash: string, _dimensionsJson: string): DocumentAdapter {
-  const document = JSON.parse(documentJson) as SemanticDocument;
+export function adapterFromWorkerSnapshot(
+  documentJson: string,
+  semanticHash: string,
+  _dimensionsJson: string,
+  parsedDocument?: unknown,
+): DocumentAdapter {
+  const document = (parsedDocument ?? JSON.parse(documentJson)) as SemanticDocument;
   const component = document.components?.[document.root_component ?? ""];
   const sketches = document.sketches ?? {};
   let sketchIndex = 0;
@@ -243,6 +282,24 @@ export function adapterFromWorkerSnapshot(documentJson: string, semanticHash: st
     const parameters: Record<string, string | number | boolean> = {};
     for (const [name, parameterId] of Object.entries(feature.parameters ?? {})) {
       parameters[name] = parameterValue(document.parameters?.[parameterId]);
+    }
+    const definitionV2 = document.feature_definitions_v2?.[featureId];
+    if (type === "pad" && definitionV2?.operation?.kind === "extrude") {
+      const extent = definitionV2.operation.extent;
+      const direction: ExtrudeDirection = extent?.direction === "negative" || extent?.direction === "symmetric"
+        ? extent.direction
+        : "positive";
+      const distance = extent?.distance ? document.parameters?.[extent.distance]?.value : undefined;
+      if (distance?.kind === "length_nanometers" && typeof distance.value === "number") {
+        parameters.distance = visibleExtrudeDistance(distance.value, direction) / 1_000_000;
+      }
+      parameters.direction = direction;
+      const resultMode = definitionV2.result?.mode;
+      if (resultMode === "new_body" || resultMode === "cut") parameters.result_mode = resultMode;
+      if (resultMode === "cut") {
+        const targets = (definitionV2.participant_bodies ?? []).filter((participant) => participant.role === "target" && participant.body);
+        if (targets.length === 1) parameters.target_body = targets[0]!.body!;
+      }
     }
     if (type === "sketch") {
       const sketchId = component?.sketch_order?.[sketchIndex++] ?? Object.keys(sketches).sort()[sketchIndex - 1];
@@ -329,6 +386,28 @@ export function adapterFromWorkerSnapshot(documentJson: string, semanticHash: st
       id: plane.id ?? planeId,
       name: `${plane.plane?.toUpperCase() ?? planeId} plane`,
     }));
+    const orderedConstructionPlaneIds = [
+      ...(component.construction_plane_order ?? []),
+      ...Object.keys(document.construction_planes ?? {}).filter((id) => document.construction_planes?.[id]?.component === componentId && !(component.construction_plane_order ?? []).includes(id)).sort(),
+    ];
+    const constructionPlanes = orderedConstructionPlaneIds.flatMap((planeId) => {
+      const plane = document.construction_planes?.[planeId];
+      if (!plane || plane.component !== componentId) return [];
+      const id = plane.id ?? planeId;
+      const basePlaneId = plane.definition?.base_plane ?? "missing";
+      const offsetParameterId = plane.definition?.offset ?? "missing";
+      const offset = document.parameters?.[offsetParameterId]?.value;
+      const offsetNanometers = offset?.kind === "length_nanometers" && typeof offset.value === "number" ? offset.value : Number.NaN;
+      const baseName = document.origin_planes?.[basePlaneId]?.plane?.toUpperCase() ?? basePlaneId;
+      return [{
+        id,
+        name: `Offset ${baseName} plane`,
+        basePlaneId,
+        offsetParameterId,
+        offsetNanometers,
+        suppressed: plane.suppressed === true,
+      }];
+    });
     return Object.freeze({
       id: component.id ?? componentId,
       name: component.display_name ?? componentId,
@@ -338,6 +417,7 @@ export function adapterFromWorkerSnapshot(documentJson: string, semanticHash: st
       sketches: Object.freeze(componentSketches.map((sketch) => Object.freeze(sketch))),
       featureIds: Object.freeze(featureIds),
       originPlanes: Object.freeze(originPlanes.map((plane) => Object.freeze(plane))),
+      constructionPlanes: Object.freeze(constructionPlanes.map((plane) => Object.freeze(plane))),
     });
   });
   const view: DurableDocumentSnapshot = Object.freeze({

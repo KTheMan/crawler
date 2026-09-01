@@ -183,6 +183,43 @@ test("draftView reuses one deeply immutable snapshot until the draft changes", a
   assert.ok(next.geometry["line:next"]);
 });
 
+test("initializing a hydrated session derives profiles without mutating the draft or history", async () => {
+  const initial: Sketch = {
+    ...empty(),
+    revision: 7,
+    geometry: {
+      circle: { id: "circle", geometry: { kind: "circle", center: { x_nm: 0, y_nm: 0 }, radius_nm: 10 } },
+    },
+  };
+  let initializationRequest: { sketch: Sketch; commands: SketchCommand[] } | undefined;
+  const solve = { state: "under_constrained" as const, degrees_of_freedom: 3, active_constraints: [], redundant_constraints: [], conflicts: [] };
+  const runtime: SketchRuntimeBridge = {
+    async applySketchCommand() { throw new Error("initialization must use the batch evaluation path"); },
+    async applySketchCommands(request) {
+      initializationRequest = structuredClone(request);
+      return {
+        sketch: structuredClone(request.sketch),
+        solve,
+        profile: { closed_profiles: [["circle"]], diagnostics: [] },
+        document_hash: "hydrated",
+      };
+    },
+    async dragSketch({ sketch, drag }) { return { drag: { accepted: true, sketch, resolved: drag.target, solve }, profile: { closed_profiles: [["circle"]], diagnostics: [] } }; },
+    async solveSketch() { return { accepted: true, solve }; },
+  };
+  const session = new SketchEditSession(initial, { kind: "origin_plane", plane: "xy" }, runtime);
+
+  await session.initialize();
+
+  assert.deepEqual(initializationRequest, { sketch: initial, commands: [] });
+  assert.deepEqual(session.draft, initial);
+  assert.deepEqual(session.solve, solve);
+  assert.deepEqual(session.profile?.closed_profiles, [["circle"]]);
+  assert.equal(session.undo(), false, "initial derivation must not create an edit history entry");
+  session.cancel();
+  assert.deepEqual(session.profile?.closed_profiles, [["circle"]], "cancel restores the initialized accepted profile");
+});
+
 test("mutable snapshots and runtime payloads cannot mutate session-owned draft state", async () => {
   let runtimeRequest: Sketch | undefined;
   let runtimeResponse: Sketch | undefined;

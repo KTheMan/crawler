@@ -16,6 +16,20 @@ if ($actualVersion -ne $expectedVersion) {
     throw "wasm-bindgen CLI mismatch: expected '$expectedVersion', found '$actualVersion'"
 }
 
+function Copy-GeneratedFileWithRetry {
+    param([Parameter(Mandatory)] [string]$Source, [Parameter(Mandatory)] [string]$Destination)
+    for ($attempt = 1; $attempt -le 30; $attempt++) {
+        try {
+            Copy-Item -LiteralPath $Source -Destination $Destination -Force -ErrorAction Stop
+            return
+        }
+        catch {
+            if ($attempt -eq 30) { throw }
+            Start-Sleep -Milliseconds 500
+        }
+    }
+}
+
 $bindings = @(
     @{ Crate = 'crawler-kernel-worker'; Stem = 'crawler_kernel_worker'; Output = 'web\worker-spike\generated'; AppOutput = 'web\crawler-app\src\generated\kernel' },
     @{ Crate = 'crawler-render-packet'; Stem = 'crawler_render_packet'; Output = 'spikes\e00-s03-renderer\src\generated\packet' }
@@ -36,7 +50,9 @@ try {
         if ($binding.AppOutput) {
             $appOutput = Join-Path $root $binding.AppOutput
             New-Item -ItemType Directory -Force -Path $appOutput | Out-Null
-            Copy-Item -Path (Join-Path $output '*') -Destination $appOutput -Force
+            Get-ChildItem -LiteralPath $output -File | ForEach-Object {
+                Copy-GeneratedFileWithRetry -Source $_.FullName -Destination (Join-Path $appOutput $_.Name)
+            }
         }
     }
 }
