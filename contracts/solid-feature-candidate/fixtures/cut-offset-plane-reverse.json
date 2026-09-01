@@ -1,0 +1,103 @@
+{
+  "schema_version": 1,
+  "fixture_id": "cut-offset-plane-reverse",
+  "story_ids": [
+    "E3D-S5-02"
+  ],
+  "description": "Reverse Blind Cut from a signed offset construction plane removes a centered internal rectangular volume.",
+  "units": {
+    "length": "nanometer",
+    "angle": "radian"
+  },
+  "input": {
+    "schema_version": 5,
+    "kind": "single_target_cut",
+    "payload": {
+      "result_mode": "cut",
+      "target_body_ids": [
+        "body:part"
+      ],
+      "target_component_id": "component:root",
+      "target_seed": {
+        "body_id": "body:part",
+        "component_id": "component:root",
+        "width_nm": 10000000,
+        "height_nm": 6000000,
+        "distance_nm": 4000000
+      },
+      "support": {
+        "kind": "construction_plane",
+        "plane": "construction-plane:cut-offset",
+        "offset_nm": 3000000
+      },
+      "profile": {
+        "kind": "rectangle",
+        "min_nm": [
+          3000000,
+          2000000
+        ],
+        "max_nm": [
+          7000000,
+          4000000
+        ]
+      },
+      "distance_nm": 1500000,
+      "direction": "negative"
+    }
+  },
+  "expected": {
+    "kind": "success",
+    "result": {
+      "retained_target_body_id": "body:part",
+      "affected_body_ids": [
+        "body:part"
+      ],
+      "created_body_count": 0,
+      "body_count": 1,
+      "manifold": true,
+      "orientation": "outward",
+      "aabb_nm": [
+        0,
+        0,
+        0,
+        10000000,
+        6000000,
+        4000000
+      ],
+      "signed_volume_nm3": 228000000000000000000,
+      "surface_area_nm2": 282000000000000,
+      "centroid_nm": [
+        5000000,
+        3000000,
+        1986842.105263158
+      ],
+      "analytic_classification": [
+        "plane"
+      ]
+    }
+  },
+  "tolerances": {
+    "relative": 1e-9,
+    "aabb_nm": 1,
+    "signed_volume_nm3": 1000000,
+    "surface_area_nm2": 1000,
+    "centroid_nm": 1
+  },
+  "identity_sets": {
+    "retained": [
+      "body:part"
+    ],
+    "replaced": []
+  },
+  "lifecycle_steps": [
+    "preview",
+    "commit"
+  ],
+  "evidence_test_ids": [
+    "single-target-cut-contracts",
+    "native-single-target-cut",
+    "wasm-single-target-cut",
+    "single-target-cut-native-wasm-parity"
+  ],
+  "legacy_provenance": null
+}

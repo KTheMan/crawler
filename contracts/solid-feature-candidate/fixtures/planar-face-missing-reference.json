@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "fixture_id": "planar-face-missing-reference",
+  "story_ids": ["E3D-S4-01", "E3D-S4-02", "E3D-S4-04"],
+  "description": "A missing durable topology-face support blocks preview, commit, and load without mutating the last accepted document, body, packet, hash, or history; broken retained-face recompute and repair are covered by the dedicated broken-support fixtures.",
+  "units": { "length": "nanometer", "angle": "radian" },
+  "input": { "schema_version": 4, "kind": "planar_face_missing_reference_v4", "payload": { "reference": "topology:face:missing", "sketch": "sketch:face-profile", "feature": "feature:extrude:face-supported" } },
+  "expected": { "kind": "structured_error", "error": { "category": "missing_reference", "code": "missing_topology_face_support", "field_path": "extrude.support", "referenced_entity_ids": ["topology:face:missing"] } },
+  "tolerances": { "relative": 1e-9, "aabb_nm": 1, "signed_volume_nm3": 1000000, "surface_area_nm2": 1000, "centroid_nm": 1 },
+  "identity_sets": { "retained": ["body:last-valid", "feature:extrude:face-supported"], "replaced": [] },
+  "lifecycle_steps": ["preview", "commit", "load"],
+  "evidence_test_ids": ["planar-face-document-authority-contracts", "native-planar-face-extrude", "wasm-planar-face-extrude", "planar-face-native-wasm-parity"],
+  "legacy_provenance": null
+}

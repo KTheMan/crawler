@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "fixture_id": "production-runtime-identity",
+  "story_ids": [
+    "E3D-S1-15"
+  ],
+  "description": "Production browser reports the manifest-locked runtime build and WASM digest.",
+  "units": {
+    "length": "nanometer",
+    "angle": "radian"
+  },
+  "input": {
+    "schema_version": 2,
+    "kind": "browser_runtime_identity",
+    "payload": {
+      "mock_worker": false,
+      "mode": "production_preview"
+    }
+  },
+  "expected": {
+    "kind": "success",
+    "result": {
+      "runtime_identity_matches_manifest": true
+    }
+  },
+  "tolerances": {
+    "relative": 1e-9,
+    "aabb_nm": 1,
+    "signed_volume_nm3": 1000000,
+    "surface_area_nm2": 1000,
+    "centroid_nm": 1
+  },
+  "identity_sets": {
+    "retained": [],
+    "replaced": []
+  },
+  "lifecycle_steps": [
+    "reload"
+  ],
+  "legacy_provenance": null,
+  "evidence_test_ids": [
+    "production-runtime-identity"
+  ]
+}

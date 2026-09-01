@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "fixture_id": "planar-face-ambiguous-repair-refused",
+  "story_ids": ["E3D-S4-01", "E3D-S4-04"],
+  "description": "Equal-ranked current planar candidates are displayed deterministically but never auto-selected; commit without one explicit compatible selection is refused atomically.",
+  "units": { "length": "nanometer", "angle": "radian" },
+  "input": { "schema_version": 4, "kind": "planar_face_ambiguous_repair_refused_v4", "payload": { "from_reference": "topology:face-support:missing", "candidate_count": 2, "equal_score": true, "explicit_selection": null } },
+  "expected": { "kind": "structured_error", "error": { "category": "repair_selection", "code": "ambiguous", "field_path": "repair.preview.selection", "referenced_entity_ids": ["topology:face-support", "topology:repair:a", "topology:repair:b"] } },
+  "tolerances": { "relative": 1e-9, "aabb_nm": 1, "signed_volume_nm3": 1000000, "surface_area_nm2": 1000, "centroid_nm": 1 },
+  "identity_sets": { "retained": ["body:last-valid", "packet:last-valid", "feature:extrude:face-supported"], "replaced": [] },
+  "lifecycle_steps": ["recompute", "repair", "preview", "commit"],
+  "evidence_test_ids": ["planar-face-document-authority-contracts", "wasm-planar-face-extrude", "planar-face-native-wasm-parity", "production-planar-face-lifecycle"],
+  "legacy_provenance": null
+}

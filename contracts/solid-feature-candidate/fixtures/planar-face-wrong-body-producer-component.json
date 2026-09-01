@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "fixture_id": "planar-face-wrong-body-producer-component",
+  "story_ids": ["E3D-S4-01", "E3D-S4-02", "E3D-S4-04"],
+  "description": "A face ID or repair candidate whose durable body, producer, or component differs from the accepted support authority is rejected even when its geometry looks identical.",
+  "units": { "length": "nanometer", "angle": "radian" },
+  "input": { "schema_version": 4, "kind": "planar_face_wrong_authority_v4", "payload": { "reference": "topology:face-support", "declared_body": "body:part", "declared_producer": "feature:extrude", "declared_component": "component:root", "mismatches": ["body", "producer", "component"], "body_local_id_collision": true } },
+  "expected": {
+    "kind": "structured_error",
+    "error": { "category": "wrong_owner", "code": "wrong_producer_topology_face_support", "field_path": "extrude.support", "referenced_entity_ids": ["body:part", "feature:rectangle-sketch", "topology:face-support"] },
+    "oracle_assertions": {
+      "mismatch_variants": {
+        "body": { "kind": "structured_error", "category": "missing_reference", "code": "missing_topology_face_body", "field_path": "extrude.support", "referenced_entity_ids": ["body:missing", "feature:extrude", "topology:face-support"] },
+        "producer": { "kind": "structured_error", "category": "wrong_owner", "code": "wrong_producer_topology_face_support", "field_path": "extrude.support", "referenced_entity_ids": ["body:part", "feature:rectangle-sketch", "topology:face-support"] },
+        "component": { "kind": "structured_error", "category": "wrong_owner", "code": "cross_component_topology_face_support", "field_path": "extrude.support", "referenced_entity_ids": ["body:part", "feature:extrude", "topology:face-support"] },
+        "body_local_id_collision": { "ownership_diagnostic_valid": true, "stable_kernel_id_collided": true, "stable_token_body_mismatch": true, "commit_refused": true, "atomic": true }
+      },
+      "variant_count": 4
+    }
+  },
+  "tolerances": { "relative": 1e-9, "aabb_nm": 1, "signed_volume_nm3": 1000000, "surface_area_nm2": 1000, "centroid_nm": 1 },
+  "identity_sets": { "retained": ["body:last-valid", "packet:last-valid"], "replaced": [] },
+  "lifecycle_steps": ["preview", "commit", "repair", "recompute"],
+  "evidence_test_ids": ["planar-face-document-authority-contracts", "native-planar-face-extrude", "wasm-planar-face-extrude", "planar-face-native-wasm-parity"],
+  "legacy_provenance": null
+}

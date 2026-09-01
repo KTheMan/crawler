@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "fixture_id": "profile-line-arc-capsule",
+  "story_ids": [
+    "E3D-S1-06"
+  ],
+  "description": "Line and trimmed-arc capsule remains analytic through Extrude.",
+  "units": {
+    "length": "nanometer",
+    "angle": "radian"
+  },
+  "input": {
+    "schema_version": 2,
+    "kind": "extrude_v2",
+    "payload": {
+      "result_mode": "new_body",
+      "distance_nm": 8000000,
+      "profile": "capsule-line-arc",
+      "support": "origin.xy"
+    }
+  },
+  "expected": {
+    "kind": "success",
+    "result": {
+      "expected_bounds_nm": [
+        -10000000,
+        -5000000,
+        0,
+        10000000,
+        5000000,
+        8000000
+      ],
+      "analytic_classification": [
+        "plane",
+        "nurbs_surface"
+      ],
+      "body_count": 1,
+      "orientation": "outward"
+    }
+  },
+  "tolerances": {
+    "relative": 1e-9,
+    "aabb_nm": 1,
+    "signed_volume_nm3": 1000000,
+    "surface_area_nm2": 1000,
+    "centroid_nm": 1
+  },
+  "identity_sets": {
+    "retained": [],
+    "replaced": []
+  },
+  "lifecycle_steps": [
+    "preview",
+    "commit",
+    "save",
+    "reload",
+    "recompute"
+  ],
+  "legacy_provenance": null,
+  "evidence_test_ids": [
+    "native-profile-transport",
+    "wasm-profile-transport",
+    "native-wasm-parity"
+  ]
+}

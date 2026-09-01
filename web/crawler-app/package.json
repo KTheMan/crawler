@@ -11,7 +11,7 @@
     "verify:production-theme-boundary": "node scripts/verify-production-theme-boundary.mjs",
     "test": "playwright test",
     "test:pages": "playwright test --config playwright.pages.config.ts",
-    "test:unit": "node --experimental-strip-types --test unit/*.test.ts",
+    "test:unit": "node --experimental-strip-types --test --test-concurrency=1 unit/*.test.ts",
     "test:sketch-workspace": "node --experimental-strip-types --test unit/sketch-workspace.test.ts unit/sketch-snap-spatial-index.test.ts unit/sketch-render-indexes.test.ts",
     "test:sketch-scale": "node scripts/run-sketch-scale.mjs",
     "test:sketch-scale:raw": "pnpm run build && playwright test tests/sketch-workspace-scale.spec.ts --config playwright.performance.config.ts --workers=1",

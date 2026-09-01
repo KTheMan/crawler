@@ -1,0 +1,101 @@
+{
+  "schema_version": 1,
+  "fixture_id": "cut-origin-annulus",
+  "story_ids": [
+    "E3D-S5-02"
+  ],
+  "description": "An annular profile preserves the inner island and produces exact inner and outer cylindrical faces.",
+  "units": {
+    "length": "nanometer",
+    "angle": "radian"
+  },
+  "input": {
+    "schema_version": 5,
+    "kind": "single_target_cut",
+    "payload": {
+      "result_mode": "cut",
+      "target_body_ids": [
+        "body:part"
+      ],
+      "target_component_id": "component:root",
+      "target_seed": {
+        "body_id": "body:part",
+        "component_id": "component:root",
+        "width_nm": 10000000,
+        "height_nm": 6000000,
+        "distance_nm": 4000000
+      },
+      "support": {
+        "kind": "origin_plane",
+        "plane": "xy"
+      },
+      "profile": {
+        "kind": "annulus",
+        "center_nm": [
+          5000000,
+          3000000
+        ],
+        "outer_radius_nm": 2000000,
+        "inner_radius_nm": 1000000
+      },
+      "distance_nm": 2000000,
+      "direction": "positive"
+    }
+  },
+  "expected": {
+    "kind": "success",
+    "result": {
+      "retained_target_body_id": "body:part",
+      "affected_body_ids": [
+        "body:part"
+      ],
+      "created_body_count": 0,
+      "body_count": 1,
+      "manifold": true,
+      "orientation": "outward",
+      "aabb_nm": [
+        0,
+        0,
+        0,
+        10000000,
+        6000000,
+        4000000
+      ],
+      "signed_volume_nm3": 221150444078461260000,
+      "surface_area_nm2": 285699111843077.5,
+      "centroid_nm": [
+        5000000,
+        3000000,
+        2085234.08578303
+      ],
+      "analytic_classification": [
+        "cylinder",
+        "plane"
+      ]
+    }
+  },
+  "tolerances": {
+    "relative": 1e-9,
+    "aabb_nm": 1,
+    "signed_volume_nm3": 1000000,
+    "surface_area_nm2": 1000,
+    "centroid_nm": 1
+  },
+  "identity_sets": {
+    "retained": [
+      "body:part"
+    ],
+    "replaced": []
+  },
+  "lifecycle_steps": [
+    "preview",
+    "commit"
+  ],
+  "evidence_test_ids": [
+    "single-target-cut-contracts",
+    "native-single-target-cut",
+    "wasm-single-target-cut",
+    "single-target-cut-native-wasm-parity"
+  ],
+  "legacy_provenance": null
+}

@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "fixture_id": "feature-definition-v2-roundtrip",
+  "story_ids": [
+    "E3D-S1-05"
+  ],
+  "description": "Canonical V2 definition round trip preserves ordered references.",
+  "units": {
+    "length": "nanometer",
+    "angle": "radian"
+  },
+  "input": {
+    "schema_version": 2,
+    "kind": "definition_v2",
+    "payload": {
+      "profile_region": "region:geometry:outer|holes:geometry:hole-1",
+      "outer_geometry_ids": ["geometry:outer"],
+      "hole_geometry_ids": ["geometry:hole-1"],
+      "result_mode": "new_body",
+      "operation": "extrude"
+    }
+  },
+  "expected": {
+    "kind": "success",
+    "result": {
+      "profile_region_reference": "region:geometry:outer|holes:geometry:hole-1",
+      "ordered_outer_geometry_ids": ["geometry:outer"],
+      "ordered_hole_geometry_ids": ["geometry:hole-1"],
+      "canonical_roundtrip": true
+    }
+  },
+  "tolerances": {
+    "relative": 1e-9,
+    "aabb_nm": 1,
+    "signed_volume_nm3": 1000000,
+    "surface_area_nm2": 1000,
+    "centroid_nm": 1
+  },
+  "identity_sets": {
+    "retained": [],
+    "replaced": []
+  },
+  "lifecycle_steps": [
+    "commit",
+    "save",
+    "reload",
+    "recompute"
+  ],
+  "legacy_provenance": null,
+  "evidence_test_ids": [
+    "feature-definition-v2-contracts",
+    "native-wasm-parity"
+  ]
+}

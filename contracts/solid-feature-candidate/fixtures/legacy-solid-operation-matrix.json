@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "fixture_id": "legacy-solid-operation-matrix",
+  "story_ids": [
+    "E3D-S1-12"
+  ],
+  "description": "Every shipped V1 solid operation has an explicit compatibility disposition.",
+  "units": {
+    "length": "nanometer",
+    "angle": "radian"
+  },
+  "input": {
+    "schema_version": 2,
+    "kind": "legacy_matrix",
+    "payload": {
+      "schema_version": 1,
+      "operations": [
+        "extrude",
+        "extrude_cut",
+        "revolve",
+        "revolve_cut",
+        "loft",
+        "sweep",
+        "boolean"
+      ]
+    }
+  },
+  "expected": {
+    "kind": "success",
+    "result": {
+      "required_dispositions": [
+        "preserve_v1",
+        "preserve_v2"
+      ],
+      "automatic_v1_to_v2_migration": false,
+      "future_schema_disposition": "reject",
+      "downgrade_disposition": "reject",
+      "polygon_sweep_relabelled": false
+    }
+  },
+  "tolerances": {
+    "relative": 1e-9,
+    "aabb_nm": 1,
+    "signed_volume_nm3": 1000000,
+    "surface_area_nm2": 1000,
+    "centroid_nm": 1
+  },
+  "identity_sets": {
+    "retained": [],
+    "replaced": []
+  },
+  "lifecycle_steps": [
+    "reload",
+    "recompute",
+    "edit",
+    "save",
+    "reopen"
+  ],
+  "legacy_provenance": {
+    "source_schema_version": 1,
+    "disposition": "preserve_v1",
+    "source_sha256": null
+  },
+  "evidence_test_ids": [
+    "legacy-solid-operation-matrix",
+    "native-wasm-parity"
+  ]
+}

@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "fixture_id": "extrude-reload-edit",
+  "story_ids": [
+    "E3D-S1-08"
+  ],
+  "description": "A committed Extrude retains and replaces the fixture-owned topology identities after save/reload, a distance edit, an upstream sketch profile edit, and recompute.",
+  "units": {
+    "length": "nanometer",
+    "angle": "radian"
+  },
+  "input": {
+    "schema_version": 2,
+    "kind": "extrude_v2",
+    "payload": {
+      "edited_distance_nm": 7000000,
+      "initial_distance_nm": 4000000,
+      "profile": "rectangle-10x6mm",
+      "support": "origin.xy",
+      "upstream_edit": {
+        "geometry_id": "geometry:rectangle",
+        "replacement_profile": "circle-r5mm",
+        "sketch_revision": 1
+      }
+    }
+  },
+  "expected": {
+    "kind": "success",
+    "result": {
+      "body_count": 1,
+      "expected_bounds_nm": [
+        -5000000,
+        -5000000,
+        0,
+        5000000,
+        5000000,
+        7000000
+      ],
+      "final_distance_nm": 7000000,
+      "upstream_edit_recomputed": true,
+      "upstream_profile_kind": "circle"
+    }
+  },
+  "tolerances": {
+    "relative": 1e-9,
+    "aabb_nm": 1,
+    "signed_volume_nm3": 1000000,
+    "surface_area_nm2": 1000,
+    "centroid_nm": 1
+  },
+  "identity_sets": {
+    "retained": [
+      "body:extrude-reload-edit:boundary:0:edge:10",
+      "body:extrude-reload-edit:boundary:0:edge:9",
+      "body:extrude-reload-edit:boundary:0:vertex:1",
+      "body:extrude-reload-edit:boundary:0:vertex:2",
+      "body:extrude-reload-edit:boundary:0:vertex:3",
+      "body:extrude-reload-edit:boundary:0:vertex:4"
+    ],
+    "replaced": [
+      "body:extrude-reload-edit:boundary:0:edge:11",
+      "body:extrude-reload-edit:boundary:0:edge:12",
+      "body:extrude-reload-edit:boundary:0:edge:13",
+      "body:extrude-reload-edit:boundary:0:edge:14",
+      "body:extrude-reload-edit:boundary:0:edge:15",
+      "body:extrude-reload-edit:boundary:0:edge:16",
+      "body:extrude-reload-edit:boundary:0:edge:17",
+      "body:extrude-reload-edit:boundary:0:edge:18",
+      "body:extrude-reload-edit:boundary:0:edge:19",
+      "body:extrude-reload-edit:boundary:0:edge:20",
+      "body:extrude-reload-edit:boundary:0:face:21",
+      "body:extrude-reload-edit:boundary:0:face:22",
+      "body:extrude-reload-edit:boundary:0:face:23",
+      "body:extrude-reload-edit:boundary:0:face:24",
+      "body:extrude-reload-edit:boundary:0:face:25",
+      "body:extrude-reload-edit:boundary:0:face:26",
+      "body:extrude-reload-edit:boundary:0:vertex:5",
+      "body:extrude-reload-edit:boundary:0:vertex:6",
+      "body:extrude-reload-edit:boundary:0:vertex:7",
+      "body:extrude-reload-edit:boundary:0:vertex:8"
+    ]
+  },
+  "lifecycle_steps": [
+    "commit",
+    "save",
+    "reload",
+    "edit",
+    "recompute"
+  ],
+  "legacy_provenance": null,
+  "evidence_test_ids": [
+    "native-extrude-contracts",
+    "wasm-extrude-contracts",
+    "native-wasm-parity"
+  ]
+}

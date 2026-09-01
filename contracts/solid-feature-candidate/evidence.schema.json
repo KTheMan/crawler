@@ -1,0 +1,252 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://crawler.local/contracts/solid-feature-candidate/evidence.schema.json",
+  "title": "Crawler solid-feature runtime evidence record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "candidate_id", "candidate_revision", "manifest_sha256", "fixture_id", "fixture_descriptor_sha256", "normalized_input_sha256", "runtime", "status", "recorded_at", "result", "oracle_assertions", "executed_lifecycle_steps", "accepted_document_hash_before", "accepted_document_hash_after", "body_hashes_before", "body_hashes_after"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "candidate_id": { "type": "string", "minLength": 1 },
+    "candidate_revision": { "type": "integer", "minimum": 1 },
+    "manifest_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "fixture_id": { "type": "string", "minLength": 1 },
+    "fixture_descriptor_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "normalized_input_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "runtime": { "enum": ["native", "release_wasm"] },
+    "status": { "enum": ["passed", "failed", "skipped", "blocked", "waived"] },
+    "recorded_at": { "type": "string", "format": "date-time" },
+    "executed_lifecycle_steps": { "type": "array", "uniqueItems": true, "items": { "enum": ["authority_validate", "preview", "cancel", "commit", "edit", "suppress", "unsuppress", "undo", "redo", "save", "reload", "recompute", "repair", "migrate", "reopen", "load"] } },
+    "oracle_assertions": {
+      "type": "object",
+      "maxProperties": 128,
+      "propertyNames": { "pattern": "^[a-z][a-z0-9_]*$" },
+      "properties": {
+        "geometry_oracles": { "$ref": "#/definitions/planar_geometry_oracles" },
+        "support_frames": { "$ref": "#/definitions/planar_support_frames" },
+        "exact_coordinate_round_trips": { "$ref": "#/definitions/exact_coordinate_round_trips" },
+        "mismatch_variants": { "$ref": "#/definitions/authority_mismatch_variants" }
+      },
+      "additionalProperties": { "$ref": "#/definitions/oracle_value" }
+    },
+    "result": {
+      "oneOf": [
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["kind", "body_count", "manifold", "orientation", "aabb_nm", "signed_volume_nm3", "surface_area_nm2", "centroid_nm", "analytic_classification", "stable_identity_sets", "canonical_document_hash"],
+          "properties": {
+            "kind": { "const": "success" },
+            "body_count": { "type": "integer", "minimum": 0 },
+            "manifold": { "type": "boolean" },
+            "orientation": { "type": "string", "minLength": 1 },
+            "aabb_nm": { "type": "array", "minItems": 6, "maxItems": 6, "items": { "type": "number" } },
+            "signed_volume_nm3": { "type": "number" },
+            "surface_area_nm2": { "type": "number", "minimum": 0 },
+            "centroid_nm": { "type": "array", "minItems": 3, "maxItems": 3, "items": { "type": "number" } },
+            "analytic_classification": { "type": "array", "items": { "type": "string" } },
+            "retained_target_body_id": { "type": "string", "minLength": 1 },
+            "affected_body_ids": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+            "created_body_count": { "type": "integer", "minimum": 0 },
+            "arc_segments_consumed": { "type": "integer", "minimum": 1 },
+            "feature_id_retained": { "type": "boolean" },
+            "construction_plane_id_retained": { "type": "boolean" },
+            "target_body_id_retained": { "type": "boolean" },
+            "affected_scope_stable": { "type": "boolean" },
+            "support_edit_recomputed": { "type": "boolean" },
+            "canonical_roundtrip": { "type": "boolean" },
+            "target_reference_roundtrip": { "type": "boolean" },
+            "edit_after_reopen_equal": { "type": "boolean" },
+            "unrelated_body_id": { "type": "string", "minLength": 1 },
+            "unrelated_body_hash_unchanged": { "type": "boolean" },
+            "unrelated_body_preserved": { "type": "boolean" },
+            "last_valid_result_retained": { "type": "boolean" },
+            "failed_state_roundtrip": { "type": "boolean" },
+            "repair_recomputed": { "type": "boolean" },
+            "first_unresolved_input": { "type": "string", "minLength": 1 },
+            "evaluation_stopped_at_first_unresolved": { "type": "boolean" },
+            "failure_diagnostic_roundtrip": { "type": "boolean" },
+            "repair_evaluated_cut_feature": { "type": "boolean" },
+            "repair_transaction_recorded": { "type": "boolean" },
+            "repair_result_bound": { "type": "boolean" },
+            "stable_identity_sets": {
+              "type": "object", "additionalProperties": false,
+              "required": ["retained", "replaced"],
+              "properties": {
+                "retained": { "type": "array", "uniqueItems": true, "items": { "type": "string" } },
+                "replaced": { "type": "array", "uniqueItems": true, "items": { "type": "string" } }
+              }
+            },
+            "canonical_document_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["kind", "category", "code", "field_path", "referenced_entity_ids"],
+          "properties": {
+            "kind": { "const": "structured_error" },
+            "category": { "type": "string", "minLength": 1 },
+            "code": { "type": "string", "minLength": 1 },
+            "field_path": { "type": "string" },
+            "referenced_entity_ids": { "type": "array", "uniqueItems": true, "items": { "type": "string" } }
+          }
+        }
+      ]
+    },
+    "accepted_document_hash_before": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "accepted_document_hash_after": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "body_hashes_before": { "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^[a-f0-9]{64}$" } },
+    "body_hashes_after": { "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^[a-f0-9]{64}$" } }
+  },
+  "definitions": {
+    "oracle_scalar": { "type": ["boolean", "number", "string"] },
+    "oracle_scalar_array": {
+      "type": "array",
+      "maxItems": 256,
+      "items": { "$ref": "#/definitions/oracle_scalar" }
+    },
+    "oracle_leaf_object": {
+      "type": "object",
+      "maxProperties": 64,
+      "propertyNames": { "pattern": "^[a-z][a-z0-9_]*$" },
+      "additionalProperties": {
+        "anyOf": [
+          { "$ref": "#/definitions/oracle_scalar" },
+          { "$ref": "#/definitions/oracle_scalar_array" }
+        ]
+      }
+    },
+    "oracle_leaf_object_array": {
+      "type": "array",
+      "maxItems": 128,
+      "items": { "$ref": "#/definitions/oracle_leaf_object" }
+    },
+    "oracle_nested_object": {
+      "type": "object",
+      "maxProperties": 64,
+      "propertyNames": { "pattern": "^[a-z][a-z0-9_]*$" },
+      "additionalProperties": {
+        "anyOf": [
+          { "$ref": "#/definitions/oracle_scalar" },
+          { "$ref": "#/definitions/oracle_scalar_array" },
+          { "$ref": "#/definitions/oracle_leaf_object" },
+          { "$ref": "#/definitions/oracle_leaf_object_array" }
+        ]
+      }
+    },
+    "oracle_value": {
+      "anyOf": [
+        { "$ref": "#/definitions/oracle_scalar" },
+        { "$ref": "#/definitions/oracle_scalar_array" },
+        { "$ref": "#/definitions/oracle_leaf_object_array" },
+        { "$ref": "#/definitions/oracle_nested_object" }
+      ]
+    },
+    "vector3": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": { "type": "number" }
+    },
+    "planar_support_frame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["origin_nm", "x_axis_millionths", "y_axis_millionths", "normal_millionths"],
+      "properties": {
+        "origin_nm": { "$ref": "#/definitions/vector3" },
+        "x_axis_millionths": { "$ref": "#/definitions/vector3" },
+        "y_axis_millionths": { "$ref": "#/definitions/vector3" },
+        "normal_millionths": { "$ref": "#/definitions/vector3" }
+      }
+    },
+    "planar_support_frames": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cap_positive_z", "cap_negative_z", "side_positive_x"],
+      "properties": {
+        "cap_positive_z": { "$ref": "#/definitions/planar_support_frame" },
+        "cap_negative_z": { "$ref": "#/definitions/planar_support_frame" },
+        "side_positive_x": { "$ref": "#/definitions/planar_support_frame" }
+      }
+    },
+    "exact_coordinate_round_trip": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["local_nm", "world_nm", "recovered_local_nm", "exact"],
+      "properties": {
+        "local_nm": { "$ref": "#/definitions/vector3" },
+        "world_nm": { "$ref": "#/definitions/vector3" },
+        "recovered_local_nm": { "$ref": "#/definitions/vector3" },
+        "exact": { "const": true }
+      }
+    },
+    "exact_coordinate_round_trips": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cap_positive_z", "cap_negative_z", "side_positive_x"],
+      "properties": {
+        "cap_positive_z": { "$ref": "#/definitions/exact_coordinate_round_trip" },
+        "cap_negative_z": { "$ref": "#/definitions/exact_coordinate_round_trip" },
+        "side_positive_x": { "$ref": "#/definitions/exact_coordinate_round_trip" }
+      }
+    },
+    "planar_geometry_oracle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["aabb_nm", "centroid_nm", "signed_volume_nm3", "surface_area_nm2", "orientation", "analytic_classification", "body_count", "canonical_document_hash"],
+      "properties": {
+        "aabb_nm": { "type": "array", "minItems": 6, "maxItems": 6, "items": { "type": "number" } },
+        "centroid_nm": { "$ref": "#/definitions/vector3" },
+        "signed_volume_nm3": { "type": "number" },
+        "surface_area_nm2": { "type": "number", "minimum": 0 },
+        "orientation": { "enum": ["outward", "inward"] },
+        "analytic_classification": { "type": "array", "minItems": 1, "maxItems": 16, "uniqueItems": true, "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" } },
+        "body_count": { "const": 1 },
+        "canonical_document_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+      }
+    },
+    "planar_geometry_oracles": {
+      "type": "object",
+      "minProperties": 11,
+      "maxProperties": 11,
+      "propertyNames": {
+        "pattern": "^extrude-planar-face-orientation-matrix:(?:(?:cap_positive_z|cap_negative_z|side_positive_x):(?:positive|negative|symmetric)|cap_positive_z:positive:(?:line_arc_capsule|circle_annulus_with_hole))$"
+      },
+      "additionalProperties": { "$ref": "#/definitions/planar_geometry_oracle" }
+    },
+    "structured_diagnostic_oracle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "category", "code", "field_path", "referenced_entity_ids"],
+      "properties": {
+        "kind": { "const": "structured_error" },
+        "category": { "type": "string", "minLength": 1 },
+        "code": { "type": "string", "minLength": 1 },
+        "field_path": { "type": "string" },
+        "referenced_entity_ids": { "type": "array", "maxItems": 32, "uniqueItems": true, "items": { "type": "string" } }
+      }
+    },
+    "authority_collision_oracle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ownership_diagnostic_valid", "stable_kernel_id_collided", "stable_token_body_mismatch", "commit_refused", "atomic"],
+      "properties": {
+        "ownership_diagnostic_valid": { "const": true },
+        "stable_kernel_id_collided": { "const": true },
+        "stable_token_body_mismatch": { "const": true },
+        "commit_refused": { "const": true },
+        "atomic": { "const": true }
+      }
+    },
+    "authority_mismatch_variants": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["body", "producer", "component", "body_local_id_collision"],
+      "properties": {
+        "body": { "$ref": "#/definitions/structured_diagnostic_oracle" },
+        "producer": { "$ref": "#/definitions/structured_diagnostic_oracle" },
+        "component": { "$ref": "#/definitions/structured_diagnostic_oracle" },
+        "body_local_id_collision": { "$ref": "#/definitions/authority_collision_oracle" }
+      }
+    }
+  }
+}

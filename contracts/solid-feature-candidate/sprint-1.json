@@ -1,0 +1,164 @@
+{
+  "schema_version": 1,
+  "candidate_id": "solid-feature-sprint-1",
+  "revision": 5,
+  "scope_frozen": true,
+  "manifest_state": "qualification_ready",
+  "scope_frozen_at": "2026-08-26T00:00:00Z",
+  "source_spec": "docs/specs/solid-feature-modernization-sprint.md",
+  "stories": [
+    {
+      "id": "E3D-S1-05",
+      "title": "Add typed durable FeatureDefinitionV2",
+      "capability": "document.feature_definition_v2",
+      "disposition": "required",
+      "evidence_policy": "required",
+      "fixture_ids": ["feature-definition-v2-roundtrip", "feature-definition-v2-missing-reference"],
+      "test_ids": ["feature-definition-v2-contracts"],
+      "artifact_ids": ["candidate-fixtures"]
+    },
+    {
+      "id": "E3D-S1-06",
+      "title": "Transport line, arc, and circle profiles through V2",
+      "capability": "profile.native_line_arc_circle",
+      "disposition": "required",
+      "evidence_policy": "required",
+      "fixture_ids": ["profile-line-arc-capsule", "profile-unsupported-spline", "extrude-origin-blind-rectangle", "extrude-origin-blind-circle", "extrude-origin-annulus"],
+      "test_ids": ["native-profile-transport", "wasm-profile-transport", "native-wasm-parity"],
+      "artifact_ids": ["release-runtime-wasm", "parity-json", "parity-junit"]
+    },
+    {
+      "id": "E3D-S1-07",
+      "title": "Represent stable regions with holes",
+      "capability": "profile.stable_region_with_holes",
+      "disposition": "required",
+      "evidence_policy": "required",
+      "fixture_ids": ["extrude-origin-annulus", "region-two-hole-plate", "region-creation-order-permutation", "region-invalid-open-loop", "region-invalid-overlap", "region-split-merge-repair"],
+      "test_ids": ["region-contracts", "profile-handoff-regression"],
+      "artifact_ids": ["candidate-fixtures", "browser-junit"]
+    },
+    {
+      "id": "E3D-S1-08",
+      "title": "Execute exact blind New Body Extrude",
+      "capability": "part.extrude.blind_new_body_exact",
+      "disposition": "required",
+      "evidence_policy": "required",
+      "fixture_ids": ["extrude-origin-blind-rectangle", "extrude-origin-blind-circle", "profile-line-arc-capsule", "extrude-origin-annulus", "extrude-origin-planes", "region-invalid-open-loop", "extrude-stale-preview", "extrude-reload-edit"],
+      "test_ids": ["native-extrude-contracts", "wasm-extrude-contracts", "native-wasm-parity", "production-extrude-lifecycle"],
+      "artifact_ids": ["release-runtime-wasm", "parity-json", "parity-junit", "browser-junit", "browser-screenshots"]
+    },
+    {
+      "id": "E3D-S1-11",
+      "title": "Unify Extrude create and edit UX",
+      "capability": "ui.extrude.unified_create_edit",
+      "disposition": "required",
+      "evidence_policy": "required",
+      "fixture_ids": ["extrude-create-edit-equivalence", "extrude-stale-preview", "production-preview-interaction"],
+      "test_ids": ["extrude-command-state", "production-extrude-lifecycle", "production-runtime-identity", "production-preview-performance"],
+      "artifact_ids": ["browser-junit", "browser-screenshots", "performance-json"]
+    },
+    {
+      "id": "E3D-S1-12",
+      "title": "Define and test the legacy solid-feature matrix",
+      "capability": "document.legacy_solid_feature_compatibility",
+      "disposition": "required",
+      "evidence_policy": "required",
+      "fixture_ids": ["legacy-solid-operation-matrix"],
+      "test_ids": ["legacy-solid-operation-matrix"],
+      "artifact_ids": ["legacy-matrix-results"]
+    },
+    {
+      "id": "E3D-S1-13",
+      "title": "Check in the candidate manifest and harness first",
+      "capability": "qualification.candidate_manifest",
+      "disposition": "required",
+      "evidence_policy": "harness_self_test",
+      "fixture_ids": ["qualification-incomplete-candidate"],
+      "test_ids": ["candidate-manifest-validation"],
+      "artifact_ids": ["candidate-fixtures", "qualification-report"]
+    },
+    {
+      "id": "E3D-S1-14",
+      "title": "Compare native and release-WASM geometry results",
+      "capability": "qualification.native_wasm_geometry_parity",
+      "disposition": "required",
+      "evidence_policy": "required",
+      "fixture_ids": ["parity-deliberate-divergence"],
+      "test_ids": ["native-wasm-parity", "parity-deliberate-divergence"],
+      "artifact_ids": ["parity-json", "parity-junit"]
+    },
+    {
+      "id": "E3D-S1-15",
+      "title": "Run production-build browser and evidence qualification",
+      "capability": "qualification.production_release_gate",
+      "disposition": "required",
+      "evidence_policy": "required",
+      "fixture_ids": ["production-runtime-identity", "production-preview-interaction"],
+      "test_ids": ["production-runtime-identity", "production-extrude-lifecycle", "production-preview-performance", "candidate-evidence-completeness"],
+      "artifact_ids": ["release-runtime-wasm", "production-index", "browser-junit", "browser-screenshots", "performance-json", "qualification-report", "evidence-checksums"]
+    }
+  ],
+  "fixtures": [
+    { "id": "feature-definition-v2-roundtrip", "path": "contracts/solid-feature-candidate/fixtures/feature-definition-v2-roundtrip.json", "parity_required": true },
+    { "id": "feature-definition-v2-missing-reference", "path": "contracts/solid-feature-candidate/fixtures/feature-definition-v2-missing-reference.json", "parity_required": true },
+    { "id": "profile-line-arc-capsule", "path": "contracts/solid-feature-candidate/fixtures/profile-line-arc-capsule.json", "parity_required": true },
+    { "id": "profile-unsupported-spline", "path": "contracts/solid-feature-candidate/fixtures/profile-unsupported-spline.json", "parity_required": true },
+    { "id": "extrude-origin-blind-rectangle", "path": "contracts/solid-feature-candidate/fixtures/extrude-origin-blind-rectangle.json", "parity_required": true },
+    { "id": "extrude-origin-blind-circle", "path": "contracts/solid-feature-candidate/fixtures/extrude-origin-blind-circle.json", "parity_required": true },
+    { "id": "extrude-origin-annulus", "path": "contracts/solid-feature-candidate/fixtures/extrude-origin-annulus.json", "parity_required": true },
+    { "id": "region-two-hole-plate", "path": "contracts/solid-feature-candidate/fixtures/region-two-hole-plate.json", "parity_required": true },
+    { "id": "region-creation-order-permutation", "path": "contracts/solid-feature-candidate/fixtures/region-creation-order-permutation.json", "parity_required": true },
+    { "id": "region-invalid-open-loop", "path": "contracts/solid-feature-candidate/fixtures/region-invalid-open-loop.json", "parity_required": true },
+    { "id": "region-invalid-overlap", "path": "contracts/solid-feature-candidate/fixtures/region-invalid-overlap.json", "parity_required": true },
+    { "id": "region-split-merge-repair", "path": "contracts/solid-feature-candidate/fixtures/region-split-merge-repair.json", "parity_required": true },
+    { "id": "extrude-origin-planes", "path": "contracts/solid-feature-candidate/fixtures/extrude-origin-planes.json", "parity_required": true },
+    { "id": "extrude-stale-preview", "path": "contracts/solid-feature-candidate/fixtures/extrude-stale-preview.json", "parity_required": false },
+    { "id": "extrude-reload-edit", "path": "contracts/solid-feature-candidate/fixtures/extrude-reload-edit.json", "parity_required": true },
+    { "id": "extrude-create-edit-equivalence", "path": "contracts/solid-feature-candidate/fixtures/extrude-create-edit-equivalence.json", "parity_required": false },
+    { "id": "legacy-solid-operation-matrix", "path": "contracts/solid-feature-candidate/fixtures/legacy-solid-operation-matrix.json", "parity_required": true },
+    { "id": "qualification-incomplete-candidate", "path": "contracts/solid-feature-candidate/fixtures/qualification-incomplete-candidate.json", "parity_required": false },
+    { "id": "parity-deliberate-divergence", "path": "contracts/solid-feature-candidate/fixtures/parity-deliberate-divergence.json", "parity_required": false },
+    { "id": "production-runtime-identity", "path": "contracts/solid-feature-candidate/fixtures/production-runtime-identity.json", "parity_required": false },
+    { "id": "production-preview-interaction", "path": "contracts/solid-feature-candidate/fixtures/production-preview-interaction.json", "parity_required": false }
+  ],
+  "tests": [
+    { "id": "candidate-manifest-validation", "kind": "schema", "command": "pwsh -File contracts/solid-feature-candidate/test/manifest-validation.tests.ps1", "story_ids": ["E3D-S1-13"], "expected_artifact_ids": ["qualification-report"] },
+    { "id": "feature-definition-v2-contracts", "kind": "native", "command": "cargo test --workspace --locked feature_definition_v2", "story_ids": ["E3D-S1-05"], "expected_artifact_ids": ["candidate-fixtures"] },
+    { "id": "native-profile-transport", "kind": "native", "command": "cargo test --workspace --locked native_profile", "story_ids": ["E3D-S1-06"], "expected_artifact_ids": ["candidate-fixtures"] },
+    { "id": "wasm-profile-transport", "kind": "wasm", "command": "cargo test -p crawler-part-runtime --target wasm32-unknown-unknown --no-run --locked", "story_ids": ["E3D-S1-06"], "expected_artifact_ids": ["release-runtime-wasm"] },
+    { "id": "region-contracts", "kind": "native", "command": "cargo test --workspace --locked region", "story_ids": ["E3D-S1-07"], "expected_artifact_ids": ["candidate-fixtures"] },
+    { "id": "profile-handoff-regression", "kind": "browser", "command": "pnpm --dir web/crawler-app exec playwright test tests/sketch-profile-handoff.spec.ts --config playwright.solid-feature-qualification.config.ts", "story_ids": ["E3D-S1-07"], "expected_artifact_ids": ["browser-junit"] },
+    { "id": "native-extrude-contracts", "kind": "native", "command": "cargo test --workspace --locked extrude", "story_ids": ["E3D-S1-08"], "expected_artifact_ids": ["candidate-fixtures"] },
+    { "id": "wasm-extrude-contracts", "kind": "wasm", "command": "node --test web/worker-spike/worker-spike.test.mjs", "story_ids": ["E3D-S1-08"], "expected_artifact_ids": ["release-runtime-wasm"] },
+    { "id": "extrude-command-state", "kind": "unit", "command": "pnpm --dir web/crawler-app test:unit", "story_ids": ["E3D-S1-11"], "expected_artifact_ids": ["browser-junit"] },
+    { "id": "legacy-solid-operation-matrix", "kind": "migration", "command": "cargo test --workspace --locked legacy_solid", "story_ids": ["E3D-S1-12"], "expected_artifact_ids": ["legacy-matrix-results"] },
+    { "id": "native-wasm-parity", "kind": "parity", "command": "node scripts/compare-solid-feature-parity.mjs", "story_ids": ["E3D-S1-06", "E3D-S1-08", "E3D-S1-14"], "expected_artifact_ids": ["parity-json", "parity-junit"] },
+    { "id": "parity-deliberate-divergence", "kind": "parity", "command": "node --test scripts/test-solid-feature-parity.mjs", "story_ids": ["E3D-S1-14"], "expected_artifact_ids": ["parity-junit"] },
+    { "id": "production-runtime-identity", "kind": "browser", "command": "pnpm --dir web/crawler-app exec playwright test tests/solid-feature-runtime-identity.spec.ts --config playwright.solid-feature-qualification.config.ts", "story_ids": ["E3D-S1-11", "E3D-S1-15"], "expected_artifact_ids": ["browser-junit", "release-runtime-wasm"] },
+    { "id": "production-extrude-lifecycle", "kind": "browser", "command": "pnpm --dir web/crawler-app exec playwright test tests/solid-feature-qualification.spec.ts --config playwright.solid-feature-qualification.config.ts", "story_ids": ["E3D-S1-08", "E3D-S1-11", "E3D-S1-15"], "expected_artifact_ids": ["browser-junit", "browser-screenshots"] },
+    { "id": "production-preview-performance", "kind": "performance", "command": "pnpm --dir web/crawler-app exec playwright test tests/solid-feature-performance.spec.ts --config playwright.solid-feature-qualification.config.ts", "story_ids": ["E3D-S1-11", "E3D-S1-15"], "expected_artifact_ids": ["performance-json"] },
+    { "id": "candidate-evidence-completeness", "kind": "schema", "command": "pwsh -File scripts/test-solid-feature-candidate.ps1 -QualificationReady -EvidenceRoot artifacts/solid-feature-qualification/current", "story_ids": ["E3D-S1-15"], "expected_artifact_ids": ["qualification-report", "evidence-checksums"] }
+  ],
+  "artifacts": [
+    { "id": "candidate-fixtures", "path": "contracts/solid-feature-candidate/fixtures", "required": true, "lock_required": false, "expected_sha256": null },
+    { "id": "release-runtime-wasm", "path": "web/crawler-app/src/generated/runtime/crawler_part_runtime_bg.wasm", "required": true, "lock_required": true, "expected_sha256": "c1f57b5e4f946b4ed3cf3aad4fc6f039d1cd53cd5b370b6015c7a16f9274746f" },
+    { "id": "production-index", "path": "web/crawler-app/dist/index.html", "required": true, "lock_required": false, "expected_sha256": null },
+    { "id": "parity-json", "path": "artifacts/solid-feature-qualification/current/parity/parity.json", "required": true, "lock_required": false, "expected_sha256": null },
+    { "id": "parity-junit", "path": "artifacts/solid-feature-qualification/current/parity/parity.junit.xml", "required": true, "lock_required": false, "expected_sha256": null },
+    { "id": "browser-junit", "path": "artifacts/solid-feature-qualification/current/browser/junit.xml", "required": true, "lock_required": false, "expected_sha256": null },
+    { "id": "browser-screenshots", "path": "artifacts/solid-feature-qualification/current/browser/screenshots", "required": true, "lock_required": false, "expected_sha256": null },
+    { "id": "performance-json", "path": "artifacts/solid-feature-qualification/current/performance/results.json", "required": true, "lock_required": false, "expected_sha256": null },
+    { "id": "legacy-matrix-results", "path": "artifacts/solid-feature-qualification/current/migration/legacy-matrix.json", "required": true, "lock_required": false, "expected_sha256": null },
+    { "id": "qualification-report", "path": "artifacts/solid-feature-qualification/current/qualification-report.json", "required": true, "lock_required": false, "expected_sha256": null },
+    { "id": "evidence-checksums", "path": "artifacts/solid-feature-qualification/current/SHA256SUMS.json", "required": true, "lock_required": false, "expected_sha256": null }
+  ],
+  "runtime_lock": {
+    "build_id": "solid-feature-sprint-1-r5-20260826",
+    "wasm_artifact_id": "release-runtime-wasm",
+    "wasm_sha256": "c1f57b5e4f946b4ed3cf3aad4fc6f039d1cd53cd5b370b6015c7a16f9274746f"
+  },
+  "non_candidate_observation_policy": {
+    "candidate_waivers_permitted": false,
+    "required_fields": ["owner", "rationale", "expires_at", "affected_evidence", "follow_up"]
+  }
+}

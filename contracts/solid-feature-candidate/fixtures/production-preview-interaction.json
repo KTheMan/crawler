@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "fixture_id": "production-preview-interaction",
+  "story_ids": [
+    "E3D-S1-15"
+  ],
+  "description": "Production preview qualifies keyboard focus stale-response and performance behavior.",
+  "units": {
+    "length": "nanometer",
+    "angle": "radian"
+  },
+  "input": {
+    "schema_version": 2,
+    "kind": "browser_interaction",
+    "payload": {
+      "viewport": [
+        1440,
+        900
+      ],
+      "workers": 1,
+      "device_scale_factor": 1
+    }
+  },
+  "expected": {
+    "kind": "success",
+    "result": {
+      "console_errors": 0,
+      "stale_preview_accepted": false,
+      "page_errors": 0
+    }
+  },
+  "tolerances": {
+    "relative": 1e-9,
+    "aabb_nm": 1,
+    "signed_volume_nm3": 1000000,
+    "surface_area_nm2": 1000,
+    "centroid_nm": 1
+  },
+  "identity_sets": {
+    "retained": [],
+    "replaced": []
+  },
+  "lifecycle_steps": [
+    "preview",
+    "cancel",
+    "commit",
+    "edit",
+    "recompute"
+  ],
+  "legacy_provenance": null,
+  "evidence_test_ids": [
+    "production-extrude-lifecycle",
+    "production-preview-performance"
+  ]
+}

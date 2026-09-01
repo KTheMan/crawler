@@ -1,0 +1,110 @@
+{
+  "schema_version": 1,
+  "fixture_id": "production-single-target-cut-lifecycle",
+  "story_ids": [
+    "E3D-S5-01",
+    "E3D-S5-02",
+    "E3D-S5-03",
+    "E3D-S5-04"
+  ],
+  "description": "The production Cut ribbon and Solid menu enter the same generated-worker lifecycle, distinguish removed preview volume, reject stale preview and commit bases atomically, recompute after an upstream solver-owned dimension edit, and execute cancel, commit, edit, suppression, history, save/reopen, and missing-target refusal without mutating the accepted state.",
+  "units": {
+    "length": "nanometer",
+    "angle": "radian"
+  },
+  "input": {
+    "schema_version": 5,
+    "kind": "production_single_target_cut_lifecycle",
+    "payload": {
+      "runtime": "generated_release_wasm",
+      "worker": "production_model_worker",
+      "target_seed": {
+        "body_id": "body:part",
+        "component_id": "component:root",
+        "width_nm": 40000000,
+        "height_nm": 28000000,
+        "distance_nm": 12000000
+      },
+      "result_mode": "cut",
+      "target_body_ids": [
+        "body:part"
+      ],
+      "support": {
+        "kind": "origin_plane",
+        "plane": "xy"
+      },
+      "profile": {
+        "kind": "rectangle",
+        "min_nm": [
+          2000000,
+          1000000
+        ],
+        "max_nm": [
+          8000000,
+          5000000
+        ]
+      },
+      "distance_nm": 2000000,
+      "direction": "positive"
+    }
+  },
+  "expected": {
+    "kind": "success",
+    "result": {
+      "actual_tool_entry_parity": true,
+      "removal_volume_distinguished": true,
+      "stale_preview_rejected": true,
+      "stale_basis_atomic": true,
+      "upstream_dimension_recomputed": true,
+      "worker_refusal_atomic": true,
+      "explicit_target_required": true,
+      "preview_nonmutating": true,
+      "cancel_restores_accepted": true,
+      "commit_retains_target": true,
+      "edit_recompute_retains_identity": true,
+      "suppress_unsuppress_roundtrip": true,
+      "undo_redo_roundtrip": true,
+      "save_reopen_equal": true,
+      "failure_atomic": true,
+      "generated_wasm_verified": true,
+      "screenshots": [
+        "cut-preview",
+        "cut-committed",
+        "cut-edit",
+        "cut-reopened"
+      ]
+    }
+  },
+  "tolerances": {
+    "relative": 1e-9,
+    "aabb_nm": 1,
+    "signed_volume_nm3": 1000000,
+    "surface_area_nm2": 1000,
+    "centroid_nm": 1
+  },
+  "identity_sets": {
+    "retained": [
+      "body:part"
+    ],
+    "replaced": []
+  },
+  "lifecycle_steps": [
+    "preview",
+    "cancel",
+    "commit",
+    "edit",
+    "recompute",
+    "suppress",
+    "unsuppress",
+    "undo",
+    "redo",
+    "save",
+    "reopen"
+  ],
+  "evidence_test_ids": [
+    "single-target-cut-command-state",
+    "production-single-target-cut-lifecycle",
+    "single-target-cut-performance-regression"
+  ],
+  "legacy_provenance": null
+}

@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "fixture_id": "planar-face-nonplanar-reference",
+  "story_ids": ["E3D-S4-01", "E3D-S4-02"],
+  "description": "A current cylindrical or otherwise nonanalytic-planar face is rejected by native authority before Extrude preview or commit.",
+  "units": { "length": "nanometer", "angle": "radian" },
+  "input": { "schema_version": 4, "kind": "planar_face_nonplanar_reference_v4", "payload": { "support_body": "body:revolve", "support_face": "current-curved-face", "claimed_fallback_kind": "face" } },
+  "expected": { "kind": "structured_error", "error": { "category": "unsupported", "code": "nonplanar_face", "field_path": "planar_face.face_stable_id", "referenced_entity_ids": ["body:revolve"] } },
+  "tolerances": { "relative": 1e-9, "aabb_nm": 1, "signed_volume_nm3": 1000000, "surface_area_nm2": 1000, "centroid_nm": 1 },
+  "identity_sets": { "retained": ["body:last-valid"], "replaced": [] },
+  "lifecycle_steps": ["preview", "commit"],
+  "evidence_test_ids": ["planar-face-document-authority-contracts", "native-planar-face-extrude", "wasm-planar-face-extrude", "planar-face-native-wasm-parity"],
+  "legacy_provenance": null
+}

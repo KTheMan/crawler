@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "fixture_id": "planar-face-broken-support-explicit-repair",
+  "story_ids": ["E3D-S4-01", "E3D-S4-02", "E3D-S4-03", "E3D-S4-04"],
+  "description": "A missing face blocks descendants, ranks same-authority current planar candidates without mutation, previews one explicit replacement, and commits one undoable transaction updating every support location before recompute and reopen.",
+  "units": { "length": "nanometer", "angle": "radian" },
+  "input": { "schema_version": 4, "kind": "planar_face_broken_support_explicit_repair_v4", "payload": { "from_reference": "topology:face-support:missing", "selected_reference": "topology:face-support:replacement", "body": "body:part", "producer": "feature:extrude", "component": "component:root", "require_preview": true, "automatic_apply": false } },
+  "expected": { "kind": "success", "result": { "ranking_mutated_document": false, "repair_preview_executed": true, "cancel_preserved_hash": true, "transaction_count": 1, "updated_locations": ["topology_reference", "sketch_feature.support", "sketch.support", "feature_definition_v2.operation.support"], "undo_restored_broken_state": true, "redo_restored_repair": true, "reopen_recompute_equal": true, "descendant_identities_stable": true } },
+  "tolerances": { "relative": 1e-9, "aabb_nm": 1, "signed_volume_nm3": 1000000, "surface_area_nm2": 1000, "centroid_nm": 1 },
+  "identity_sets": { "retained": ["sketch:face-profile", "region:geometry:face-rectangle", "feature:extrude:face-supported", "body:extrude:face-supported"], "replaced": ["topology:face-support:missing"] },
+  "lifecycle_steps": ["commit", "recompute", "repair", "preview", "cancel", "undo", "redo", "save", "reopen"],
+  "evidence_test_ids": ["planar-face-document-authority-contracts", "native-planar-face-extrude", "wasm-planar-face-extrude", "planar-face-native-wasm-parity", "production-planar-face-lifecycle"],
+  "legacy_provenance": null
+}

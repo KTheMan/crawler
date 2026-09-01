@@ -1,0 +1,119 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://crawler.local/contracts/solid-feature-candidate/candidate.schema.json",
+  "title": "Crawler solid-feature sprint candidate",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "candidate_id", "revision", "scope_frozen", "manifest_state", "stories", "fixtures", "tests", "artifacts", "runtime_lock"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "candidate_id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]+$" },
+    "revision": { "type": "integer", "minimum": 1 },
+    "scope_frozen": { "type": "boolean" },
+    "manifest_state": { "enum": ["scope_frozen_artifacts_pending", "qualification_ready", "retired"] },
+    "scope_frozen_at": { "type": "string", "format": "date-time" },
+    "source_spec": { "type": "string", "minLength": 1 },
+    "performance_workload_ids": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/definitions/id" }
+    },
+    "stories": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/definitions/story" }
+    },
+    "fixtures": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/definitions/fixture_ref" }
+    },
+    "tests": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/definitions/test" }
+    },
+    "artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/definitions/artifact" }
+    },
+    "runtime_lock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["build_id", "wasm_artifact_id", "wasm_sha256"],
+      "properties": {
+        "build_id": { "type": ["string", "null"], "minLength": 1 },
+        "wasm_artifact_id": { "type": "string", "minLength": 1 },
+        "wasm_sha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" }
+      }
+    },
+    "non_candidate_observation_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["candidate_waivers_permitted", "required_fields"],
+      "properties": {
+        "candidate_waivers_permitted": { "const": false },
+        "required_fields": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "enum": ["owner", "rationale", "expires_at", "affected_evidence", "follow_up"] }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]+$" },
+    "id_list": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/definitions/id" } },
+    "story": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "capability", "disposition", "evidence_policy", "fixture_ids", "test_ids", "artifact_ids"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^E3D-S[1-9][0-9]*-[0-9]{2}$" },
+        "title": { "type": "string", "minLength": 1 },
+        "capability": { "type": "string", "minLength": 1 },
+        "disposition": { "const": "required" },
+        "evidence_policy": { "enum": ["required", "harness_self_test"] },
+        "fixture_ids": { "$ref": "#/definitions/id_list" },
+        "test_ids": { "$ref": "#/definitions/id_list" },
+        "artifact_ids": { "$ref": "#/definitions/id_list" }
+      }
+    },
+    "fixture_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "path", "parity_required"],
+      "properties": {
+        "id": { "$ref": "#/definitions/id" },
+        "path": { "type": "string", "pattern": "^contracts/solid-feature-candidate/fixtures/.+\\.json$" },
+        "parity_required": { "type": "boolean" }
+      }
+    },
+    "test": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "command", "story_ids", "expected_artifact_ids"],
+      "properties": {
+        "id": { "$ref": "#/definitions/id" },
+        "kind": { "enum": ["schema", "native", "wasm", "unit", "browser", "parity", "generation", "migration", "performance"] },
+        "command": { "type": "string", "minLength": 1 },
+        "story_ids": { "$ref": "#/definitions/id_list" },
+        "expected_artifact_ids": { "$ref": "#/definitions/id_list" }
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "path", "required", "lock_required", "expected_sha256"],
+      "properties": {
+        "id": { "$ref": "#/definitions/id" },
+        "path": { "type": "string", "minLength": 1 },
+        "required": { "type": "boolean" },
+        "lock_required": { "type": "boolean" },
+        "expected_sha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" }
+      }
+    }
+  }
+}

@@ -1,0 +1,97 @@
+{
+  "schema_version": 1,
+  "profile_id": "solid-feature-windows-chrome-headless-v1",
+  "warm_up_samples": 2,
+  "measured_samples": 10,
+  "allowed_run_to_run_variance_percent": 10,
+  "workloads": [
+    {
+      "id": "extrude-origin-blind-rectangle",
+      "preview_p50_ms_max": 100,
+      "preview_p95_ms_max": 250,
+      "recompute_p50_ms_max": 150,
+      "recompute_p95_ms_max": 350,
+      "cancellation_latency_ms_max": 100,
+      "main_thread_long_task_ms_max": 50,
+      "preview_edit_cancel_cycles": 50,
+      "memory_growth_bytes_max": 33554432
+    },
+    {
+      "id": "extrude-origin-annulus",
+      "preview_p50_ms_max": 150,
+      "preview_p95_ms_max": 350,
+      "recompute_p50_ms_max": 225,
+      "recompute_p95_ms_max": 500,
+      "cancellation_latency_ms_max": 100,
+      "main_thread_long_task_ms_max": 50,
+      "preview_edit_cancel_cycles": 50,
+      "memory_growth_bytes_max": 33554432
+    },
+    {
+      "id": "extrude-offset-plane-rectangle",
+      "preview_p50_ms_max": 100,
+      "preview_p95_ms_max": 250,
+      "recompute_p50_ms_max": 150,
+      "recompute_p95_ms_max": 350,
+      "cancellation_latency_ms_max": 100,
+      "main_thread_long_task_ms_max": 50,
+      "preview_edit_cancel_cycles": 50,
+      "memory_growth_bytes_max": 33554432
+    },
+    {
+      "id": "extrude-planar-face-rectangle",
+      "preview_p50_ms_max": 100,
+      "preview_p95_ms_max": 250,
+      "recompute_p50_ms_max": 150,
+      "recompute_p95_ms_max": 350,
+      "cancellation_latency_ms_max": 100,
+      "main_thread_long_task_ms_max": 50,
+      "preview_edit_cancel_cycles": 50,
+      "memory_growth_bytes_max": 33554432
+    },
+    {
+      "id": "planar-face-support-repair",
+      "preview_p50_ms_max": 150,
+      "preview_p95_ms_max": 350,
+      "recompute_p50_ms_max": 225,
+      "recompute_p95_ms_max": 500,
+      "cancellation_latency_ms_max": 100,
+      "main_thread_long_task_ms_max": 50,
+      "preview_edit_cancel_cycles": 50,
+      "memory_growth_bytes_max": 33554432
+    },
+    {
+      "id": "cut-single-target-rectangle",
+      "preview_p50_ms_max": 100,
+      "preview_p95_ms_max": 250,
+      "recompute_p50_ms_max": 150,
+      "recompute_p95_ms_max": 350,
+      "cancellation_latency_ms_max": 100,
+      "main_thread_long_task_ms_max": 50,
+      "preview_edit_cancel_cycles": 50,
+      "memory_growth_bytes_max": 33554432
+    },
+    {
+      "id": "cut-single-target-annulus",
+      "preview_p50_ms_max": 150,
+      "preview_p95_ms_max": 350,
+      "recompute_p50_ms_max": 225,
+      "recompute_p95_ms_max": 500,
+      "cancellation_latency_ms_max": 100,
+      "main_thread_long_task_ms_max": 50,
+      "preview_edit_cancel_cycles": 50,
+      "memory_growth_bytes_max": 33554432
+    },
+    {
+      "id": "cut-single-target-failure-recovery",
+      "preview_p50_ms_max": 150,
+      "preview_p95_ms_max": 350,
+      "recompute_p50_ms_max": 750,
+      "recompute_p95_ms_max": 1200,
+      "cancellation_latency_ms_max": 100,
+      "main_thread_long_task_ms_max": 50,
+      "preview_edit_cancel_cycles": 50,
+      "memory_growth_bytes_max": 33554432
+    }
+  ]
+}

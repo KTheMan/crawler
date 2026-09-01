@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "fixture_id": "extrude-create-edit-equivalence",
+  "story_ids": [
+    "E3D-S1-11"
+  ],
+  "description": "Tool-first, selection-first, distance edit, same-source-sketch selected-region replacement, and cross-sketch replacement rejection exercise one durable Extrude workflow.",
+  "units": {
+    "length": "nanometer",
+    "angle": "radian"
+  },
+  "input": {
+    "schema_version": 2,
+    "kind": "extrude_ui_equivalence",
+    "payload": {
+      "flows": [
+        "tool_first",
+        "selection_first",
+        "timeline_edit",
+        "timeline_edit_selected_region_replacement",
+        "timeline_edit_cross_sketch_replacement_rejected"
+      ],
+      "distance_nm": 4000000
+    }
+  },
+  "expected": {
+    "kind": "success",
+    "result": {
+      "canonical_definitions_equal": true,
+      "camera_invariant_handle": true,
+      "selected_region_replacement_persisted": true,
+      "cancel_restored_accepted_state": true,
+      "feature_and_body_ids_retained": true,
+      "recompute_and_reload_persisted": true,
+      "cross_sketch_replacement_rejected": true,
+      "cross_sketch_accepted_state_unchanged": true,
+      "cross_sketch_references_unchanged": true,
+      "cross_sketch_feature_and_body_ids_retained": true,
+      "cross_sketch_geometry_unchanged": true,
+      "cross_sketch_feature_count_unchanged": true,
+      "cross_sketch_no_invalid_preview_or_commit": true,
+      "cross_sketch_explicit_error": true,
+      "cross_sketch_zero_preview_or_commit_dispatch": true,
+      "cross_sketch_edit_blocked": true,
+      "cross_sketch_error_reason_present": true
+    }
+  },
+  "tolerances": {
+    "relative": 1e-9,
+    "aabb_nm": 1,
+    "signed_volume_nm3": 1000000,
+    "surface_area_nm2": 1000,
+    "centroid_nm": 1
+  },
+  "identity_sets": {
+    "retained": [],
+    "replaced": []
+  },
+  "lifecycle_steps": [
+    "preview",
+    "cancel",
+    "commit",
+    "edit",
+    "recompute",
+    "reload"
+  ],
+  "legacy_provenance": null,
+  "evidence_test_ids": [
+    "production-extrude-lifecycle"
+  ]
+}

@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "fixture_id": "extrude-invalid-construction-plane-dependency",
+  "story_ids": [
+    "E3D-S3-02",
+    "E3D-S3-03",
+    "E3D-S3-04"
+  ],
+  "description": "A persisted construction-plane dependency that cannot be resolved is rejected during load with the exact Extrude support field, while the last valid document saves, reopens, and repairs without replacing the accepted baseline body.",
+  "units": {
+    "length": "nanometer",
+    "angle": "radian"
+  },
+  "input": {
+    "schema_version": 3,
+    "kind": "extrude_invalid_construction_plane_dependency_v3",
+    "payload": {
+      "plane": "construction-plane:invalid-dependency",
+      "offset_parameter": "parameter:invalid-dependency-offset",
+      "invalid_dependency": "origin-plane:missing-dependency"
+    }
+  },
+  "expected": {
+    "kind": "structured_error",
+    "error": {
+      "category": "reference",
+      "code": "invalid_construction_plane_dependency",
+      "field_path": "extrude.support",
+      "referenced_entity_ids": [
+        "origin-plane:missing-dependency"
+      ]
+    }
+  },
+  "tolerances": {
+    "relative": 1E-09,
+    "aabb_nm": 1,
+    "signed_volume_nm3": 1000000,
+    "surface_area_nm2": 1000,
+    "centroid_nm": 1
+  },
+  "identity_sets": {
+    "retained": [
+      "body:accepted-before-construction-plane-error"
+    ],
+    "replaced": []
+  },
+  "lifecycle_steps": [
+    "load",
+    "save",
+    "reopen",
+    "repair"
+  ],
+  "evidence_test_ids": [
+    "native-construction-plane-offset-extrude",
+    "wasm-construction-plane-offset-extrude",
+    "construction-plane-offset-native-wasm-parity"
+  ],
+  "legacy_provenance": null
+}

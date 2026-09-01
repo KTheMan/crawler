@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "fixture_id": "planar-face-suppressed-producer",
+  "story_ids": ["E3D-S4-01", "E3D-S4-02", "E3D-S4-04"],
+  "description": "Suppressing the support producer removes current authority, blocks the supported sketch and Extrude, and retains the last accepted downstream result until unsuppression and valid recompute.",
+  "units": { "length": "nanometer", "angle": "radian" },
+  "input": { "schema_version": 4, "kind": "planar_face_suppressed_producer_v4", "payload": { "support_body": "body:part", "producer": "feature:extrude", "sketch": "sketch:face-profile", "dependent": "feature:extrude:face-supported" } },
+  "expected": { "kind": "structured_error", "error": { "category": "suppressed", "code": "suppressed_topology_face_producer", "field_path": "extrude.support", "referenced_entity_ids": ["body:part", "feature:extrude", "topology:face-support"] } },
+  "tolerances": { "relative": 1e-9, "aabb_nm": 1, "signed_volume_nm3": 1000000, "surface_area_nm2": 1000, "centroid_nm": 1 },
+  "identity_sets": { "retained": ["body:last-valid", "packet:last-valid", "feature:extrude:face-supported"], "replaced": [] },
+  "lifecycle_steps": ["commit", "suppress", "recompute", "unsuppress"],
+  "evidence_test_ids": ["planar-face-document-authority-contracts", "native-planar-face-extrude", "wasm-planar-face-extrude", "planar-face-native-wasm-parity", "production-planar-face-lifecycle"],
+  "legacy_provenance": null
+}

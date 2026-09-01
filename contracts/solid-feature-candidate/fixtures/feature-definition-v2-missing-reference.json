@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "fixture_id": "feature-definition-v2-missing-reference",
+  "story_ids": [
+    "E3D-S1-05"
+  ],
+  "description": "Missing V2 dependency fails without accepted-document mutation.",
+  "units": {
+    "length": "nanometer",
+    "angle": "radian"
+  },
+  "input": {
+    "schema_version": 2,
+    "kind": "definition_v2",
+    "payload": {
+      "operation": "extrude",
+      "profile_region": "region:missing"
+    }
+  },
+  "expected": {
+    "kind": "structured_error",
+    "error": {
+      "category": "reference",
+      "code": "missing_reference",
+      "field_path": "feature.operation.profile.region",
+      "referenced_entity_ids": [
+        "region:missing"
+      ]
+    }
+  },
+  "tolerances": {
+    "relative": 1e-9,
+    "aabb_nm": 1,
+    "signed_volume_nm3": 1000000,
+    "surface_area_nm2": 1000,
+    "centroid_nm": 1
+  },
+  "identity_sets": {
+    "retained": [],
+    "replaced": []
+  },
+  "lifecycle_steps": [
+    "preview",
+    "commit",
+    "repair"
+  ],
+  "legacy_provenance": null,
+  "evidence_test_ids": [
+    "feature-definition-v2-contracts",
+    "native-wasm-parity"
+  ]
+}

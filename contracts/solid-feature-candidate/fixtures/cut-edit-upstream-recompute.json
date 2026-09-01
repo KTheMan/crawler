@@ -1,0 +1,116 @@
+{
+  "schema_version": 1,
+  "fixture_id": "cut-edit-upstream-recompute",
+  "story_ids": [
+    "E3D-S5-01",
+    "E3D-S5-02",
+    "E3D-S5-03"
+  ],
+  "description": "Editing an upstream qualified rectangle and recomputing retains the Cut feature and target IDs with one deterministic affected body.",
+  "units": {
+    "length": "nanometer",
+    "angle": "radian"
+  },
+  "input": {
+    "schema_version": 5,
+    "kind": "single_target_cut",
+    "payload": {
+      "result_mode": "cut",
+      "target_body_ids": [
+        "body:part"
+      ],
+      "target_component_id": "component:root",
+      "target_seed": {
+        "body_id": "body:part",
+        "component_id": "component:root",
+        "width_nm": 10000000,
+        "height_nm": 6000000,
+        "distance_nm": 4000000
+      },
+      "support": {
+        "kind": "origin_plane",
+        "plane": "xy"
+      },
+      "profile": {
+        "kind": "rectangle",
+        "min_nm": [
+          2000000,
+          1000000
+        ],
+        "max_nm": [
+          8000000,
+          5000000
+        ]
+      },
+      "distance_nm": 2000000,
+      "direction": "positive",
+      "upstream_edit": {
+        "profile_max_nm": [
+          7000000,
+          5000000
+        ],
+        "distance_nm": 2000000
+      }
+    }
+  },
+  "expected": {
+    "kind": "success",
+    "result": {
+      "retained_target_body_id": "body:part",
+      "affected_body_ids": [
+        "body:part"
+      ],
+      "created_body_count": 0,
+      "body_count": 1,
+      "manifold": true,
+      "orientation": "outward",
+      "aabb_nm": [
+        0,
+        0,
+        0,
+        10000000,
+        6000000,
+        4000000
+      ],
+      "signed_volume_nm3": 200000000000000000000,
+      "surface_area_nm2": 284000000000000,
+      "centroid_nm": [
+        5100000,
+        3000000,
+        2200000
+      ],
+      "analytic_classification": [
+        "plane"
+      ],
+      "feature_id_retained": true,
+      "target_body_id_retained": true,
+      "affected_scope_stable": true
+    }
+  },
+  "tolerances": {
+    "relative": 1e-9,
+    "aabb_nm": 1,
+    "signed_volume_nm3": 1000000,
+    "surface_area_nm2": 1000,
+    "centroid_nm": 1
+  },
+  "identity_sets": {
+    "retained": [
+      "body:part"
+    ],
+    "replaced": []
+  },
+  "lifecycle_steps": [
+    "preview",
+    "commit",
+    "edit",
+    "recompute"
+  ],
+  "evidence_test_ids": [
+    "single-target-cut-contracts",
+    "native-single-target-cut",
+    "wasm-single-target-cut",
+    "single-target-cut-native-wasm-parity"
+  ],
+  "legacy_provenance": null
+}
