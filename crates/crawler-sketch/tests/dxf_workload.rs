@@ -100,7 +100,9 @@ fn native_curve_dxf_round_trip_does_not_tessellate_splines_ellipses_or_conics() 
     assert_eq!(restored.geometry, sketch.geometry);
     let pairs = dxf.lines().collect::<Vec<_>>();
     let metadata_free = pairs
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .filter(|pair| pair[0].parse::<i32>().unwrap_or_default() < 1000)
         .flat_map(|pair| pair.iter().copied())
         .collect::<Vec<_>>()

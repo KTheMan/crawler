@@ -5815,7 +5815,7 @@ fn mesh_metrics(packet: &Value) -> Result<(f64, Vec<f64>, f64), String> {
     let mut area = 0.0;
     let mut signed_volume = 0.0;
     let mut moment = [0.0; 3];
-    for tri in indices.chunks_exact(3) {
+    for tri in indices.as_chunks::<3>().0 {
         let p = |i: usize| [positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2]];
         let a = p(tri[0]);
         let b = p(tri[1]);

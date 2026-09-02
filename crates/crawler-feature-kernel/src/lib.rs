@@ -4591,7 +4591,9 @@ fn render_packet_volume(solid: &Solid, tolerance: f64) -> Result<f64, FeatureErr
 fn sampled_packet_volume(packet: &crawler_render_packet::RenderPacket) -> f64 {
     packet
         .triangle_indices
-        .chunks_exact(3)
+        .as_chunks::<3>()
+        .0
+        .iter()
         .map(|triangle| {
             let point = |index: u32| {
                 let offset = index as usize * 3;

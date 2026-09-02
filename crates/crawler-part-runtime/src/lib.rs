@@ -5536,7 +5536,7 @@ fn runtime_refusal_json(
 }
 
 fn scale_xyz(values: &mut [f32], scale: [f32; 3]) {
-    for point in values.chunks_exact_mut(3) {
+    for point in values.as_chunks_mut::<3>().0 {
         point[0] *= scale[0];
         point[1] *= scale[1];
         point[2] *= scale[2];
@@ -14691,7 +14691,9 @@ mod tests {
             serde_json::from_str(&runtime.active_body_json(0.01).unwrap()).unwrap();
         let pick = active["render"]["packet"]["pickTable"].as_array().unwrap();
         let edge = pick
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .find(|record| record[1] == 2)
             .map(|record| record[2].as_u64().unwrap() | (record[3].as_u64().unwrap() << 32))
             .unwrap();

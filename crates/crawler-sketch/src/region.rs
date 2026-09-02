@@ -360,7 +360,7 @@ fn interior_probe(polygon: &[Point2]) -> Option<Point2> {
             })
             .collect::<Vec<_>>();
         crossings.sort_by(f64::total_cmp);
-        for inside in crossings.chunks_exact(2) {
+        for inside in crossings.as_chunks::<2>().0 {
             let point = Point2::new(
                 ((inside[0] + inside[1]) / 2.0).round() as i64,
                 y.round() as i64,

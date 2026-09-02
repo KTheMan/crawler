@@ -529,7 +529,7 @@ fn radial_point(center: Point2, radius_nm: i64, degrees: f64) -> Point2 {
 fn group_pairs(input: &str) -> Result<Vec<(i32, String)>, DxfError> {
     let lines = input.lines().map(str::trim).collect::<Vec<_>>();
     let mut pairs = Vec::new();
-    for pair in lines.chunks_exact(2) {
+    for pair in lines.as_chunks::<2>().0 {
         let code = pair[0]
             .parse::<i32>()
             .map_err(|_| DxfError::InvalidGroupCode(pair[0].to_owned()))?;
