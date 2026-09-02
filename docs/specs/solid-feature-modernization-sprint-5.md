@@ -536,3 +536,30 @@ the specification's first 30,077 bytes at SHA-256
 The separately required documentation-only re-review remains open, so Sprint 5
 is **NOT YET CURRENT-SOURCE REQUALIFIED** and no current-source final completion
 or scope expansion is recorded here.
+
+## Current-source requalification decision — 2026-09-02
+
+The mandatory independent documentation-only reviewer examined commit
+`ba6e3c6894a51f72091a0f467e0f1523761385be`, the append-only Attempt 17–20
+reconciliation and frozen prefixes, and the current-source immutable bundle at
+`artifacts/solid-feature-qualification/runs/20260902T005828Z-solid-feature-sprint-5-r3`,
+and returned exact `ZERO FINDINGS`. This closes the separately required final
+documentation-only gate after the Attempt 20 exact-state review.
+
+Candidate `solid-feature-sprint-5` revision 3 is therefore **COMPLETE AND
+CURRENT-SOURCE REQUALIFIED** for only the unchanged frozen boundary: Blind
+Forward/Reverse/Symmetric Cut against exactly one explicit current same-
+component target over the named qualified supports and profile families. All
+five Sprint 5 stories remain complete. The earlier
+`20260901T070012Z-solid-feature-sprint-5-r3` bundle remains immutable historical
+evidence for its own source identity; the `20260902T005828Z` bundle is the
+current-source qualifying evidence.
+
+Attempts 17 and 18 remain rejected history, not waivers. Every exclusion and
+deferral in this specification remains unchanged, including broader target and
+result modes, additional extents, draft/thin/surface/open-profile Cut,
+generalized repair, additional supports and profile families, and Revolve,
+Sweep, and Loft. This append preserves the specification's reviewed first
+31,124 bytes at SHA-256
+`fe23cbce763bd98b9bc58c2e3e3b8704af5e73985f930b2810176a522728ae7d`.
+No current-source Sprint 5 qualification gate remains open.

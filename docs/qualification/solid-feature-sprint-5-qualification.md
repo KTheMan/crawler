@@ -674,3 +674,38 @@ the Sprint 5 specification 30,077 bytes / SHA-256
 `32d9e3a6260222102f859483da064c39143401de545e3898b134bd19428d87d9`;
 and the backlog 85,385 bytes / SHA-256
 `c732c4fed0fc37e7ce42fa18a19355b323fff82ee5b6822114fe61a26b881e47`.
+
+### 2026-09-02 — Attempt 21: final documentation-only re-review passed
+
+The mandatory independent documentation-only reviewer examined source
+commit `ba6e3c6894a51f72091a0f467e0f1523761385be`, the reconciled append-only
+tails and frozen-prefix integrity of this ledger, the Sprint 5 specification,
+and the backlog, and the current-source immutable bundle at
+`artifacts/solid-feature-qualification/runs/20260902T005828Z-solid-feature-sprint-5-r3`.
+The reviewer cross-checked Attempts 17–20, current source/runtime identities,
+counts, hashes, performance observations, shortcomings, deferrals, and the
+Attempt 20 exact-state decision, and returned exact `ZERO FINDINGS`.
+
+**Final current-source decision:** `solid-feature-sprint-5` revision 3 is
+**COMPLETE AND CURRENT-SOURCE REQUALIFIED** for only the same frozen bounded
+single-explicit-target Blind Cut scope. All five stories E3D-S5-01 through
+E3D-S5-05 remain complete. The current qualifying evidence is the immutable
+45-record, 213-checksum-entry bundle at
+`artifacts/solid-feature-qualification/runs/20260902T005828Z-solid-feature-sprint-5-r3`.
+The earlier `20260901T070012Z-solid-feature-sprint-5-r3` bundle remains immutable
+historical evidence for its own source, manifest, and runtime identity; it is
+not the current-source bundle.
+
+Attempts 17 and 18 remain preserved failed publication-qualification history;
+their remediation is not a waiver and their incomplete evidence does not
+supersede Attempt 19. No target, result, extent, repair, support, profile,
+draft/thin/surface/open-profile Cut, Revolve, Sweep, or Loft deferral is
+promoted. No current-source Sprint 5 qualification gate remains open.
+
+This final append preserves byte-for-byte the documentation-only review
+prefixes: this ledger 40,819 bytes / SHA-256
+`df75faa135ca523f13ee20e92b700230abdd714e59183bf436a171e398b2c7c0`;
+the Sprint 5 specification 31,124 bytes / SHA-256
+`fe23cbce763bd98b9bc58c2e3e3b8704af5e73985f930b2810176a522728ae7d`;
+and the backlog 86,138 bytes / SHA-256
+`e61324de8d1f9b293fdd94dca0abbb917d77e3f778bc4ffd46864d6fe2f9b147`.
