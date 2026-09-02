@@ -1790,3 +1790,50 @@ at 45 records and 213 checksummed files. All failed attempts, the append-only
 documentation finding and remediation, shortcomings, and deferrals remain in
 the Sprint 5 qualification ledger. No deferred target, extent, repair, support,
 profile, or Revolve/Sweep/Loft behavior is promoted.
+
+## 2026-09-02 — Sprint 5 current-source requalification history
+
+All five Sprint 5 stories remain complete for the same frozen single-explicit-
+target Blind Cut scope. The prior qualifying bundle remains immutable history
+for its own source identity, while later lint and generated-output maintenance
+required current source to repeat the no-waiver gate without promoting any
+backlog exclusion or deferral.
+
+The first run is preserved at
+`artifacts/solid-feature-qualification/runs/20260902T000118944Z-incomplete`.
+It stopped at locked Rust 1.98 lint after seven passing commands; command 8
+returned 101 for two `chunks_exact(2)` findings. Commit
+`8b66f718ecfe2ca3123239a851ee4aa6d1e0aa65` remediated them. The next
+run is preserved at
+`artifacts/solid-feature-qualification/runs/20260902T004241733Z-incomplete`.
+All 18 ledgered commands and both byte-identical generator passes succeeded, but
+the following synchronization assertion correctly found that the output
+differed from the checked-in generated state present at run start. Commit
+`13966369dfb836176271f9ff4aaa4af903c25356` synchronized the generated
+artifacts and current runtime lock. Neither failed attempt produced a qualifying
+bundle.
+
+The fresh run passed and sealed
+`artifacts/solid-feature-qualification/runs/20260902T005828Z-solid-feature-sprint-5-r3`.
+It binds commit `13966369dfb836176271f9ff4aaa4af903c25356`, manifest SHA-256
+`e1a4b79f3b4cf1cf930d0745f7bdcda5cc2b56436c3316fab68f97e57881a526`,
+runtime WASM SHA-256
+`a8fccae29d36468623da693fc07edd8da4c1f692aa654c75e47e38c42c5d126d`,
+and source snapshot SHA-256
+`ae861b966bca656c850f7d114a8e82d8caed6b6d3ac6b1e02caf394010b90ef2`
+over 496 files with zero deleted entries. All 30 commands and 45 records pass;
+native/release-WASM evidence is 19 plus 19 with 19/19 zero-difference parity;
+browser qualification is 3/3; and isolated validation passes at 45 records and
+213 checksummed files. Performance passes all three workloads with zero Long
+Tasks or violations; failure/recovery measures 484.2/918.8 ms p50/p95 against
+its unchanged 750/1200 ms limits and proves all twelve refusal/recovery samples.
+
+This append preserves the backlog's bundle-captured first 82,700 bytes,
+SHA-256
+`6a9a54c2d860d03bad97ed7fa4d5d88784124effcde22bbf6ff3e7997f1add5f`,
+byte-for-byte. Attempts 17 and 18 remain unwaived failure history. The current-
+source automated gate is green, but mandatory independent exact-state and final
+documentation-only `ZERO FINDINGS` reviews remain open. Sprint 5 therefore has
+not yet completed current-source requalification; all previously deferred
+target, result, extent, repair, support, profile, Revolve, Sweep, and Loft work
+remains deferred.

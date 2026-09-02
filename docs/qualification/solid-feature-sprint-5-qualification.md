@@ -531,3 +531,119 @@ does not supersede Attempt 13. Join/Intersect, broader target and extent modes,
 draft/thin/surface/open-profile Cut, generalized repair, additional supports
 and profile families, and Revolve/Sweep/Loft remain deferred and unqualified.
 No Sprint 5 completion gate remains open.
+
+### 2026-09-02 — Attempt 17: publication requalification stopped at locked lint
+
+**Result:** the first current-source publication requalification failed closed at
+command 8, `native-lint`. The preceding seven commands passed, including the
+candidate/provenance/source self-tests, dependency lock, complete native
+workspace, and focused planar-face and Cut contracts. Rust 1.98 Clippy then
+returned exit code 101 because `chunks_exact(2)` triggered the locked
+`chunks_exact_to_as_chunks` policy in `crawler-sketch/src/dxf.rs` and
+`crawler-sketch/src/region.rs`. No qualification report or qualifying bundle was
+created.
+
+The unmodified staging history is preserved at
+`artifacts/solid-feature-qualification/runs/20260902T000118944Z-incomplete`.
+It binds commit `669b342febcf3c92c5e6d0360ec492008a918029`, candidate revision
+3 and manifest SHA-256
+`80863cbb504e6d77119f8539f1e8aadd81f56e3f82fe3413dde40d71c49b12a9`,
+and source snapshot SHA-256
+`402e1f30a36e629404e823693ec8e9c3c5881a6ee41a971f9625ceea71c7347f`
+over 496 files with zero deleted entries. Its checksum index contains 11
+entries and has SHA-256
+`015b21c260bee162262db16a14c0e88268d532838a7763ea4635d292051f9e12`.
+Commit `8b66f718ecfe2ca3123239a851ee4aa6d1e0aa65` applied the narrow
+lint-compatible equivalents without changing the Sprint 5 product boundary.
+
+### 2026-09-02 — Attempt 18: publication requalification stopped at generated-output synchronization
+
+**Result:** the rerun passed all 18 ledgered commands through both consecutive
+generator passes. The passes were byte-identical to each other, but the
+subsequent fail-closed synchronization assertion rejected the run because they
+differed from the checked-in generated output present when qualification
+started: `Generated artifacts differ from the synchronized worktree output
+present at qualification start.` Neither `generate-first` nor `generate-second`
+failed; the post-command synchronization gate did. No qualification report or
+qualifying bundle was created.
+
+The unmodified staging history is preserved at
+`artifacts/solid-feature-qualification/runs/20260902T004241733Z-incomplete`.
+It binds commit `8b66f718ecfe2ca3123239a851ee4aa6d1e0aa65`, candidate revision
+3 and pre-remediation manifest SHA-256
+`80863cbb504e6d77119f8539f1e8aadd81f56e3f82fe3413dde40d71c49b12a9`,
+and source snapshot SHA-256
+`9035833c3d5684819084e62bd82c229532fa4e675a77c578d20e7a8382821ec6`
+over 496 files with zero deleted entries. Its checksum index contains 21
+entries and has SHA-256
+`2c4c652f6ebebe50af255bc2546f2853f60d3687538a29e1952d0120c8f05c33`.
+Commit `13966369dfb836176271f9ff4aaa4af903c25356` synchronized the
+reproducible generated artifacts and refreshed the source-bound runtime lock;
+it did not expand candidate scope.
+
+### 2026-09-02 — Attempt 19: current-source immutable qualification passed
+
+**Decision before independent review:** **FULL AUTOMATED CURRENT-SOURCE
+REQUALIFICATION PASSED; INDEPENDENT REVIEW OPEN.** The no-waiver command sealed
+`artifacts/solid-feature-qualification/runs/20260902T005828Z-solid-feature-sprint-5-r3`.
+The report records candidate revision 3, status `passed`, commit
+`13966369dfb836176271f9ff4aaa4af903c25356`, manifest SHA-256
+`e1a4b79f3b4cf1cf930d0745f7bdcda5cc2b56436c3316fab68f97e57881a526`,
+and source snapshot SHA-256
+`ae861b966bca656c850f7d114a8e82d8caed6b6d3ac6b1e02caf394010b90ef2`
+over 496 files with no deleted entries. All 30 recorded commands exited zero;
+all 45 qualification records passed. Qualification-report SHA-256 is
+`e03a5ac943bbea4ce9278a8289c1a8a19295b1c6572a056ca4f2e95a7d1a40b9`.
+The focused planar-face and Cut runs pass 5/5 each, application unit tests pass
+250/250, release-worker tests pass 13/13, Sprint 5 release-WASM adapter tests
+pass 4/4, parity self-tests pass 15/15, and non-parity self-tests pass 6/6.
+
+The synchronized release runtime remains build
+`solid-feature-sprint-5-r3-20260831`; its 13,136,060-byte WASM now has SHA-256
+`a8fccae29d36468623da693fc07edd8da4c1f692aa654c75e47e38c42c5d126d`.
+Nineteen native and nineteen generated release-WASM results validate and compare
+19/19 with zero differences; parity JSON SHA-256 is
+`17185ef027b59edd014186903ac8110acec37fc9d0f3e02c024a2bde12caf6ab`.
+The production browser suite passes 3/3 with zero failures, errors, or skips and
+eight checksummed screenshots; browser JUnit SHA-256 remains
+`6cee2313753c5a1c286bbe41e35158a851a228e9abcb9d98a5c97e8c05d36c88`.
+The final checksum index contains 213 entries and has SHA-256
+`0e84bca9b96a2e7f0257128b6112f50df99bceb6503ce5ddee95ade17c7d8d99`;
+the in-run provisional integrity command passed at 45 records and 212
+checksummed files while its own live log was allowlisted. Sealing that log
+produced the 213th entry, and post-copy plus separate isolated final validation
+pass at 45 records and 213 checksummed files.
+
+All three locked performance workloads pass with two warmups, ten measured
+samples, fifty cancel cycles, zero attributed Long Tasks, and zero violations.
+Rectangle preview/recompute p50/p95 is 54.6/64.4 ms and 26.2/33.1 ms, with
+59.1 ms maximum cancellation and 5,127,576 bytes growth. Annulus values are
+63.4/75.0 ms and 32.3/48.3 ms, with 61.2 ms maximum cancellation and 6,448,772
+bytes growth. Failure/recovery preview p50/p95 is 60.5/70.3 ms and its complete
+refusal/restore/repair/retry sequence is 484.2/918.8 ms against the frozen
+750/1200 ms limits, with 76.0 ms maximum cancellation and 5,177,596 bytes
+growth. All twelve samples prove worker refusal, accepted-state preservation,
+exact diagnostic and request pair, and successful repair retry. Performance
+JSON SHA-256 is
+`40793ea0ff23257eddb6b158d671bc51e872fa977cd22c1b6021d2bd6b0d4905`.
+
+This reconciliation is a strict append over the source-bound documentation
+prefixes captured by the bundle: this ledger 32,321 bytes / SHA-256
+`b40aa878c021519c76435fa06ff2b9040f5012534b6897e5813527c70ec94c00`;
+the Sprint 5 specification 26,477 bytes / SHA-256
+`f2a352b8babf1e16be959d596e47481d459f718fc39301649d2e432c1284d4f6`;
+and the backlog 82,700 bytes / SHA-256
+`6a9a54c2d860d03bad97ed7fa4d5d88784124effcde22bbf6ff3e7997f1add5f`.
+The earlier `20260901T070012Z` bundle remains immutable historical evidence for
+its own source, manifest, and runtime identity; Attempt 19 is the current-source
+bundle.
+
+**Shortcomings and deferrals:** Attempts 17 and 18 remain preserved publication-
+qualification shortcomings and remediation history, not waived passes. The
+successful current-source run identifies no remaining automated-evidence or
+implementation shortcoming inside the frozen Sprint 5 boundary. Every existing
+exclusion and deferral remains unchanged, including broader target/result and
+extent modes, draft/thin/surface/open-profile Cut, generalized repair,
+additional supports and profile families, and Revolve/Sweep/Loft. The mandatory
+independent exact-state review and subsequent documentation-only re-review are
+still open; no current-source requalification completion is claimed yet.

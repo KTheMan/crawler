@@ -456,3 +456,64 @@ above, is **COMPLETE AND QUALIFIED** for the frozen Sprint 5 revision-3 boundary
 Blind Forward/Reverse/Symmetric Cut against exactly one explicit current same-
 component target over the named qualified supports and profile families. No
 excluded or deferred behavior is promoted by this decision.
+
+## Post-closeout source requalification checkpoint — 2026-09-02
+
+The earlier qualified bundle remains immutable evidence for its own source,
+manifest, and runtime identity. Subsequent reproducibility maintenance changed
+the source-bound current state without changing the five Sprint 5 stories or
+the frozen single-explicit-target Blind Cut boundary, so a fresh no-waiver
+qualification and independent review are required before current-source
+requalification can be claimed.
+
+Two failed runs remain preserved as shortcomings and remediation history. The
+run at
+`artifacts/solid-feature-qualification/runs/20260902T000118944Z-incomplete`
+bound commit `669b342febcf3c92c5e6d0360ec492008a918029` and stopped at
+locked Rust 1.98 lint after seven passing commands; command 8 returned 101 for
+two `chunks_exact(2)` uses. Commit
+`8b66f718ecfe2ca3123239a851ee4aa6d1e0aa65` applied the narrow lint
+remediation. The next run at
+`artifacts/solid-feature-qualification/runs/20260902T004241733Z-incomplete`
+bound that remediation commit and passed all 18 ledgered commands, including
+two byte-identical generator passes, but correctly failed the subsequent
+checked-in generated-output synchronization assertion. Commit
+`13966369dfb836176271f9ff4aaa4af903c25356` synchronized the generated
+artifacts and refreshed the runtime lock. Neither incomplete run produced a
+qualification report or qualifying bundle.
+
+The subsequent current-source run passed and sealed
+`artifacts/solid-feature-qualification/runs/20260902T005828Z-solid-feature-sprint-5-r3`.
+It binds commit `13966369dfb836176271f9ff4aaa4af903c25356`, candidate revision
+3, manifest SHA-256
+`e1a4b79f3b4cf1cf930d0745f7bdcda5cc2b56436c3316fab68f97e57881a526`,
+release runtime SHA-256
+`a8fccae29d36468623da693fc07edd8da4c1f692aa654c75e47e38c42c5d126d`,
+and source snapshot SHA-256
+`ae861b966bca656c850f7d114a8e82d8caed6b6d3ac6b1e02caf394010b90ef2`
+over 496 files with zero deleted entries. All 30 commands and all 45 records
+pass. Native and generated release-WASM evidence each contain nineteen results,
+parity passes 19/19 with zero differences, browser qualification passes 3/3,
+and isolated bundle validation passes at 45 records and 213 checksummed files.
+The qualification-report and checksum-index SHA-256 values are respectively
+`e03a5ac943bbea4ce9278a8289c1a8a19295b1c6572a056ca4f2e95a7d1a40b9`
+and `0e84bca9b96a2e7f0257128b6112f50df99bceb6503ce5ddee95ade17c7d8d99`.
+
+The locked performance audit passes all three workloads with zero Long Tasks or
+violations. Rectangle preview/recompute p50/p95 is 54.6/64.4 ms and 26.2/33.1
+ms; annulus is 63.4/75.0 ms and 32.3/48.3 ms; failure/recovery preview is
+60.5/70.3 ms and the complete sequence is 484.2/918.8 ms against the unchanged
+750/1200 ms limits. Each workload records two warmups, ten measured samples,
+and fifty cancel cycles; all twelve recovery samples prove refusal, exact
+accepted-state preservation, diagnostic/request binding, and successful retry.
+Performance JSON SHA-256 is
+`40793ea0ff23257eddb6b158d671bc51e872fa977cd22c1b6021d2bd6b0d4905`.
+
+This section preserves the specification's bundle-captured first 26,477 bytes,
+SHA-256
+`f2a352b8babf1e16be959d596e47481d459f718fc39301649d2e432c1284d4f6`,
+and the nested prefixes already recorded above. It is reproducibility and
+generated-output reconciliation only: no exclusion or deferral is promoted.
+The implementation/evidence run is green, but current-source status remains
+**NOT YET REQUALIFIED** until the mandatory independent exact-state review and
+the following documentation-only re-review each return exact `ZERO FINDINGS`.
