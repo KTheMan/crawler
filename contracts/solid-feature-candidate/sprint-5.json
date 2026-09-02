@@ -404,7 +404,7 @@
       "path": "web/crawler-app/src/generated/runtime/crawler_part_runtime_bg.wasm",
       "required": true,
       "lock_required": true,
-      "expected_sha256": "38de6df2ef1e2fc6543fa01e1483981a4c7bcbcabe79e5c71aadcf031f540313"
+      "expected_sha256": "a8fccae29d36468623da693fc07edd8da4c1f692aa654c75e47e38c42c5d126d"
     },
     {
       "id": "production-index",
@@ -466,7 +466,7 @@
   "runtime_lock": {
     "build_id": "solid-feature-sprint-5-r3-20260831",
     "wasm_artifact_id": "release-runtime-wasm",
-    "wasm_sha256": "38de6df2ef1e2fc6543fa01e1483981a4c7bcbcabe79e5c71aadcf031f540313"
+    "wasm_sha256": "a8fccae29d36468623da693fc07edd8da4c1f692aa654c75e47e38c42c5d126d"
   },
   "non_candidate_observation_policy": {
     "candidate_waivers_permitted": false,

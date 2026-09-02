@@ -47,6 +47,14 @@ try {
         New-Item -ItemType Directory -Force -Path $output | Out-Null
         & $tool $input --target web --out-dir $output
         if ($LASTEXITCODE -ne 0) { throw "$($binding.Crate) wasm-bindgen failed with exit code $LASTEXITCODE" }
+        # wasm-bindgen emits a wildcard .gitignore intended for disposable
+        # output directories. These bindings are checked in, so retaining it
+        # would hide missing or newly generated contract files from Git and
+        # make a clean-clone generation produce a different file set.
+        $generatedIgnore = Join-Path $output '.gitignore'
+        if (Test-Path -LiteralPath $generatedIgnore) {
+            Remove-Item -LiteralPath $generatedIgnore -Force
+        }
         if ($binding.AppOutput) {
             $appOutput = Join-Path $root $binding.AppOutput
             New-Item -ItemType Directory -Force -Path $appOutput | Out-Null

@@ -324,7 +324,15 @@ try {
         (Join-Path $root "web/crawler-app/src/generated/runtime"),
         (Join-Path $root "contracts/operation-schema/catalog.v1.json")
     )
-    $generatedBefore = @($generatedRoots | ForEach-Object { if (Test-Path -LiteralPath $_ -PathType Container) { Get-ChildItem -LiteralPath $_ -Recurse -File | ForEach-Object FullName } else { $_ } })
+    # Worker-spike and renderer bindings are disposable generator intermediates.
+    # Only the app bindings and catalog are synchronized in the repository and
+    # therefore required to exist before generation on a clean checkout.
+    $synchronizedGeneratedRoots = @(
+        (Join-Path $root "web/crawler-app/src/generated/kernel"),
+        (Join-Path $root "web/crawler-app/src/generated/runtime"),
+        (Join-Path $root "contracts/operation-schema/catalog.v1.json")
+    )
+    $generatedBefore = @($synchronizedGeneratedRoots | ForEach-Object { if (Test-Path -LiteralPath $_ -PathType Container) { Get-ChildItem -LiteralPath $_ -Recurse -File | ForEach-Object FullName } else { $_ } })
     $checkedInGeneratedHash = Get-FileSetHash $generatedBefore
     $generatorInvocations = @(
         (New-SolidFeatureCommandInvocation -Executable "pwsh" -Argv @("-NoProfile", "-File", "scripts/generate-contract-bindings.ps1") -SourceId "qualification:generate-contract-bindings"),
@@ -347,7 +355,9 @@ try {
     if ((@($generated | Sort-Object) -join "`n") -ne (@($generatedSecond | Sort-Object) -join "`n")) { throw "Generator output file set changed across consecutive runs." }
     $secondGeneratedHash = Get-FileSetHash $generatedSecond
     if ($firstGeneratedHash -ne $secondGeneratedHash) { throw "Generators are not byte-identical across consecutive runs." }
-    if ((@($generatedBefore | Sort-Object) -join "`n") -ne (@($generatedSecond | Sort-Object) -join "`n") -or $checkedInGeneratedHash -ne $secondGeneratedHash) {
+    $synchronizedGeneratedSecond = @($synchronizedGeneratedRoots | ForEach-Object { if (Test-Path -LiteralPath $_ -PathType Container) { Get-ChildItem -LiteralPath $_ -Recurse -File | ForEach-Object FullName } else { $_ } })
+    $synchronizedGeneratedSecondHash = Get-FileSetHash $synchronizedGeneratedSecond
+    if ((@($generatedBefore | Sort-Object) -join "`n") -ne (@($synchronizedGeneratedSecond | Sort-Object) -join "`n") -or $checkedInGeneratedHash -ne $synchronizedGeneratedSecondHash) {
         throw "Generated artifacts differ from the synchronized worktree output present at qualification start."
     }
     $actualWasmHash = (Get-FileHash -LiteralPath (Join-Path $root "web/crawler-app/src/generated/runtime/crawler_part_runtime_bg.wasm") -Algorithm SHA256).Hash.ToLowerInvariant()
