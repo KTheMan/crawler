@@ -596,6 +596,10 @@ pub fn import_step_body(
                 face_count: solid.face_iter().count(),
                 bounds_nm,
                 volume_model_units3: block.dimensions.into_iter().product(),
+
+                surface_area_nm2: None,
+
+                centroid_nm: None,
                 deterministic_digest: evidence_digest,
             },
         };
@@ -728,6 +732,10 @@ pub fn import_step_body(
             face_count: solid.face_iter().count(),
             bounds_nm,
             volume_model_units3: volume,
+
+            surface_area_nm2: None,
+
+            centroid_nm: None,
             deterministic_digest: evidence_digest,
         },
     };

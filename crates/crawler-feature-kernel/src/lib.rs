@@ -17,8 +17,13 @@ use monstertruck_solid::ShapeOpsError;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-/// Contract schema for persisted feature requests and results.
-pub const FEATURE_KERNEL_SCHEMA_VERSION: u16 = 1;
+/// Current contract schema for persisted feature requests and results.
+///
+/// Version 1 remains executable for previously persisted polygon-based feature
+/// requests. Version 2 adds native analytic profile curves without changing the
+/// meaning of any version 1 operation.
+pub const FEATURE_KERNEL_SCHEMA_VERSION: u16 = 2;
+pub const LEGACY_FEATURE_KERNEL_SCHEMA_VERSION: u16 = 1;
 const NANOMETERS_PER_MODEL_UNIT: f64 = 1_000_000.0;
 const MICRODEGREES_PER_REVOLUTION: i64 = 360_000_000;
 const MAX_EXACT_NANOMETERS: i64 = 9_007_199_254_740_991;
@@ -39,6 +44,8 @@ pub struct FeatureRequest {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum FeatureOperation {
     Extrude(ExtrudeInput),
+    NativeExtrudeV2(NativeExtrudeInputV2),
+    NativeExtrudeCutV2(NativeExtrudeCutInputV2),
     ExtrudeCut(ExtrudeCutInput),
     ProfileRevolve(ProfileRevolveInput),
     RevolveCut(RevolveCutInput),
@@ -63,6 +70,63 @@ pub struct ExtrudeInput {
     pub profiles_nm: Vec<Vec<[i64; 3]>>,
     pub direction_nm: [i64; 3],
     pub tolerance_nm: i64,
+}
+
+/// Version 2 extrusion of one analytic planar region by an exact world-space
+/// vector. The curve order is caller-owned and is retained by the kernel.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NativeExtrudeInputV2 {
+    pub region: NativeProfileRegionV2,
+    pub direction_nm: [i64; 3],
+    pub tolerance_nm: i64,
+}
+
+/// One material boundary plus zero or more void boundaries.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NativeProfileRegionV2 {
+    pub outer: NativeCurveLoopV2,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub holes: Vec<NativeCurveLoopV2>,
+}
+
+/// Bounded single-target subtractive extrusion of one analytic planar region.
+/// The target snapshot is the exact accepted B-rep and the caller must retain
+/// its body identity in the surrounding [`FeatureRequest`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct NativeExtrudeCutInputV2 {
+    pub target: BodySnapshot,
+    pub region: NativeProfileRegionV2,
+    pub direction_nm: [i64; 3],
+    pub tolerance_nm: i64,
+}
+
+/// A closed, caller-ordered loop of native curves. A full circle must be the
+/// only curve in its loop; segmented loops may mix lines and circular arcs.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NativeCurveLoopV2 {
+    pub curves: Vec<NativeCurveV2>,
+}
+
+/// Analytic curve primitives qualified for the version 2 extrusion candidate.
+/// All coordinates are exact document nanometers. A circle's two radial points
+/// define its positive X and positive Y directions in the circle plane.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum NativeCurveV2 {
+    Line {
+        start_nm: [i64; 3],
+        end_nm: [i64; 3],
+    },
+    CircularArc {
+        start_nm: [i64; 3],
+        end_nm: [i64; 3],
+        transit_nm: [i64; 3],
+    },
+    Circle {
+        center_nm: [i64; 3],
+        radius_point_nm: [i64; 3],
+        transit_point_nm: [i64; 3],
+    },
 }
 
 /// Durable subtractive extrusion retaining both the target and editable tool profile.
@@ -134,6 +198,7 @@ pub struct SweepInput {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DraftInput {
     pub target: BodySnapshot,
+    #[serde(with = "decimal_u64_vec")]
     pub face_stable_ids: Vec<u64>,
     pub pull_direction: PrincipalAxis,
     pub neutral_plane_origin_nm: [i64; 3],
@@ -170,6 +235,7 @@ pub enum BooleanKind {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct EdgeTreatmentInput {
     pub target: BodySnapshot,
+    #[serde(with = "decimal_u64_vec")]
     pub edge_stable_ids: Vec<u64>,
     pub radius_nm: i64,
     pub divisions: u32,
@@ -181,9 +247,53 @@ pub struct EdgeTreatmentInput {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ShellInput {
     pub target: BodySnapshot,
+    #[serde(with = "decimal_u64_vec")]
     pub removed_face_stable_ids: Vec<u64>,
     pub wall_thickness_nm: i64,
     pub tolerance_nm: i64,
+}
+
+/// Lossless persisted representation for topology identities. Runtime feature
+/// code retains `u64` values, while JSON uses canonical decimal strings so no
+/// JavaScript boundary can round an identity.
+mod decimal_u64_vec {
+    use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error as _};
+
+    pub fn serialize<S>(values: &[u64], serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        values
+            .iter()
+            .map(u64::to_string)
+            .collect::<Vec<_>>()
+            .serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<u64>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Vec::<String>::deserialize(deserializer)?
+            .into_iter()
+            .enumerate()
+            .map(|(index, value)| {
+                if value.is_empty()
+                    || (value.len() > 1 && value.starts_with('0'))
+                    || !value.bytes().all(|byte| byte.is_ascii_digit())
+                {
+                    return Err(D::Error::custom(format!(
+                        "topology identity at index {index} must be a canonical decimal u64 string"
+                    )));
+                }
+                value.parse::<u64>().map_err(|_| {
+                    D::Error::custom(format!(
+                        "topology identity at index {index} exceeds the u64 range"
+                    ))
+                })
+            })
+            .collect()
+    }
 }
 
 /// Separates direct body transforms from feature-history re-evaluation.
@@ -252,6 +362,12 @@ pub struct GeometryEvidence {
     pub face_count: usize,
     pub bounds_nm: AxisAlignedBoundsNm,
     pub volume_model_units3: f64,
+    /// Exact-profile measurements are present for V2 analytic prisms. Legacy
+    /// bodies omit them and retain their original serialized representation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub surface_area_nm2: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub centroid_nm: Option<[f64; 3]>,
     pub deterministic_digest: String,
 }
 
@@ -317,13 +433,31 @@ pub enum ReferenceKind {
 /// Executes one deterministic feature request against the pinned native kernel.
 pub fn execute(request: &FeatureRequest) -> Result<FeatureResult, FeatureError> {
     validate_envelope(request)?;
-    let (mut solid, ordered_input_body_ids, instance_body_ids, tolerance) = match &request.operation
-    {
+    let (solid, ordered_input_body_ids, instance_body_ids, tolerance) = match &request.operation {
         FeatureOperation::Extrude(input) => {
             validate_extrude(input)?;
             (
                 execute_extrude(input)?,
                 Vec::new(),
+                Vec::new(),
+                input.tolerance_nm,
+            )
+        }
+        FeatureOperation::NativeExtrudeV2(input) => {
+            validate_native_extrude_v2(input)?;
+            (
+                execute_native_extrude_v2(input)?,
+                Vec::new(),
+                Vec::new(),
+                input.tolerance_nm,
+            )
+        }
+        FeatureOperation::NativeExtrudeCutV2(input) => {
+            validate_native_extrude_cut_v2(request, input)?;
+            let id = input.target.body_id.clone();
+            (
+                execute_native_extrude_cut_v2(input)?,
+                vec![id],
                 Vec::new(),
                 input.tolerance_nm,
             )
@@ -472,6 +606,75 @@ pub fn execute(request: &FeatureRequest) -> Result<FeatureResult, FeatureError> 
             )
         }
     };
+    finish_feature_result(
+        request,
+        solid,
+        tolerance,
+        ordered_input_body_ids,
+        instance_body_ids,
+    )
+}
+
+/// Fast exact edit path for an existing V2 prism whose profile is unchanged
+/// and whose blind extent changes along one origin-plane axis. Affine scaling
+/// preserves the exact analytic B-rep (including holes) and avoids rebuilding
+/// the planar profile for every interactive distance edit.
+pub fn execute_native_extrude_extent_edit(
+    request: &FeatureRequest,
+    previous_request: &FeatureRequest,
+    previous_body: &BodySnapshot,
+) -> Result<FeatureResult, FeatureError> {
+    validate_envelope(request)?;
+    validate_envelope(previous_request)?;
+    let (FeatureOperation::NativeExtrudeV2(input), FeatureOperation::NativeExtrudeV2(previous)) =
+        (&request.operation, &previous_request.operation)
+    else {
+        return Err(invalid(
+            "operation",
+            "extent edit requires two native_extrude_v2 requests",
+        ));
+    };
+    validate_native_extrude_v2(input)?;
+    validate_native_extrude_v2(previous)?;
+    if input.region != previous.region || input.tolerance_nm != previous.tolerance_nm {
+        return Err(invalid(
+            "region",
+            "fast extent edit requires an unchanged analytic region",
+        ));
+    }
+    let axes = (0..3)
+        .filter(|axis| input.direction_nm[*axis] != 0 || previous.direction_nm[*axis] != 0)
+        .collect::<Vec<_>>();
+    if axes.len() != 1 {
+        return Err(invalid(
+            "direction_nm",
+            "fast extent edit requires one unchanged principal axis",
+        ));
+    }
+    let axis = axes[0];
+    let old = previous.direction_nm[axis];
+    let new = input.direction_nm[axis];
+    if old == 0 || new == 0 || old.signum() != new.signum() {
+        return Err(invalid(
+            "direction_nm",
+            "fast extent edit cannot reverse or replace its axis",
+        ));
+    }
+    let source = decode_solid("previous_body", previous_body)?;
+    let mut scalars = [1.0; 3];
+    scalars[axis] = new as f64 / old as f64;
+    let origin = point_from_nm(native_loop_first_point(&input.region.outer));
+    let solid = builder::scaled(&source, origin, scalars.into());
+    finish_feature_result(request, solid, input.tolerance_nm, Vec::new(), Vec::new())
+}
+
+fn finish_feature_result(
+    request: &FeatureRequest,
+    mut solid: Solid,
+    tolerance: i64,
+    ordered_input_body_ids: Vec<String>,
+    instance_body_ids: Vec<String>,
+) -> Result<FeatureResult, FeatureError> {
     if solid.boundaries().is_empty() || solid.face_iter().next().is_none() {
         return Err(failure(
             ErrorCategory::EmptyResult,
@@ -491,7 +694,7 @@ pub fn execute(request: &FeatureRequest) -> Result<FeatureResult, FeatureError> 
         )
     })?;
     Ok(FeatureResult {
-        schema_version: FEATURE_KERNEL_SCHEMA_VERSION,
+        schema_version: request.schema_version,
         document_id: request.document_id.clone(),
         feature_id: request.feature_id.clone(),
         output: BodySnapshot {
@@ -555,6 +758,619 @@ fn execute_extrude(input: &ExtrudeInput) -> Result<Solid, FeatureError> {
             "select one closed, non-self-intersecting planar profile",
         )
     })
+}
+
+fn validate_native_extrude_v2(input: &NativeExtrudeInputV2) -> Result<(), FeatureError> {
+    exact_positive_nm("tolerance_nm", input.tolerance_nm)?;
+    validate_exact_vector("direction_nm", input.direction_nm)?;
+    if input.direction_nm == [0; 3] {
+        return Err(invalid("direction_nm", "must have non-zero length"));
+    }
+    validate_native_curve_loop_v2("region.outer", &input.region.outer, input.tolerance_nm)?;
+    for (index, hole) in input.region.holes.iter().enumerate() {
+        validate_native_curve_loop_v2(&format!("region.holes[{index}]"), hole, input.tolerance_nm)?;
+    }
+    Ok(())
+}
+
+fn validate_native_curve_loop_v2(
+    field: &str,
+    loop_: &NativeCurveLoopV2,
+    tolerance_nm: i64,
+) -> Result<(), FeatureError> {
+    if loop_.curves.is_empty() {
+        return Err(invalid(field, "must contain a closed analytic boundary"));
+    }
+
+    let circles = loop_
+        .curves
+        .iter()
+        .filter(|curve| matches!(curve, NativeCurveV2::Circle { .. }))
+        .count();
+    if circles != 0 && (circles != 1 || loop_.curves.len() != 1) {
+        return Err(invalid(
+            field,
+            "a full circle must be the only curve in its loop",
+        ));
+    }
+
+    for (index, curve) in loop_.curves.iter().enumerate() {
+        let curve_field = format!("{field}.curves[{index}]");
+        match curve {
+            NativeCurveV2::Line { start_nm, end_nm } => {
+                validate_exact_vector(&format!("{curve_field}.start_nm"), *start_nm)?;
+                validate_exact_vector(&format!("{curve_field}.end_nm"), *end_nm)?;
+                if start_nm == end_nm {
+                    return Err(invalid(&curve_field, "line endpoints must be distinct"));
+                }
+            }
+            NativeCurveV2::CircularArc {
+                start_nm,
+                end_nm,
+                transit_nm,
+            } => {
+                validate_exact_vector(&format!("{curve_field}.start_nm"), *start_nm)?;
+                validate_exact_vector(&format!("{curve_field}.end_nm"), *end_nm)?;
+                validate_exact_vector(&format!("{curve_field}.transit_nm"), *transit_nm)?;
+                if start_nm == end_nm || start_nm == transit_nm || end_nm == transit_nm {
+                    return Err(invalid(
+                        &curve_field,
+                        "arc start, end, and transit points must be distinct",
+                    ));
+                }
+                if three_points_collinear_within(*start_nm, *end_nm, *transit_nm, tolerance_nm) {
+                    return Err(invalid(
+                        &curve_field,
+                        "arc start, end, and transit points must not be collinear",
+                    ));
+                }
+            }
+            NativeCurveV2::Circle {
+                center_nm,
+                radius_point_nm,
+                transit_point_nm,
+            } => {
+                validate_exact_vector(&format!("{curve_field}.center_nm"), *center_nm)?;
+                validate_exact_vector(&format!("{curve_field}.radius_point_nm"), *radius_point_nm)?;
+                validate_exact_vector(
+                    &format!("{curve_field}.transit_point_nm"),
+                    *transit_point_nm,
+                )?;
+                validate_circle_points(
+                    &curve_field,
+                    *center_nm,
+                    *radius_point_nm,
+                    *transit_point_nm,
+                    tolerance_nm,
+                )?;
+            }
+        }
+    }
+
+    if circles == 0 {
+        if loop_.curves.len() < 2 {
+            return Err(invalid(
+                field,
+                "a segmented loop must contain at least two curves",
+            ));
+        }
+        for index in 0..loop_.curves.len() {
+            let end = native_curve_endpoints(&loop_.curves[index])
+                .expect("circle loops were handled above")
+                .1;
+            let next = native_curve_endpoints(&loop_.curves[(index + 1) % loop_.curves.len()])
+                .expect("circle loops were handled above")
+                .0;
+            if end != next {
+                return Err(invalid(
+                    field,
+                    &format!(
+                        "curve {index} end does not equal curve {} start",
+                        (index + 1) % loop_.curves.len()
+                    ),
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn native_curve_endpoints(curve: &NativeCurveV2) -> Option<([i64; 3], [i64; 3])> {
+    match curve {
+        NativeCurveV2::Line { start_nm, end_nm }
+        | NativeCurveV2::CircularArc {
+            start_nm, end_nm, ..
+        } => Some((*start_nm, *end_nm)),
+        NativeCurveV2::Circle { .. } => None,
+    }
+}
+
+fn three_points_collinear_within(a: [i64; 3], b: [i64; 3], c: [i64; 3], tolerance_nm: i64) -> bool {
+    let ab = [
+        (b[0] - a[0]) as f64,
+        (b[1] - a[1]) as f64,
+        (b[2] - a[2]) as f64,
+    ];
+    let ac = [
+        (c[0] - a[0]) as f64,
+        (c[1] - a[1]) as f64,
+        (c[2] - a[2]) as f64,
+    ];
+    let cross = [
+        ab[1] * ac[2] - ab[2] * ac[1],
+        ab[2] * ac[0] - ab[0] * ac[2],
+        ab[0] * ac[1] - ab[1] * ac[0],
+    ];
+    let cross_length = (cross.iter().map(|value| value * value).sum::<f64>()).sqrt();
+    let longest = (ab
+        .iter()
+        .chain(ac.iter())
+        .map(|value| value * value)
+        .sum::<f64>())
+    .sqrt();
+    cross_length <= tolerance_nm as f64 * longest
+}
+
+fn validate_circle_points(
+    field: &str,
+    center: [i64; 3],
+    radius: [i64; 3],
+    transit: [i64; 3],
+    tolerance_nm: i64,
+) -> Result<(), FeatureError> {
+    let x = [
+        (radius[0] - center[0]) as f64,
+        (radius[1] - center[1]) as f64,
+        (radius[2] - center[2]) as f64,
+    ];
+    let y = [
+        (transit[0] - center[0]) as f64,
+        (transit[1] - center[1]) as f64,
+        (transit[2] - center[2]) as f64,
+    ];
+    let x_len = x.iter().map(|value| value * value).sum::<f64>().sqrt();
+    let y_len = y.iter().map(|value| value * value).sum::<f64>().sqrt();
+    if x_len == 0.0 || y_len == 0.0 {
+        return Err(invalid(
+            field,
+            "circle radius points must differ from its center",
+        ));
+    }
+    if (x_len - y_len).abs() > tolerance_nm as f64 {
+        return Err(invalid(
+            field,
+            "circle radial points must have equal radius within tolerance_nm",
+        ));
+    }
+    let perpendicular_error = x
+        .iter()
+        .zip(y.iter())
+        .map(|(left, right)| left * right)
+        .sum::<f64>()
+        .abs()
+        / x_len;
+    if perpendicular_error > tolerance_nm as f64 {
+        return Err(invalid(
+            field,
+            "circle radial points must be perpendicular within tolerance_nm",
+        ));
+    }
+    Ok(())
+}
+
+fn execute_native_extrude_v2(input: &NativeExtrudeInputV2) -> Result<Solid, FeatureError> {
+    let wires = std::iter::once(&input.region.outer)
+        .chain(input.region.holes.iter())
+        .map(native_curve_loop_wire_v2)
+        .collect::<Vec<_>>();
+    profile::solid_from_planar_profile(wires, vector_from_nm(input.direction_nm)).map_err(|error| {
+        failure(
+            ErrorCategory::InvalidInput,
+            format!("native extrude profile is invalid: {error}"),
+            Some("region"),
+            "select one closed, non-self-intersecting coplanar analytic region",
+        )
+    })
+}
+
+fn validate_native_extrude_cut_v2(
+    request: &FeatureRequest,
+    input: &NativeExtrudeCutInputV2,
+) -> Result<(), FeatureError> {
+    if request.output_body_id != input.target.body_id {
+        return Err(preserving_cut_error(
+            invalid(
+                "output_body_id",
+                "single-target Cut must retain the target body identity",
+            ),
+            &input.target,
+        ));
+    }
+    validate_snapshot("target", &input.target)
+        .and_then(|_| {
+            validate_native_extrude_v2(&NativeExtrudeInputV2 {
+                region: input.region.clone(),
+                direction_nm: input.direction_nm,
+                tolerance_nm: input.tolerance_nm,
+            })
+        })
+        .map_err(|error| preserving_cut_error(error, &input.target))
+}
+
+fn execute_native_extrude_cut_v2(input: &NativeExtrudeCutInputV2) -> Result<Solid, FeatureError> {
+    let tool = execute_native_extrude_v2(&NativeExtrudeInputV2 {
+        region: input.region.clone(),
+        direction_nm: input.direction_nm,
+        tolerance_nm: input.tolerance_nm,
+    })
+    .map_err(|error| preserving_cut_error(error, &input.target))?;
+    let target = decode_solid("target", &input.target)
+        .map_err(|error| preserving_cut_error(error, &input.target))?;
+    let target_bounds = solid_bounds_nm(&target)?;
+    let tool_bounds = solid_bounds_nm(&tool)?;
+    if !bounds_have_positive_overlap(target_bounds, tool_bounds) {
+        return Err(cut_failure(
+            input,
+            ErrorCategory::InvalidInput,
+            "no_intersection: the Blind Cut tool does not overlap the target with positive volume",
+            "reverse the direction or increase the distance so the profile enters the explicit target",
+        ));
+    }
+    if let Some(result) = execute_qualified_analytic_blind_cut(input, &target, &tool)? {
+        return Ok(result);
+    }
+    let tool = tool_snapshot(tool, "native-extrude-cut-v2-tool")
+        .map_err(|error| preserving_cut_error(error, &input.target))?;
+    let result = execute_boolean(&BooleanInput {
+        operation: BooleanKind::Cut,
+        target: input.target.clone(),
+        tools: vec![tool],
+        tolerance_nm: input.tolerance_nm,
+    })
+    .map_err(|error| map_native_cut_failure(input, error))?;
+    let encoded = serde_json::to_vec(&result).map_err(|error| {
+        cut_failure(
+            input,
+            ErrorCategory::Unsupported,
+            format!("nonmanifold_result: Cut result cannot be serialized: {error}"),
+            "adjust the profile, distance, or target to produce one valid manifold body",
+        )
+    })?;
+    if encoded == input.target.solid_json {
+        return Err(cut_failure(
+            input,
+            ErrorCategory::InvalidInput,
+            "no_intersection: the Blind Cut left the target unchanged",
+            "reverse the direction or increase the distance so the profile enters the explicit target",
+        ));
+    }
+    Ok(result)
+}
+
+fn native_region_has_analytic_curves(region: &NativeProfileRegionV2) -> bool {
+    region
+        .outer
+        .curves
+        .iter()
+        .chain(region.holes.iter().flat_map(|loop_| loop_.curves.iter()))
+        .any(|curve| !matches!(curve, NativeCurveV2::Line { .. }))
+}
+
+/// Exact bounded construction for an analytic Blind Cut into one qualified
+/// rectangular-prism target. It stitches the inverted tool shell into each
+/// touched target face (or retains it as an enclosed void), avoiding the
+/// adaptive intersection backend without polygonizing circles or arcs.
+fn execute_qualified_analytic_blind_cut(
+    input: &NativeExtrudeCutInputV2,
+    target: &Solid,
+    tool: &Solid,
+) -> Result<Option<Solid>, FeatureError> {
+    let Some(target_cells) = qualified_axis_aligned_boxes(target)? else {
+        return Ok(None);
+    };
+    let [target_cell] = target_cells.as_slice() else {
+        return Ok(None);
+    };
+    let nonzero_axes = input
+        .direction_nm
+        .iter()
+        .enumerate()
+        .filter(|(_, value)| **value != 0)
+        .collect::<Vec<_>>();
+    let [(axis, _)] = nonzero_axes.as_slice() else {
+        return Ok(None);
+    };
+    let axis = *axis;
+    let start = region_axis_coordinate(&input.region, axis).ok_or_else(|| {
+        cut_failure(
+            input,
+            ErrorCategory::InvalidInput,
+            "nonmanifold_result: analytic Cut profile is not planar on its extrusion axis",
+            "repair the profile support and retry",
+        )
+    })?;
+    let end = start + input.direction_nm[axis];
+    let low = start.min(end).max(target_cell.min[axis]);
+    let high = start.max(end).min(target_cell.max[axis]);
+    if low >= high {
+        return Ok(None);
+    }
+
+    // This exact constructor is intentionally bounded to tools that are
+    // laterally contained by the target. Partial side-wall intersections stay
+    // on the general Boolean path and fail closed if unsupported.
+    let tool_bounds = solid_bounds_nm(tool)?;
+    if (0..3).any(|candidate| {
+        candidate != axis
+            && (tool_bounds.min[candidate] < target_cell.min[candidate]
+                || tool_bounds.max[candidate] > target_cell.max[candidate])
+    }) {
+        return Ok(None);
+    }
+    if (0..3).any(|candidate| {
+        candidate != axis
+            && (tool_bounds.min[candidate] == target_cell.min[candidate]
+                || tool_bounds.max[candidate] == target_cell.max[candidate])
+    }) {
+        if !native_region_has_analytic_curves(&input.region) {
+            return Ok(None);
+        }
+        return Err(cut_failure(
+            input,
+            ErrorCategory::Unsupported,
+            "nonmanifold_result: analytic Cut boundary is tangent to the target boundary",
+            "move or resize the profile so the Cut boundary does not touch the target at only a point",
+        ));
+    }
+
+    let (clip_start, clip_end) = if input.direction_nm[axis] > 0 {
+        (low, high)
+    } else {
+        (high, low)
+    };
+    let mut clipped_region = input.region.clone();
+    translate_region_axis(&mut clipped_region, axis, clip_start - start);
+    let mut clipped_direction = [0; 3];
+    clipped_direction[axis] = clip_end - clip_start;
+    let clipped_tool = execute_native_extrude_v2(&NativeExtrudeInputV2 {
+        region: clipped_region,
+        direction_nm: clipped_direction,
+        tolerance_nm: input.tolerance_nm,
+    })
+    .map_err(|error| preserving_cut_error(error, &input.target))?;
+
+    let mut target_faces = target
+        .boundaries()
+        .iter()
+        .flat_map(|shell| shell.iter().cloned())
+        .collect::<Vec<_>>();
+    let mut tool_faces = clipped_tool
+        .boundaries()
+        .iter()
+        .flat_map(|shell| shell.iter().cloned())
+        .collect::<Vec<_>>();
+    let mut merged_faces = Vec::new();
+    for coordinate in [low, high] {
+        if coordinate != target_cell.min[axis] && coordinate != target_cell.max[axis] {
+            continue;
+        }
+        let target_index = target_faces
+            .iter()
+            .position(|face| face_axis_coordinate_nm(face, axis) == Some(coordinate));
+        let tool_index = tool_faces
+            .iter()
+            .position(|face| face_axis_coordinate_nm(face, axis) == Some(coordinate));
+        let (Some(target_index), Some(tool_index)) = (target_index, tool_index) else {
+            return Ok(None);
+        };
+        let target_face = target_faces.remove(target_index);
+        let tool_cap = tool_faces.remove(tool_index);
+        let mut boundaries = target_face.boundaries();
+        boundaries.extend(tool_cap.boundaries().into_iter().map(|wire| wire.inverse()));
+        let merged = Face::try_new(boundaries, target_face.surface()).map_err(|error| {
+            cut_failure(
+                input,
+                ErrorCategory::Unsupported,
+                format!("nonmanifold_result: cannot stitch analytic Cut opening: {error}"),
+                "adjust the profile so it remains strictly inside the target face",
+            )
+        })?;
+        merged_faces.push(merged);
+    }
+    for face in &mut tool_faces {
+        face.invert();
+    }
+    target_faces.extend(merged_faces);
+    let mut boundaries = vec![Shell::from(target_faces)];
+    if merged_faces_are_absent(low, high, target_cell.min[axis], target_cell.max[axis]) {
+        boundaries.push(Shell::from(tool_faces));
+    } else {
+        boundaries[0].extend(tool_faces);
+    }
+    Solid::try_new(boundaries).map(Some).map_err(|error| {
+        cut_failure(
+            input,
+            ErrorCategory::Unsupported,
+            format!("nonmanifold_result: exact analytic Blind Cut is invalid: {error}"),
+            "adjust the profile, direction, or distance to leave one valid manifold target",
+        )
+    })
+}
+
+fn merged_faces_are_absent(low: i64, high: i64, target_min: i64, target_max: i64) -> bool {
+    low != target_min && high != target_max
+}
+
+fn region_axis_coordinate(region: &NativeProfileRegionV2, axis: usize) -> Option<i64> {
+    let point = match region.outer.curves.first()? {
+        NativeCurveV2::Line { start_nm, .. } | NativeCurveV2::CircularArc { start_nm, .. } => {
+            *start_nm
+        }
+        NativeCurveV2::Circle { center_nm, .. } => *center_nm,
+    };
+    Some(point[axis])
+}
+
+fn translate_region_axis(region: &mut NativeProfileRegionV2, axis: usize, offset_nm: i64) {
+    for curve in region.outer.curves.iter_mut().chain(
+        region
+            .holes
+            .iter_mut()
+            .flat_map(|loop_| loop_.curves.iter_mut()),
+    ) {
+        match curve {
+            NativeCurveV2::Line { start_nm, end_nm } => {
+                start_nm[axis] += offset_nm;
+                end_nm[axis] += offset_nm;
+            }
+            NativeCurveV2::CircularArc {
+                start_nm,
+                end_nm,
+                transit_nm,
+            } => {
+                start_nm[axis] += offset_nm;
+                end_nm[axis] += offset_nm;
+                transit_nm[axis] += offset_nm;
+            }
+            NativeCurveV2::Circle {
+                center_nm,
+                radius_point_nm,
+                transit_point_nm,
+            } => {
+                center_nm[axis] += offset_nm;
+                radius_point_nm[axis] += offset_nm;
+                transit_point_nm[axis] += offset_nm;
+            }
+        }
+    }
+}
+
+fn face_axis_coordinate_nm(face: &Face, axis: usize) -> Option<i64> {
+    let mut coordinate = None;
+    for vertex in face.vertex_iter() {
+        let value = (vertex.point()[axis] * NANOMETERS_PER_MODEL_UNIT).round() as i64;
+        if coordinate.is_some_and(|candidate| candidate != value) {
+            return None;
+        }
+        coordinate = Some(value);
+    }
+    coordinate
+}
+
+fn solid_bounds_nm(solid: &Solid) -> Result<AxisAlignedBoundsNm, FeatureError> {
+    bounds_nm(
+        &solid
+            .vertex_iter()
+            .map(|vertex| vertex.point())
+            .collect::<Vec<_>>(),
+    )
+}
+
+fn bounds_have_positive_overlap(left: AxisAlignedBoundsNm, right: AxisAlignedBoundsNm) -> bool {
+    (0..3).all(|axis| left.min[axis] < right.max[axis] && right.min[axis] < left.max[axis])
+}
+
+fn cut_failure(
+    input: &NativeExtrudeCutInputV2,
+    category: ErrorCategory,
+    message: impl Into<String>,
+    recovery: impl Into<String>,
+) -> FeatureError {
+    FeatureError {
+        category,
+        message: message.into(),
+        field: Some("target".into()),
+        recovery: recovery.into(),
+        preserved_inputs: vec![input.target.clone()],
+        problematic_reference: Some(Box::new(ProblematicReference {
+            kind: ReferenceKind::Body,
+            stable_id: input.target.body_id.clone(),
+            ordered_index: Some(0),
+        })),
+    }
+}
+
+fn map_native_cut_failure(input: &NativeExtrudeCutInputV2, error: FeatureError) -> FeatureError {
+    match error.category {
+        ErrorCategory::EmptyResult => cut_failure(
+            input,
+            ErrorCategory::EmptyResult,
+            format!("remove_all_material: {}", error.message),
+            "reduce the distance or profile so the Cut leaves non-zero target material",
+        ),
+        ErrorCategory::Unsupported
+            if {
+                let message = error.message.to_ascii_lowercase();
+                message.contains("manifold")
+                    || message.contains("not oriented and closed")
+                    || message.contains("invalid output shell")
+            } =>
+        {
+            cut_failure(
+                input,
+                ErrorCategory::Unsupported,
+                format!("nonmanifold_result: {}", error.message),
+                "adjust the profile, distance, or target to produce one valid manifold body",
+            )
+        }
+        _ => preserving_cut_error(error, &input.target),
+    }
+}
+
+fn native_curve_loop_wire_v2(loop_: &NativeCurveLoopV2) -> Wire {
+    if let NativeCurveV2::Circle {
+        center_nm,
+        radius_point_nm,
+        transit_point_nm,
+    } = &loop_.curves[0]
+    {
+        let opposite_radius_nm = [
+            center_nm[0] * 2 - radius_point_nm[0],
+            center_nm[1] * 2 - radius_point_nm[1],
+            center_nm[2] * 2 - radius_point_nm[2],
+        ];
+        let opposite_transit_nm = [
+            center_nm[0] * 2 - transit_point_nm[0],
+            center_nm[1] * 2 - transit_point_nm[1],
+            center_nm[2] * 2 - transit_point_nm[2],
+        ];
+        let positive = builder::vertex(point_from_nm(*radius_point_nm));
+        let negative = builder::vertex(point_from_nm(opposite_radius_nm));
+        return vec![
+            builder::circle_arc(&positive, &negative, point_from_nm(*transit_point_nm)),
+            builder::circle_arc(&negative, &positive, point_from_nm(opposite_transit_nm)),
+        ]
+        .into();
+    }
+
+    // Reuse the same topological vertex at adjacent curve junctions. Equal
+    // coordinates on independently-created vertices do not close a B-rep wire.
+    let vertices = loop_
+        .curves
+        .iter()
+        .map(|curve| {
+            let (start_nm, _) = native_curve_endpoints(curve)
+                .expect("validated segmented loops cannot contain circles");
+            builder::vertex(point_from_nm(start_nm))
+        })
+        .collect::<Vec<_>>();
+    loop_
+        .curves
+        .iter()
+        .enumerate()
+        .map(|(index, curve)| {
+            let start = &vertices[index];
+            let end = &vertices[(index + 1) % vertices.len()];
+            match curve {
+                NativeCurveV2::Line { .. } => builder::line(start, end),
+                NativeCurveV2::CircularArc { transit_nm, .. } => {
+                    builder::circle_arc(start, end, point_from_nm(*transit_nm))
+                }
+                NativeCurveV2::Circle { .. } => unreachable!("validated above"),
+            }
+        })
+        .collect::<Vec<_>>()
+        .into()
 }
 
 fn validate_extrude_cut(input: &ExtrudeCutInput) -> Result<(), FeatureError> {
@@ -1296,6 +2112,8 @@ fn tool_snapshot(mut solid: Solid, body_id: &str) -> Result<BodySnapshot, Featur
                     .collect::<Vec<_>>(),
             )?,
             volume_model_units3: 0.0,
+            surface_area_nm2: None,
+            centroid_nm: None,
             deterministic_digest: "internal-cutting-tool".to_owned(),
         },
     })
@@ -1468,12 +2286,25 @@ fn sweep_angle(sweep_microdegrees: i64) -> builder::SweepAngle {
 }
 
 fn validate_envelope(request: &FeatureRequest) -> Result<(), FeatureError> {
-    if request.schema_version != FEATURE_KERNEL_SCHEMA_VERSION {
+    if !matches!(
+        request.schema_version,
+        LEGACY_FEATURE_KERNEL_SCHEMA_VERSION | FEATURE_KERNEL_SCHEMA_VERSION
+    ) {
         return Err(failure(
             ErrorCategory::Unsupported,
             format!("unsupported schema version {}", request.schema_version),
             Some("schema_version"),
-            "migrate the feature DTO to schema version 1",
+            "migrate the feature DTO to schema version 2",
+        ));
+    }
+    if request.schema_version == LEGACY_FEATURE_KERNEL_SCHEMA_VERSION
+        && matches!(&request.operation, FeatureOperation::NativeExtrudeV2(_))
+    {
+        return Err(failure(
+            ErrorCategory::Unsupported,
+            "native_extrude_v2 requires schema version 2",
+            Some("schema_version"),
+            "migrate the feature DTO to schema version 2",
         ));
     }
     for (field, value) in [
@@ -3206,10 +4037,26 @@ fn geometry_evidence(
     tolerance_nm: i64,
     request: &FeatureRequest,
 ) -> Result<GeometryEvidence, FeatureError> {
-    let points: Vec<Point3> = solid.vertex_iter().map(|vertex| vertex.point()).collect();
+    let mut points: Vec<Point3> = solid.vertex_iter().map(|vertex| vertex.point()).collect();
+    if let FeatureOperation::NativeExtrudeV2(input) = &request.operation {
+        points.extend(native_extrude_evidence_points(input));
+    }
     let bounds = bounds_nm(&points)?;
     let tolerance = model_units(tolerance_nm);
-    let volume = if let FeatureOperation::Shell(input) = &request.operation {
+    let analytic_prism = match &request.operation {
+        FeatureOperation::NativeExtrudeV2(input) => {
+            Some(deterministic_native_extrude_metrics(input)?)
+        }
+        FeatureOperation::NativeExtrudeCutV2(input) => deterministic_native_cut_metrics(input)?,
+        _ => None,
+    };
+    let volume = if let Some(metrics) = analytic_prism {
+        // V2 evidence is part of the persisted feature result and therefore
+        // must take the same numerical route in native and release-WASM. The
+        // former native-triangulation/WASM-render-packet split made identical
+        // solids acquire different semantic hashes.
+        metrics.volume_model_units3
+    } else if let FeatureOperation::Shell(input) = &request.operation {
         exact_shell_volume(input)?
     } else {
         #[cfg(not(target_arch = "wasm32"))]
@@ -3218,17 +4065,7 @@ fn geometry_evidence(
         }
         #[cfg(target_arch = "wasm32")]
         {
-            let mut sampled = solid.clone();
-            let packet = crawler_render_packet::packet_from_solid(&mut sampled, tolerance)
-                .map_err(|error| {
-                    failure(
-                        ErrorCategory::Numerical,
-                        format!("Crawler WASM sampler rejected kernel body: {error}"),
-                        Some("tolerance_nm"),
-                        "adjust tolerance or simplify the feature geometry",
-                    )
-                })?;
-            sampled_packet_volume(&packet).max(bounds_volume(bounds))
+            render_packet_volume(solid, tolerance)?.max(bounds_volume(bounds))
         }
     };
     if !volume.is_finite() {
@@ -3272,15 +4109,491 @@ fn geometry_evidence(
         face_count,
         bounds_nm: bounds,
         volume_model_units3: volume,
+        surface_area_nm2: analytic_prism.map(|metrics| metrics.surface_area_nm2),
+        centroid_nm: analytic_prism.map(|metrics| metrics.centroid_nm),
         deterministic_digest: format!("fnv1a64:{:016x}", fnv1a64(&canonical)),
     })
+}
+
+fn native_extrude_evidence_points(input: &NativeExtrudeInputV2) -> Vec<Point3> {
+    let mut base_nm = Vec::new();
+    for loop_ in std::iter::once(&input.region.outer).chain(input.region.holes.iter()) {
+        for curve in &loop_.curves {
+            match curve {
+                NativeCurveV2::Line { start_nm, end_nm } => {
+                    base_nm.extend([*start_nm, *end_nm]);
+                }
+                NativeCurveV2::CircularArc {
+                    start_nm,
+                    end_nm,
+                    transit_nm,
+                } => base_nm.extend([*start_nm, *end_nm, *transit_nm]),
+                NativeCurveV2::Circle {
+                    center_nm,
+                    radius_point_nm,
+                    transit_point_nm,
+                } => {
+                    base_nm.extend([
+                        *radius_point_nm,
+                        *transit_point_nm,
+                        [
+                            center_nm[0] * 2 - radius_point_nm[0],
+                            center_nm[1] * 2 - radius_point_nm[1],
+                            center_nm[2] * 2 - radius_point_nm[2],
+                        ],
+                        [
+                            center_nm[0] * 2 - transit_point_nm[0],
+                            center_nm[1] * 2 - transit_point_nm[1],
+                            center_nm[2] * 2 - transit_point_nm[2],
+                        ],
+                    ]);
+                }
+            }
+        }
+    }
+    base_nm
+        .into_iter()
+        .flat_map(|point| {
+            let translated = [
+                point[0] + input.direction_nm[0],
+                point[1] + input.direction_nm[1],
+                point[2] + input.direction_nm[2],
+            ];
+            [point_from_nm(point), point_from_nm(translated)]
+        })
+        .collect()
+}
+
+/// Computes V2 prism volume from the caller-owned analytic profile rather than
+/// a target-specific tessellation. The region contract supplies outer and hole
+/// semantics, so the calculation is stable even when display mesh subdivision
+/// differs between native and WASM builds.
+#[derive(Clone, Copy)]
+struct NativeExtrudeMetrics {
+    volume_model_units3: f64,
+    surface_area_nm2: f64,
+    centroid_nm: [f64; 3],
+}
+
+#[derive(Clone, Copy)]
+struct ProjectedLoopMetrics {
+    area_nm2: f64,
+    centroid_nm: [f64; 2],
+    perimeter_nm: f64,
+}
+
+fn deterministic_native_cut_metrics(
+    input: &NativeExtrudeCutInputV2,
+) -> Result<Option<NativeExtrudeMetrics>, FeatureError> {
+    let target: Solid = decode_solid("target", &input.target)?;
+    let Some(cells) = qualified_axis_aligned_boxes(&target)? else {
+        return Ok(None);
+    };
+    let [cell] = cells.as_slice() else {
+        return Ok(None);
+    };
+    let nonzero = input
+        .direction_nm
+        .iter()
+        .enumerate()
+        .filter(|(_, value)| **value != 0)
+        .collect::<Vec<_>>();
+    let [(axis, _)] = nonzero.as_slice() else {
+        return Ok(None);
+    };
+    let axis = *axis;
+    let start = region_axis_coordinate(&input.region, axis)
+        .ok_or_else(|| invalid("region", "analytic Cut profile has no plane coordinate"))?;
+    let end = start + input.direction_nm[axis];
+    let low = start.min(end).max(cell.min[axis]);
+    let high = start.max(end).min(cell.max[axis]);
+    if low >= high {
+        return Ok(None);
+    }
+    let outer = projected_loop_metrics(&input.region.outer, axis)?;
+    let holes = input
+        .region
+        .holes
+        .iter()
+        .map(|loop_| projected_loop_metrics(loop_, axis))
+        .collect::<Result<Vec<_>, _>>()?;
+    let outer_area = outer.area_nm2.abs();
+    let hole_area = holes
+        .iter()
+        .map(|metrics| metrics.area_nm2.abs())
+        .sum::<f64>();
+    let profile_area_nm2 = outer_area - hole_area;
+    let profile_perimeter_nm = outer.perimeter_nm
+        + holes
+            .iter()
+            .map(|metrics| metrics.perimeter_nm)
+            .sum::<f64>();
+    if profile_area_nm2 <= 0.0 {
+        return Err(invalid("region", "Cut holes consume the material profile"));
+    }
+    let projected_centroid = [0, 1].map(|coordinate| {
+        (outer_area * outer.centroid_nm[coordinate]
+            - holes
+                .iter()
+                .map(|metrics| metrics.area_nm2.abs() * metrics.centroid_nm[coordinate])
+                .sum::<f64>())
+            / profile_area_nm2
+    });
+    let mut cut_centroid_nm = match axis {
+        0 => [
+            (low + high) as f64 * 0.5,
+            projected_centroid[0],
+            projected_centroid[1],
+        ],
+        1 => [
+            projected_centroid[1],
+            (low + high) as f64 * 0.5,
+            projected_centroid[0],
+        ],
+        _ => [
+            projected_centroid[0],
+            projected_centroid[1],
+            (low + high) as f64 * 0.5,
+        ],
+    };
+    let dimensions = [0, 1, 2].map(|candidate| (cell.max[candidate] - cell.min[candidate]) as f64);
+    let target_volume_nm3 = dimensions.into_iter().product::<f64>();
+    let cut_depth_nm = (high - low) as f64;
+    let cut_volume_nm3 = profile_area_nm2 * cut_depth_nm;
+    let remaining_volume_nm3 = target_volume_nm3 - cut_volume_nm3;
+    if remaining_volume_nm3 <= 0.0 {
+        return Ok(None);
+    }
+    let target_centroid_nm =
+        [0, 1, 2].map(|candidate| (cell.min[candidate] + cell.max[candidate]) as f64 * 0.5);
+    for candidate in 0..3 {
+        cut_centroid_nm[candidate] = (target_volume_nm3 * target_centroid_nm[candidate]
+            - cut_volume_nm3 * cut_centroid_nm[candidate])
+            / remaining_volume_nm3;
+    }
+    let target_surface_nm2 = 2.0
+        * (dimensions[0] * dimensions[1]
+            + dimensions[1] * dimensions[2]
+            + dimensions[2] * dimensions[0]);
+    let touched = usize::from(low == cell.min[axis]) + usize::from(high == cell.max[axis]);
+    let internal_caps = 2 - touched;
+    let surface_area_nm2 = target_surface_nm2 - profile_area_nm2 * touched as f64
+        + profile_area_nm2 * internal_caps as f64
+        + profile_perimeter_nm * cut_depth_nm;
+    let volume_model_units3 =
+        exact_linear_cut_volume_model_units3(&input.region, axis, *cell, high - low)
+            .unwrap_or(remaining_volume_nm3 / NANOMETERS_PER_MODEL_UNIT.powi(3));
+    for coordinate in &mut cut_centroid_nm {
+        *coordinate = (*coordinate * 1_000.0).round() / 1_000.0;
+    }
+    Ok(Some(NativeExtrudeMetrics {
+        // Match the V2 join path's persisted-evidence quantization so native
+        // and release-WASM cannot acquire different semantic hashes from a
+        // last-bit floating-point result.
+        volume_model_units3: (volume_model_units3 * 1.0e12).round() / 1.0e12,
+        surface_area_nm2: surface_area_nm2.round(),
+        centroid_nm: cut_centroid_nm,
+    }))
+}
+
+/// Compute polygon-only Cut volume in integer nanometer arithmetic before the
+/// single final IEEE-754 conversion. This prevents native and WASM from
+/// persisting different last bits for the same exact rectangular result.
+fn exact_linear_cut_volume_model_units3(
+    region: &NativeProfileRegionV2,
+    axis: usize,
+    target: QualifiedBoxNm,
+    depth_nm: i64,
+) -> Option<f64> {
+    let loop_twice_area = |loop_: &NativeCurveLoopV2| -> Option<i128> {
+        let project = |point: [i64; 3]| -> [i64; 2] {
+            match axis {
+                0 => [point[1], point[2]],
+                1 => [point[2], point[0]],
+                _ => [point[0], point[1]],
+            }
+        };
+        loop_.curves.iter().try_fold(0_i128, |sum, curve| {
+            let NativeCurveV2::Line { start_nm, end_nm } = curve else {
+                return None;
+            };
+            let start = project(*start_nm);
+            let end = project(*end_nm);
+            Some(sum + start[0] as i128 * end[1] as i128 - start[1] as i128 * end[0] as i128)
+        })
+    };
+    let outer = loop_twice_area(&region.outer)?.abs();
+    let holes = region.holes.iter().try_fold(0_i128, |sum, loop_| {
+        Some(sum + loop_twice_area(loop_)?.abs())
+    })?;
+    let profile_twice_area = outer.checked_sub(holes)?;
+    let dimensions =
+        [0, 1, 2].map(|candidate| (target.max[candidate] - target.min[candidate]) as i128);
+    let target_twice_volume = dimensions.into_iter().try_fold(2_i128, i128::checked_mul)?;
+    let cut_twice_volume = profile_twice_area.checked_mul(depth_nm as i128)?;
+    let remaining_twice_volume = target_twice_volume.checked_sub(cut_twice_volume)?;
+    (remaining_twice_volume > 0).then(|| remaining_twice_volume as f64 / 2.0e18)
+}
+
+fn deterministic_native_extrude_metrics(
+    input: &NativeExtrudeInputV2,
+) -> Result<NativeExtrudeMetrics, FeatureError> {
+    let axis = input
+        .direction_nm
+        .iter()
+        .enumerate()
+        .max_by_key(|(_, value)| value.unsigned_abs())
+        .map(|(axis, _)| axis)
+        .ok_or_else(|| invalid("direction_nm", "extrude direction must be non-zero"))?;
+    let dominant = input.direction_nm[axis].unsigned_abs() as f64;
+    if dominant == 0.0 {
+        return Err(invalid(
+            "direction_nm",
+            "extrude direction must be non-zero",
+        ));
+    }
+    let outer = projected_loop_metrics(&input.region.outer, axis)?;
+    let holes = input
+        .region
+        .holes
+        .iter()
+        .map(|loop_| projected_loop_metrics(loop_, axis))
+        .collect::<Result<Vec<_>, _>>()?;
+    let outer_area = outer.area_nm2.abs();
+    let hole_area = holes
+        .iter()
+        .map(|metrics| metrics.area_nm2.abs())
+        .sum::<f64>();
+    let material_projected_area = outer_area - hole_area;
+    if !material_projected_area.is_finite() || material_projected_area <= 0.0 {
+        return Err(invalid(
+            "region",
+            "profile holes consume the outer material region",
+        ));
+    }
+    let direction_squared = input
+        .direction_nm
+        .iter()
+        .map(|value| (*value as f64) * (*value as f64))
+        .sum::<f64>();
+    let direction_length = direction_squared.sqrt();
+    let volume_model_units3 =
+        material_projected_area * direction_squared / dominant / NANOMETERS_PER_MODEL_UNIT.powi(3);
+    let true_material_area = material_projected_area * direction_length / dominant;
+    let perimeter = outer.perimeter_nm
+        + holes
+            .iter()
+            .map(|metrics| metrics.perimeter_nm)
+            .sum::<f64>();
+    let surface_area_nm2 = 2.0 * true_material_area + perimeter * direction_length;
+    let projected_centroid = [0, 1].map(|coordinate| {
+        (outer_area * outer.centroid_nm[coordinate]
+            - holes
+                .iter()
+                .map(|metrics| metrics.area_nm2.abs() * metrics.centroid_nm[coordinate])
+                .sum::<f64>())
+            / material_projected_area
+    });
+    let plane_coordinate = native_loop_first_point(&input.region.outer)[axis] as f64;
+    let mut centroid_nm = match axis {
+        0 => [
+            plane_coordinate,
+            projected_centroid[0],
+            projected_centroid[1],
+        ],
+        1 => [
+            projected_centroid[1],
+            plane_coordinate,
+            projected_centroid[0],
+        ],
+        _ => [
+            projected_centroid[0],
+            projected_centroid[1],
+            plane_coordinate,
+        ],
+    };
+    for (coordinate, direction) in centroid_nm.iter_mut().zip(input.direction_nm) {
+        *coordinate += direction as f64 * 0.5;
+        *coordinate = (*coordinate * 1_000.0).round() / 1_000.0;
+    }
+    // One cubic-nanometer quantum at model scale is far below the candidate's
+    // physical tolerance while removing target libm last-bit variation.
+    Ok(NativeExtrudeMetrics {
+        volume_model_units3: (volume_model_units3 * 1.0e12).round() / 1.0e12,
+        surface_area_nm2: surface_area_nm2.round(),
+        centroid_nm,
+    })
+}
+
+fn native_loop_first_point(loop_: &NativeCurveLoopV2) -> [i64; 3] {
+    match &loop_.curves[0] {
+        NativeCurveV2::Line { start_nm, .. } | NativeCurveV2::CircularArc { start_nm, .. } => {
+            *start_nm
+        }
+        NativeCurveV2::Circle { center_nm, .. } => *center_nm,
+    }
+}
+
+fn projected_loop_metrics(
+    loop_: &NativeCurveLoopV2,
+    axis: usize,
+) -> Result<ProjectedLoopMetrics, FeatureError> {
+    let project = |point: [i64; 3]| -> [f64; 2] {
+        match axis {
+            0 => [point[1] as f64, point[2] as f64],
+            1 => [point[2] as f64, point[0] as f64],
+            _ => [point[0] as f64, point[1] as f64],
+        }
+    };
+    if let [
+        NativeCurveV2::Circle {
+            center_nm,
+            radius_point_nm,
+            ..
+        },
+    ] = loop_.curves.as_slice()
+    {
+        let center = project(*center_nm);
+        let radius = project(*radius_point_nm);
+        let dx = radius[0] - center[0];
+        let dy = radius[1] - center[1];
+        let radius_squared = dx * dx + dy * dy;
+        return Ok(ProjectedLoopMetrics {
+            area_nm2: std::f64::consts::PI * radius_squared,
+            centroid_nm: center,
+            perimeter_nm: std::f64::consts::TAU * radius_squared.sqrt(),
+        });
+    }
+
+    let mut twice_integral = 0.0;
+    let mut integral_x2_dy = 0.0;
+    let mut integral_y2_dx = 0.0;
+    let mut perimeter_nm = 0.0;
+    for curve in &loop_.curves {
+        match curve {
+            NativeCurveV2::Line { start_nm, end_nm } => {
+                let start = project(*start_nm);
+                let end = project(*end_nm);
+                twice_integral += start[0] * end[1] - start[1] * end[0];
+                let dx = end[0] - start[0];
+                let dy = end[1] - start[1];
+                integral_x2_dy +=
+                    dy * (start[0] * start[0] + start[0] * end[0] + end[0] * end[0]) / 3.0;
+                integral_y2_dx +=
+                    dx * (start[1] * start[1] + start[1] * end[1] + end[1] * end[1]) / 3.0;
+                perimeter_nm += (dx * dx + dy * dy).sqrt();
+            }
+            NativeCurveV2::CircularArc {
+                start_nm,
+                end_nm,
+                transit_nm,
+            } => {
+                let start = project(*start_nm);
+                let end = project(*end_nm);
+                let transit = project(*transit_nm);
+                let center = circumcenter_2d(start, transit, end).ok_or_else(|| {
+                    invalid("region", "circular arc evidence points are collinear")
+                })?;
+                let start_angle = (start[1] - center[1]).atan2(start[0] - center[0]);
+                let end_angle = (end[1] - center[1]).atan2(end[0] - center[0]);
+                let transit_angle = (transit[1] - center[1]).atan2(transit[0] - center[0]);
+                let positive_end = positive_angle(end_angle - start_angle);
+                let positive_transit = positive_angle(transit_angle - start_angle);
+                let sweep = if positive_transit <= positive_end + 1.0e-12 {
+                    positive_end
+                } else {
+                    positive_end - std::f64::consts::TAU
+                };
+                let dx = start[0] - center[0];
+                let dy = start[1] - center[1];
+                let radius_squared = dx * dx + dy * dy;
+                twice_integral += center[0] * (end[1] - start[1]) - center[1] * (end[0] - start[0])
+                    + radius_squared * sweep;
+                let radius = radius_squared.sqrt();
+                let sin_start = (start[1] - center[1]) / radius;
+                let cos_start = (start[0] - center[0]) / radius;
+                let sin_end = (end[1] - center[1]) / radius;
+                let cos_end = (end[0] - center[0]) / radius;
+                let cos2_integral =
+                    sweep * 0.5 + (2.0 * sin_end * cos_end - 2.0 * sin_start * cos_start) * 0.25;
+                let sin2_integral =
+                    sweep * 0.5 - (2.0 * sin_end * cos_end - 2.0 * sin_start * cos_start) * 0.25;
+                let cos3_integral =
+                    (sin_end - sin_end.powi(3) / 3.0) - (sin_start - sin_start.powi(3) / 3.0);
+                let sin3_integral =
+                    (-cos_end + cos_end.powi(3) / 3.0) - (-cos_start + cos_start.powi(3) / 3.0);
+                integral_x2_dy += radius
+                    * (center[0] * center[0] * (sin_end - sin_start)
+                        + 2.0 * center[0] * radius * cos2_integral
+                        + radius_squared * cos3_integral);
+                integral_y2_dx += -radius
+                    * (center[1] * center[1] * (-cos_end + cos_start)
+                        + 2.0 * center[1] * radius * sin2_integral
+                        + radius_squared * sin3_integral);
+                perimeter_nm += radius * sweep.abs();
+            }
+            NativeCurveV2::Circle { .. } => {
+                return Err(invalid(
+                    "region",
+                    "circle must be the only curve in its loop",
+                ));
+            }
+        }
+    }
+    let area_nm2 = twice_integral * 0.5;
+    if area_nm2.abs() <= f64::EPSILON {
+        return Err(invalid("region", "profile loop has zero analytic area"));
+    }
+    Ok(ProjectedLoopMetrics {
+        area_nm2,
+        centroid_nm: [
+            integral_x2_dy / (2.0 * area_nm2),
+            -integral_y2_dx / (2.0 * area_nm2),
+        ],
+        perimeter_nm,
+    })
+}
+
+fn circumcenter_2d(a: [f64; 2], b: [f64; 2], c: [f64; 2]) -> Option<[f64; 2]> {
+    let denominator = 2.0 * (a[0] * (b[1] - c[1]) + b[0] * (c[1] - a[1]) + c[0] * (a[1] - b[1]));
+    if denominator.abs() <= f64::EPSILON {
+        return None;
+    }
+    let a2 = a[0] * a[0] + a[1] * a[1];
+    let b2 = b[0] * b[0] + b[1] * b[1];
+    let c2 = c[0] * c[0] + c[1] * c[1];
+    Some([
+        (a2 * (b[1] - c[1]) + b2 * (c[1] - a[1]) + c2 * (a[1] - b[1])) / denominator,
+        (a2 * (c[0] - b[0]) + b2 * (a[0] - c[0]) + c2 * (b[0] - a[0])) / denominator,
+    ])
+}
+
+fn positive_angle(value: f64) -> f64 {
+    value.rem_euclid(std::f64::consts::TAU)
+}
+
+#[cfg(target_arch = "wasm32")]
+fn render_packet_volume(solid: &Solid, tolerance: f64) -> Result<f64, FeatureError> {
+    let mut sampled = solid.clone();
+    let packet =
+        crawler_render_packet::packet_from_solid(&mut sampled, tolerance).map_err(|error| {
+            failure(
+                ErrorCategory::Numerical,
+                format!("Crawler sampler rejected kernel body: {error}"),
+                Some("tolerance_nm"),
+                "adjust tolerance or simplify the feature geometry",
+            )
+        })?;
+    Ok(sampled_packet_volume(&packet))
 }
 
 #[cfg(target_arch = "wasm32")]
 fn sampled_packet_volume(packet: &crawler_render_packet::RenderPacket) -> f64 {
     packet
         .triangle_indices
-        .chunks_exact(3)
+        .as_chunks::<3>()
+        .0
+        .iter()
         .map(|triangle| {
             let point = |index: u32| {
                 let offset = index as usize * 3;
@@ -3587,7 +4900,7 @@ fn fnv1a64(bytes: &[u8]) -> u64 {
     })
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 mod qualified_box_boolean_tests {
     use super::*;
 
@@ -3600,6 +4913,39 @@ mod qualified_box_boolean_tests {
 
     fn qualified_box(min: [i64; 3], max: [i64; 3]) -> QualifiedBoxNm {
         QualifiedBoxNm { min, max }
+    }
+
+    #[test]
+    fn linear_cut_volume_uses_one_exact_integer_route() {
+        let point = |x, y| [x, y, 4_000_000];
+        let points = [
+            point(2_000_000, 1_000_000),
+            point(8_000_000, 1_000_000),
+            point(8_000_000, 5_000_000),
+            point(2_000_000, 5_000_000),
+        ];
+        let region = NativeProfileRegionV2 {
+            outer: NativeCurveLoopV2 {
+                curves: (0..4)
+                    .map(|index| NativeCurveV2::Line {
+                        start_nm: points[index],
+                        end_nm: points[(index + 1) % points.len()],
+                    })
+                    .collect(),
+            },
+            holes: Vec::new(),
+        };
+        let volume = exact_linear_cut_volume_model_units3(
+            &region,
+            2,
+            QualifiedBoxNm {
+                min: [0, 0, 0],
+                max: [10_000_000, 6_000_000, 4_000_000],
+            },
+            1_000_000,
+        )
+        .unwrap();
+        assert_eq!(volume.to_bits(), 216.0_f64.to_bits());
     }
 
     #[test]

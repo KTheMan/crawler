@@ -4,12 +4,13 @@
 //! It intentionally contains no kernel, render, persistence, or UI state.
 
 use crawler_document::{
-    AngleUnit, Body, BodyId, Component, ComponentId, Document, DocumentChange, DocumentId,
-    DocumentTransaction, DocumentUnits, Feature, FeatureId, FeatureInput, FeatureRecomputeState,
-    LengthUnit, ModelVisibility, OperationReference, OriginPlane, OriginPlaneDefinition,
-    OriginPlaneId, Parameter, ParameterId, ParameterValue, RecomputeState, SchemaVersion, Sketch,
+    AngleUnit, Body, BodyId, Component, ComponentId, ConstructionPlaneDefinitionReference,
+    Document, DocumentChange, DocumentId, DocumentTransaction, DocumentUnits, Feature,
+    FeatureDefinitionReference, FeatureId, FeatureInput, FeatureRecomputeState, LengthUnit,
+    ModelVisibility, OperationReference, OriginPlane, OriginPlaneDefinition, OriginPlaneId,
+    Parameter, ParameterId, ParameterValue, RecomputeState, SchemaVersion, Sketch,
     SketchConstraint, SketchElement, SketchId, SketchSupport, TopologyKind, TopologyReference,
-    TopologyReferenceId, TopologySignature, TransactionId,
+    TopologyReferenceId, TopologyReferenceVersion, TopologySignature, TransactionId,
 };
 use crawler_history::DocumentHistory;
 use sha2::{Digest, Sha256};
@@ -28,6 +29,64 @@ pub const BODY_ID: &str = "body:part";
 pub const WIDTH_PARAMETER_ID: &str = "parameter:width";
 pub const HEIGHT_PARAMETER_ID: &str = "parameter:height";
 pub const DISTANCE_PARAMETER_ID: &str = "parameter:distance";
+/// Largest signed nanometer magnitude that round-trips exactly through the
+/// browser number boundary used by construction-plane requests and evidence.
+pub const SAFE_NANOMETER_BOUND: i64 = 9_007_199_254_740_991;
+
+pub fn validate_construction_plane_offset_parameter(
+    parameter: &ParameterId,
+    value: &ParameterValue,
+) -> Result<i64, EngineError> {
+    let offset = match value {
+        ParameterValue::LengthNanometers(value) => *value,
+        ParameterValue::AngleMicrodegrees(value) => {
+            return Err(wrong_type_offset_error(
+                parameter,
+                "angle_microdegrees",
+                *value,
+            ));
+        }
+        ParameterValue::ScalarMillionths(value) => {
+            return Err(wrong_type_offset_error(
+                parameter,
+                "scalar_millionths",
+                *value,
+            ));
+        }
+        ParameterValue::Count(value) => {
+            return Err(EngineError::InvalidDocument(format!(
+                "wrong_type_construction_plane_offset_parameter at construction_plane.offset_parameter: referenced parameter {} has incompatible count value {}",
+                parameter.0, value
+            )));
+        }
+        ParameterValue::Boolean(value) => {
+            return Err(EngineError::InvalidDocument(format!(
+                "wrong_type_construction_plane_offset_parameter at construction_plane.offset_parameter: referenced parameter {} has incompatible boolean value {}",
+                parameter.0, value
+            )));
+        }
+        ParameterValue::Text(value) => {
+            return Err(EngineError::InvalidDocument(format!(
+                "wrong_type_construction_plane_offset_parameter at construction_plane.offset_parameter: referenced parameter {} has incompatible text value {:?}",
+                parameter.0, value
+            )));
+        }
+    };
+    if !(-SAFE_NANOMETER_BOUND..=SAFE_NANOMETER_BOUND).contains(&offset) {
+        return Err(EngineError::InvalidDocument(format!(
+            "unsafe_construction_plane_offset_parameter at construction_plane.offset_parameter: referenced parameter {} has unsafe nanometer value {} outside [{}, {}]",
+            parameter.0, offset, -SAFE_NANOMETER_BOUND, SAFE_NANOMETER_BOUND
+        )));
+    }
+    Ok(offset)
+}
+
+fn wrong_type_offset_error(parameter: &ParameterId, kind: &str, value: i64) -> EngineError {
+    EngineError::InvalidDocument(format!(
+        "wrong_type_construction_plane_offset_parameter at construction_plane.offset_parameter: referenced parameter {} has incompatible {} value {}",
+        parameter.0, kind, value
+    ))
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BlankPartCommand {
@@ -373,6 +432,7 @@ fn build_blank_document(command: BlankPartCommand) -> Document {
         },
         root_component: component_id.clone(),
         origin_planes: origin_planes(&component_id),
+        construction_planes: BTreeMap::new(),
         components: BTreeMap::from([(
             component_id.clone(),
             Component {
@@ -384,11 +444,14 @@ fn build_blank_document(command: BlankPartCommand) -> Document {
                 sketch_order: Vec::new(),
                 feature_order: Vec::new(),
                 parameter_order: Vec::new(),
+                construction_plane_order: Vec::new(),
             },
         )]),
         bodies: BTreeMap::new(),
         sketches: BTreeMap::new(),
+        region_definitions_v2: BTreeMap::new(),
         features: BTreeMap::new(),
+        feature_definitions_v2: BTreeMap::new(),
         parameters: BTreeMap::new(),
         topology_references: BTreeMap::new(),
         transactions: Vec::new(),
@@ -423,6 +486,7 @@ fn build_new_document(
         },
         root_component: component_id.clone(),
         origin_planes: origin_planes(&component_id),
+        construction_planes: BTreeMap::new(),
         components: BTreeMap::from([(
             component_id.clone(),
             Component {
@@ -434,6 +498,7 @@ fn build_new_document(
                 sketch_order: vec![sketch_id.clone()],
                 feature_order: vec![rectangle_feature_id.clone(), extrude_feature_id.clone()],
                 parameter_order: vec![width_id.clone(), height_id.clone(), distance_id.clone()],
+                construction_plane_order: Vec::new(),
             },
         )]),
         bodies: BTreeMap::from([(
@@ -443,6 +508,7 @@ fn build_new_document(
                 display_name: "Part Body".into(),
                 component: component_id.clone(),
                 generated_by: extrude_feature_id.clone(),
+                producer_lineage: Vec::new(),
                 visibility: ModelVisibility::Visible,
             },
         )]),
@@ -450,6 +516,7 @@ fn build_new_document(
             sketch_id.clone(),
             rectangle_sketch(&component_id, dimensions),
         )]),
+        region_definitions_v2: BTreeMap::new(),
         features: BTreeMap::from([
             (
                 extrude_feature_id.clone(),
@@ -494,6 +561,7 @@ fn build_new_document(
                 },
             ),
         ]),
+        feature_definitions_v2: BTreeMap::new(),
         parameters: BTreeMap::from([
             (
                 distance_id.clone(),
@@ -650,10 +718,109 @@ fn validate_component_references(document: &Document) -> Result<(), EngineError>
             )));
         }
     }
+    let mut ordered_planes = BTreeSet::new();
+    for component in document.components.values() {
+        for plane in &component.construction_plane_order {
+            if !ordered_planes.insert(plane.clone()) {
+                return Err(EngineError::InvalidDocument(format!(
+                    "construction plane {} appears more than once in component order",
+                    plane.0
+                )));
+            }
+            let definition = document.construction_planes.get(plane).ok_or_else(|| {
+                EngineError::InvalidDocument(format!(
+                    "ordered construction plane {} is missing",
+                    plane.0
+                ))
+            })?;
+            if definition.component != component.id {
+                return Err(EngineError::InvalidDocument(format!(
+                    "construction plane {} is ordered by the wrong component",
+                    plane.0
+                )));
+            }
+        }
+    }
+    if ordered_planes.len() != document.construction_planes.len() {
+        return Err(EngineError::InvalidDocument(
+            "construction-plane component order is incomplete".into(),
+        ));
+    }
+    for (id, plane) in &document.construction_planes {
+        if &plane.id != id || !document.components.contains_key(&plane.component) {
+            return Err(EngineError::InvalidDocument(format!(
+                "construction plane {} has invalid identity or component",
+                id.0
+            )));
+        }
+        let mut invalid_reference = None;
+        plane.visit_references(|reference| match reference {
+            ConstructionPlaneDefinitionReference::OriginPlane(base_plane) => {
+                match document.origin_planes.get(base_plane) {
+                    Some(base) if base.component == plane.component => {}
+                    _ => {
+                        invalid_reference = Some(format!(
+                            "invalid_construction_plane_dependency at extrude.support: construction plane {} references invalid entity {}",
+                            id.0, base_plane.0
+                        ));
+                    }
+                }
+            }
+            ConstructionPlaneDefinitionReference::Parameter(parameter) => {
+                match document.parameters.get(parameter) {
+                    None => {
+                        invalid_reference = Some(format!(
+                            "missing_construction_plane_offset_parameter at construction_plane.offset_parameter: referenced entity {} is missing",
+                            parameter.0
+                        ));
+                    }
+                    Some(stored) => {
+                        if let Err(error) =
+                            validate_construction_plane_offset_parameter(parameter, &stored.value)
+                        {
+                            invalid_reference = Some(error.to_string());
+                        }
+                    }
+                }
+            }
+        });
+        if let Some(reference) = invalid_reference {
+            return Err(EngineError::InvalidDocument(format!(
+                "construction plane {} has invalid reference {}",
+                id.0, reference
+            )));
+        }
+    }
     for (id, sketch) in &document.sketches {
         if &sketch.id != id || !document.components.contains_key(&sketch.component) {
             return Err(EngineError::InvalidDocument(format!(
                 "sketch {} has invalid identity or component",
+                id.0
+            )));
+        }
+        if let SketchSupport::ConstructionPlaneReference { plane } = &sketch.support {
+            let definition = document.construction_planes.get(plane).ok_or_else(|| {
+                EngineError::InvalidDocument(format!(
+                    "missing_construction_plane_support at extrude.support: sketch {} references missing entity {}",
+                    id.0, plane.0
+                ))
+            })?;
+            if definition.component != sketch.component {
+                return Err(EngineError::InvalidDocument(format!(
+                    "sketch {} references a construction plane from another component",
+                    id.0
+                )));
+            }
+        }
+    }
+    for (id, region) in &document.region_definitions_v2 {
+        if &region.id != id
+            || !document.sketches.contains_key(&region.sketch)
+            || region.outer_geometry_ids.is_empty()
+            || region.hole_geometry_ids.iter().any(Vec::is_empty)
+        {
+            return Err(EngineError::InvalidDocument(format!(
+                "region {} has invalid identity, sketch, or boundary",
                 id.0
             )));
         }
@@ -663,6 +830,69 @@ fn validate_component_references(document: &Document) -> Result<(), EngineError>
             return Err(EngineError::InvalidDocument(format!(
                 "feature {} has invalid identity or component",
                 id.0
+            )));
+        }
+    }
+    for (feature_id, definition) in &document.feature_definitions_v2 {
+        if !document.features.contains_key(feature_id) {
+            return Err(EngineError::InvalidDocument(format!(
+                "feature definition {} has no timeline feature",
+                feature_id.0
+            )));
+        }
+        let referenced_sketch =
+            definition
+                .references()
+                .into_iter()
+                .find_map(|reference| match reference {
+                    crawler_document::OwnedFeatureDefinitionReference::Sketch(sketch) => {
+                        Some(sketch)
+                    }
+                    _ => None,
+                });
+        let mut invalid_reference = None;
+        definition.visit_references(|reference| match reference {
+            FeatureDefinitionReference::Region(region) => {
+                let Some(stored) = document.region_definitions_v2.get(region) else {
+                    invalid_reference = Some(region.0.clone());
+                    return;
+                };
+                if referenced_sketch
+                    .as_ref()
+                    .is_some_and(|sketch| sketch != &stored.sketch)
+                {
+                    invalid_reference = Some(region.0.clone());
+                }
+            }
+            FeatureDefinitionReference::Sketch(sketch)
+                if !document.sketches.contains_key(sketch) =>
+            {
+                invalid_reference = Some(sketch.0.clone());
+            }
+            FeatureDefinitionReference::Body(body) if !document.bodies.contains_key(body) => {
+                invalid_reference = Some(body.0.clone());
+            }
+            FeatureDefinitionReference::Parameter(parameter)
+                if !document.parameters.contains_key(parameter) =>
+            {
+                invalid_reference = Some(parameter.0.clone());
+            }
+            FeatureDefinitionReference::OriginPlane(plane)
+                if !document.origin_planes.contains_key(plane) =>
+            {
+                invalid_reference = Some(plane.0.clone());
+            }
+            FeatureDefinitionReference::ConstructionPlane(plane)
+                if !document.construction_planes.contains_key(plane) =>
+            {
+                invalid_reference = Some(plane.0.clone());
+            }
+            _ => {}
+        });
+        if let Some(reference) = invalid_reference {
+            return Err(EngineError::InvalidDocument(format!(
+                "feature definition {} has invalid reference {}",
+                feature_id.0, reference
             )));
         }
     }
@@ -783,12 +1013,15 @@ fn length_parameter(id: ParameterId, display_name: &str, value: i64) -> Paramete
 }
 
 fn top_face_reference(
+    component: &ComponentId,
     body: &BodyId,
     producer: &FeatureId,
     dimensions: PartDimensions,
 ) -> Result<TopologyReference, EngineError> {
     Ok(TopologyReference {
+        schema_version: TopologyReferenceVersion::V1,
         id: TopologyReferenceId::from("topology:extrude-top"),
+        component: component.clone(),
         body: body.clone(),
         producer: producer.clone(),
         kind: TopologyKind::Face,
@@ -873,6 +1106,7 @@ fn update_derived_geometry(document: &mut Document) -> Result<(), EngineError> {
     document.topology_references.insert(
         TopologyReferenceId::from("topology:extrude-top"),
         top_face_reference(
+            &ComponentId::from(ROOT_COMPONENT_ID),
             &BodyId::from(BODY_ID),
             &FeatureId::from(EXTRUDE_FEATURE_ID),
             dimensions,
@@ -973,6 +1207,7 @@ fn sketch_element_id(element: &SketchElement) -> &str {
 
 fn validate_topology(document: &Document, dimensions: PartDimensions) -> Result<(), EngineError> {
     let expected = top_face_reference(
+        &ComponentId::from(ROOT_COMPONENT_ID),
         &BodyId::from(BODY_ID),
         &FeatureId::from(EXTRUDE_FEATURE_ID),
         dimensions,

@@ -6,10 +6,21 @@ import {
   originPlaneSupport,
   planeLocalToWorldMillimeters,
   planarFaceEvidenceKey,
+  resolvedSketchPlanesEqual,
   resolveSketchPlane,
   worldMillimetersToPlaneLocal,
   type OriginPlane,
 } from "../src/sketch-plane.ts";
+import type { PlanarFaceFrameAuthority } from "../src/protocol.ts";
+
+function nativeAuthority(bodyId: string, faceStableId: string, origin: readonly [number, number, number]): PlanarFaceFrameAuthority {
+  return {
+    acceptedRevision: 7, bodyId, componentId: "component:part", producerFeatureId: "feature:producer",
+    faceStableId, originVertexStableId: "1", frameConvention: "planar-face-v1", handedness: "right",
+    scaleMillionths: 1_000_000, orthonormalToleranceMillionths: 2,
+    frame: { originNanometers: origin, xAxisMillionths: [1_000_000, 0, 0], yAxisMillionths: [0, 1_000_000, 0], normalMillionths: [0, 0, 1_000_000] },
+  };
+}
 
 const document = {
   origin_planes: {
@@ -46,6 +57,84 @@ test("plane-local nanometers round-trip through 3D model millimeters", () => {
   }
 });
 
+test("resolved support equality normalizes serialized origin support while preserving plane boundaries", () => {
+  const directXy = resolveSketchPlane({ kind: "origin_plane", plane: "xy" }, document);
+  const referencedXy = resolveSketchPlane(originPlaneSupport("xy"), document);
+  const referencedXz = resolveSketchPlane(originPlaneSupport("xz"), document);
+  assert.equal(directXy.status, "ready");
+  assert.equal(referencedXy.status, "ready");
+  assert.equal(referencedXz.status, "ready");
+  if (directXy.status !== "ready" || referencedXy.status !== "ready" || referencedXz.status !== "ready") return;
+  assert.equal(resolvedSketchPlanesEqual(directXy.plane, referencedXy.plane), true);
+  assert.equal(resolvedSketchPlanesEqual(referencedXy.plane, referencedXz.plane), false);
+});
+
+test("offset construction planes derive exact frames from all three durable origin bases", () => {
+  const constructionDocument = {
+    ...document,
+    construction_planes: Object.fromEntries((["xy", "xz", "yz"] as const).map((plane) => [`plane:${plane}`, {
+      schema_version: 1,
+      id: `plane:${plane}`,
+      definition: { kind: "offset", base_plane: `origin-plane:${plane}`, offset: `parameter:${plane}` },
+    }])),
+    parameters: Object.fromEntries((["xy", "xz", "yz"] as const).map((plane) => [`parameter:${plane}`, {
+      value: { kind: "length_nanometers", value: plane === "xz" ? -4_000_000 : 4_000_000 },
+    }])),
+  };
+  const expectedOrigins = { xy: [0, 0, 4_000_000], xz: [0, 4_000_000, 0], yz: [4_000_000, 0, 0] } as const;
+  for (const plane of ["xy", "xz", "yz"] as const) {
+    const result = resolveSketchPlane({ kind: "construction_plane_reference", plane: `plane:${plane}` }, constructionDocument);
+    assert.equal(result.status, "ready");
+    if (result.status === "ready") {
+      assert.deepEqual(result.plane.origin_nanometers, expectedOrigins[plane]);
+      assert.deepEqual(worldMillimetersToPlaneLocal(planeLocalToWorldMillimeters({ x_nm: 7_000_000, y_nm: -9_000_000 }, result.plane), result.plane), { x_nm: 7_000_000, y_nm: -9_000_000 });
+    }
+  }
+});
+
+test("offset construction-plane translation remains exact near the safe-integer boundary", () => {
+  const offset = Number.MAX_SAFE_INTEGER - 10;
+  assert.notEqual(offset * 1_000_000 / 1_000_000, offset, "fixture must expose Number multiplication drift");
+  for (const [plane, expected] of [
+    ["xy", [0, 0, offset]],
+    ["xz", [0, -offset, 0]],
+    ["yz", [offset, 0, 0]],
+  ] as const) {
+    const result = resolveSketchPlane({ kind: "construction_plane_reference", plane: `plane:boundary:${plane}` }, {
+      ...document,
+      construction_planes: {
+        [`plane:boundary:${plane}`]: {
+          schema_version: 1,
+          id: `plane:boundary:${plane}`,
+          definition: { kind: "offset", base_plane: `origin-plane:${plane}`, offset: "parameter:boundary" },
+        },
+      },
+      parameters: { "parameter:boundary": { value: { kind: "length_nanometers", value: offset } } },
+    });
+    assert.equal(result.status, "ready");
+    if (result.status === "ready") assert.deepEqual(result.plane.origin_nanometers, expected);
+  }
+});
+
+test("construction planes reject captured frames and missing, suppressed, or invalid authority", () => {
+  const support = { kind: "construction_plane_reference" as const, plane: "plane:offset" };
+  assert.equal(resolveSketchPlane(support, {
+    construction_planes: { "plane:offset": { origin_nanometers: [0, 0, 5_000_000], x_axis_millionths: [1_000_000, 0, 0], normal_millionths: [0, 0, 1_000_000] } } as never,
+  }).status, "invalid_reference");
+  assert.equal(resolveSketchPlane(support, {
+    construction_planes: { "plane:offset": { schema_version: 1, definition: { kind: "offset", base_plane: "origin-plane:xy", offset: "parameter:missing" } } },
+    origin_planes: document.origin_planes,
+  }).status, "missing_reference");
+  assert.equal(resolveSketchPlane(support, {
+    construction_planes: { "plane:offset": { schema_version: 1, definition: { kind: "offset", base_plane: "origin-plane:xy", offset: "parameter:offset" }, suppressed: true } },
+  }).status, "suppressed_reference");
+  assert.equal(resolveSketchPlane(support, {
+    construction_planes: { "plane:offset": { schema_version: 1, definition: { kind: "offset", base_plane: "origin-plane:xy", offset: "parameter:offset" } } },
+    origin_planes: document.origin_planes,
+    parameters: { "parameter:offset": { value: { kind: "scalar_millionths", value: 4_000_000 } } },
+  }).status, "invalid_reference");
+});
+
 test("camera rays intersect XZ and YZ into the same solver-local 2D coordinates", () => {
   const xz = resolveSketchPlane(originPlaneSupport("xz"), document);
   const yz = resolveSketchPlane(originPlaneSupport("yz"), document);
@@ -57,7 +146,7 @@ test("camera rays intersect XZ and YZ into the same solver-local 2D coordinates"
   assert.equal(intersectRayWithSketchPlane([0, 0, 1], [1, 0, 0], xz.plane), undefined);
 });
 
-test("topology support requires current body-qualified planar face evidence", () => {
+test("topology support requires native frame authority; renderer evidence alone cannot authorize it", () => {
   const support = { kind: "topology" as const, reference: "topology:face" };
   const kernelId = "18446744073709551614";
   const body = "body:face";
@@ -87,40 +176,39 @@ test("topology support requires current body-qualified planar face evidence", ()
     area_square_nanometers: 12_000_000,
   };
   const resolved = resolveSketchPlane(support, faceDocument, new Map([[planarFaceEvidenceKey(body, kernelId), current]]));
-  assert.equal(resolved.status, "ready");
-  if (resolved.status === "ready") assert.deepEqual(resolved.plane.origin_nanometers, current.centroid_nanometers);
+  assert.equal(resolved.status, "surface_evidence_required");
+  const authority = nativeAuthority(body, kernelId, [1_000_000, 2_000_000, 3_000_000]);
+  const nativeResolved = resolveSketchPlane(
+    support, faceDocument,
+    new Map([[planarFaceEvidenceKey(body, kernelId), current]]),
+    new Map([[planarFaceEvidenceKey(body, kernelId), authority]]),
+  );
+  assert.equal(nativeResolved.status, "ready");
+  if (nativeResolved.status === "ready") assert.deepEqual(nativeResolved.plane.origin_nanometers, authority.frame.originNanometers);
 });
 
-test("current face evidence owns the frame while durable fallback owns normal polarity only", () => {
+test("renderer centroid and winding never own the planar-face frame", () => {
   const support = { kind: "topology" as const, reference: "topology:moving-face" };
   const body = "body:moving";
   const kernelId = "42";
   const faceDocument = {
     topology_references: {
       "topology:moving-face": {
-        id: "topology:moving-face",
-        body,
-        kind: "face",
-        stable_kernel_id: kernelId,
-        fallback_signature: {
-          kind: "face",
-          centroid_nanometers: [1, 2, 3],
-          normal_millionths: [0, 0, 1_000_000],
-        },
+        id: "topology:moving-face", body, kind: "face", stable_kernel_id: kernelId,
+        fallback_signature: { kind: "face", centroid_nanometers: [1, 2, 3], normal_millionths: [0, 0, 1_000_000] },
       },
     },
   };
-  const current = {
-    body,
-    stable_kernel_id: kernelId,
-    centroid_nanometers: [40_000_000, 50_000_000, 60_000_000] as const,
-    // Simulate packet winding opposite the durable semantic orientation.
-    normal_millionths: [0, 0, -1_000_000] as const,
-  };
-  const result = resolveSketchPlane(support, faceDocument, new Map([[planarFaceEvidenceKey(body, kernelId), current]]));
+  const rendererEvidence = { body, stable_kernel_id: kernelId, centroid_nanometers: [40_000_000, 50_000_000, 60_000_000] as const, normal_millionths: [0, 0, -1_000_000] as const };
+  const authority = nativeAuthority(body, kernelId, [7, 8, 9]);
+  const result = resolveSketchPlane(
+    support, faceDocument,
+    new Map([[planarFaceEvidenceKey(body, kernelId), rendererEvidence]]),
+    new Map([[planarFaceEvidenceKey(body, kernelId), authority]]),
+  );
   assert.equal(result.status, "ready");
   if (result.status !== "ready") return;
-  assert.deepEqual(result.plane.origin_nanometers, current.centroid_nanometers);
+  assert.deepEqual(result.plane.origin_nanometers, [7, 8, 9]);
   assert.deepEqual(result.plane.normal_millionths, [0, 0, 1_000_000]);
 });
 

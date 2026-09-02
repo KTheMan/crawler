@@ -522,9 +522,8 @@ fn insert_control_spline_knot(
         .count();
     let mut next = vec![[0.0; 2]; points.len() + 1];
     next[..=span - degree].copy_from_slice(&points[..=span - degree]);
-    for index in span - multiplicity..=n {
-        next[index + 1] = points[index];
-    }
+    next[(span - multiplicity + 1)..(n + 2)]
+        .copy_from_slice(&points[(span - multiplicity)..(n + 1)]);
     for index in span - degree + 1..=span - multiplicity {
         let denominator = knots[index + degree] - knots[index];
         let alpha = if denominator.abs() <= f64::EPSILON {
@@ -1658,7 +1657,7 @@ fn checked_rounded_i64(value: f64) -> Option<i64> {
     let rounded = value.round();
     let exclusive_max = -(i64::MIN as f64);
     (rounded.is_finite() && rounded >= i64::MIN as f64 && rounded < exclusive_max)
-        .then(|| rounded as i64)
+        .then_some(rounded as i64)
 }
 
 fn offset_radial(center: Point2, point: Point2, radius: f64) -> Result<Point2, OffsetCurveError> {

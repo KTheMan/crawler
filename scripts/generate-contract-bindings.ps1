@@ -16,6 +16,20 @@ if ($actualVersion -ne $expectedVersion) {
     throw "wasm-bindgen CLI mismatch: expected '$expectedVersion', found '$actualVersion'"
 }
 
+function Copy-GeneratedFileWithRetry {
+    param([Parameter(Mandatory)] [string]$Source, [Parameter(Mandatory)] [string]$Destination)
+    for ($attempt = 1; $attempt -le 30; $attempt++) {
+        try {
+            Copy-Item -LiteralPath $Source -Destination $Destination -Force -ErrorAction Stop
+            return
+        }
+        catch {
+            if ($attempt -eq 30) { throw }
+            Start-Sleep -Milliseconds 500
+        }
+    }
+}
+
 $bindings = @(
     @{ Crate = 'crawler-kernel-worker'; Stem = 'crawler_kernel_worker'; Output = 'web\worker-spike\generated'; AppOutput = 'web\crawler-app\src\generated\kernel' },
     @{ Crate = 'crawler-render-packet'; Stem = 'crawler_render_packet'; Output = 'spikes\e00-s03-renderer\src\generated\packet' }
@@ -33,10 +47,20 @@ try {
         New-Item -ItemType Directory -Force -Path $output | Out-Null
         & $tool $input --target web --out-dir $output
         if ($LASTEXITCODE -ne 0) { throw "$($binding.Crate) wasm-bindgen failed with exit code $LASTEXITCODE" }
+        # wasm-bindgen emits a wildcard .gitignore intended for disposable
+        # output directories. These bindings are checked in, so retaining it
+        # would hide missing or newly generated contract files from Git and
+        # make a clean-clone generation produce a different file set.
+        $generatedIgnore = Join-Path $output '.gitignore'
+        if (Test-Path -LiteralPath $generatedIgnore) {
+            Remove-Item -LiteralPath $generatedIgnore -Force
+        }
         if ($binding.AppOutput) {
             $appOutput = Join-Path $root $binding.AppOutput
             New-Item -ItemType Directory -Force -Path $appOutput | Out-Null
-            Copy-Item -Path (Join-Path $output '*') -Destination $appOutput -Force
+            Get-ChildItem -LiteralPath $output -File | ForEach-Object {
+                Copy-GeneratedFileWithRetry -Source $_.FullName -Destination (Join-Path $appOutput $_.Name)
+            }
         }
     }
 }

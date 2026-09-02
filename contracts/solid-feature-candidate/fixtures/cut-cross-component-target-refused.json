@@ -1,0 +1,94 @@
+{
+  "schema_version": 1,
+  "fixture_id": "cut-cross-component-target-refused",
+  "story_ids": [
+    "E3D-S5-01",
+    "E3D-S5-04"
+  ],
+  "description": "A current body from another component and a face-owner mismatch are refused before Boolean dispatch.",
+  "units": {
+    "length": "nanometer",
+    "angle": "radian"
+  },
+  "input": {
+    "schema_version": 5,
+    "kind": "single_target_cut",
+    "payload": {
+      "result_mode": "cut",
+      "target_body_ids": [
+        "body:foreign"
+      ],
+      "target_component_id": "component:other",
+      "target_seed": {
+        "body_id": "body:part",
+        "component_id": "component:root",
+        "width_nm": 10000000,
+        "height_nm": 6000000,
+        "distance_nm": 4000000
+      },
+      "support": {
+        "kind": "origin_plane",
+        "plane": "xy"
+      },
+      "profile": {
+        "kind": "rectangle",
+        "min_nm": [
+          2000000,
+          1000000
+        ],
+        "max_nm": [
+          8000000,
+          5000000
+        ]
+      },
+      "distance_nm": 2000000,
+      "direction": "positive",
+      "ownership_variants": [
+        "cross_component",
+        "wrong_owner"
+      ]
+    }
+  },
+  "expected": {
+    "kind": "structured_error",
+    "error": {
+      "category": "ownership",
+      "code": "wrong_component_cut_target",
+      "field_path": "participant_bodies.target",
+      "referenced_entity_ids": [
+        "body:foreign"
+      ]
+    },
+    "oracle_assertions": {
+      "explicit_target_required": true,
+      "implicit_target_used": false,
+      "accepted_state_unchanged": true,
+      "variant_codes": {
+        "cross_component": "wrong_component_cut_target",
+        "wrong_owner": "wrong_owner_cut_target"
+      },
+      "boolean_dispatch_count": 0
+    }
+  },
+  "tolerances": {
+    "relative": 1e-9,
+    "aabb_nm": 1,
+    "signed_volume_nm3": 1000000,
+    "surface_area_nm2": 1000,
+    "centroid_nm": 1
+  },
+  "identity_sets": {
+    "retained": [],
+    "replaced": []
+  },
+  "lifecycle_steps": [
+    "authority_validate"
+  ],
+  "evidence_test_ids": [
+    "single-target-cut-contracts",
+    "native-single-target-cut",
+    "wasm-single-target-cut",
+    "single-target-cut-native-wasm-parity"
+  ],
+  "legacy_provenance": null
+}

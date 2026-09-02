@@ -1,5 +1,8 @@
 use crate::{StructuralDiff, VersionedDocument, structural_diff};
-use crawler_document::{Document, DocumentTransaction, FeatureRecomputeState, TransactionId};
+use crawler_document::{
+    ConstructionPlaneDefinitionReference, Document, DocumentTransaction,
+    FeatureDefinitionReference, FeatureRecomputeState, ParameterValue, TransactionId,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
@@ -133,6 +136,15 @@ pub fn merge_three_way(
         |id| id.0.clone(),
         &mut conflicts,
     );
+    merged.document.construction_planes = merge_map(
+        &base.document.construction_planes,
+        &left.document.construction_planes,
+        &right.document.construction_planes,
+        ConflictKind::EntityEdit,
+        "construction_planes",
+        |id| id.0.clone(),
+        &mut conflicts,
+    );
     merged.document.components = merge_map(
         &base.document.components,
         &left.document.components,
@@ -160,12 +172,30 @@ pub fn merge_three_way(
         |id| id.0.clone(),
         &mut conflicts,
     );
+    merged.document.region_definitions_v2 = merge_map(
+        &base.document.region_definitions_v2,
+        &left.document.region_definitions_v2,
+        &right.document.region_definitions_v2,
+        ConflictKind::EntityEdit,
+        "region_definitions_v2",
+        |id| id.0.clone(),
+        &mut conflicts,
+    );
     merged.document.features = merge_map(
         &base.document.features,
         &left.document.features,
         &right.document.features,
         ConflictKind::FeatureEdit,
         "features",
+        |id| id.0.clone(),
+        &mut conflicts,
+    );
+    merged.document.feature_definitions_v2 = merge_map(
+        &base.document.feature_definitions_v2,
+        &left.document.feature_definitions_v2,
+        &right.document.feature_definitions_v2,
+        ConflictKind::FeatureEdit,
+        "feature_definitions_v2",
         |id| id.0.clone(),
         &mut conflicts,
     );
@@ -449,6 +479,67 @@ fn validate_document_contract(document: &Document) -> Result<(), MergeError> {
             "root component is missing".into(),
         ));
     }
+    let mut ordered_planes = BTreeSet::new();
+    for component in document.components.values() {
+        for plane in &component.construction_plane_order {
+            if !ordered_planes.insert(plane.clone()) {
+                return Err(MergeError::InvalidMergedDocument(format!(
+                    "construction plane {} occurs more than once in component order",
+                    plane.0
+                )));
+            }
+            let definition = document.construction_planes.get(plane).ok_or_else(|| {
+                MergeError::InvalidMergedDocument(format!(
+                    "ordered construction plane {} is missing",
+                    plane.0
+                ))
+            })?;
+            if definition.component != component.id {
+                return Err(MergeError::InvalidMergedDocument(format!(
+                    "construction plane {} is ordered by another component",
+                    plane.0
+                )));
+            }
+        }
+    }
+    if ordered_planes.len() != document.construction_planes.len() {
+        return Err(MergeError::InvalidMergedDocument(
+            "construction-plane component order is incomplete".into(),
+        ));
+    }
+    for (plane_id, definition) in &document.construction_planes {
+        if &definition.id != plane_id || !document.components.contains_key(&definition.component) {
+            return Err(MergeError::InvalidMergedDocument(format!(
+                "construction plane {} has invalid identity or component",
+                plane_id.0
+            )));
+        }
+        let mut invalid = None;
+        definition.visit_references(|reference| match reference {
+            ConstructionPlaneDefinitionReference::OriginPlane(base) => {
+                if document
+                    .origin_planes
+                    .get(base)
+                    .is_none_or(|plane| plane.component != definition.component)
+                {
+                    invalid = Some(base.0.clone());
+                }
+            }
+            ConstructionPlaneDefinitionReference::Parameter(parameter) => {
+                if !document.parameters.get(parameter).is_some_and(|stored| {
+                    matches!(stored.value, ParameterValue::LengthNanometers(_))
+                }) {
+                    invalid = Some(parameter.0.clone());
+                }
+            }
+        });
+        if let Some(reference) = invalid {
+            return Err(MergeError::InvalidMergedDocument(format!(
+                "construction plane {} has invalid reference {}",
+                plane_id.0, reference
+            )));
+        }
+    }
     for (feature_id, feature) in &document.features {
         if !document.components.contains_key(&feature.component) {
             return Err(MergeError::InvalidMergedDocument(format!(
@@ -473,6 +564,112 @@ fn validate_document_contract(document: &Document) -> Result<(), MergeError> {
             }
         }
     }
+    for (region_id, definition) in &document.region_definitions_v2 {
+        if &definition.id != region_id {
+            return Err(MergeError::InvalidMergedDocument(format!(
+                "region definition {} has mismatched embedded identity {}",
+                region_id.0, definition.id.0
+            )));
+        }
+        if !document.sketches.contains_key(&definition.sketch) {
+            return Err(MergeError::InvalidMergedDocument(format!(
+                "region definition {} has missing sketch {}",
+                region_id.0, definition.sketch.0
+            )));
+        }
+        let geometry_ids: Vec<_> = definition
+            .outer_geometry_ids
+            .iter()
+            .chain(definition.hole_geometry_ids.iter().flatten())
+            .collect();
+        let unique: BTreeSet<_> = geometry_ids.iter().copied().collect();
+        if definition.outer_geometry_ids.is_empty()
+            || definition.hole_geometry_ids.iter().any(Vec::is_empty)
+            || geometry_ids.iter().any(|id| id.trim().is_empty())
+            || unique.len() != geometry_ids.len()
+        {
+            return Err(MergeError::InvalidMergedDocument(format!(
+                "region definition {} has invalid boundary membership",
+                region_id.0
+            )));
+        }
+    }
+    for (feature_id, definition) in &document.feature_definitions_v2 {
+        if !document.features.contains_key(feature_id) {
+            return Err(MergeError::InvalidMergedDocument(format!(
+                "feature definition {} has no legacy timeline feature",
+                feature_id.0
+            )));
+        }
+        let mut missing = None;
+        definition.visit_references(|reference| {
+            if missing.is_some() {
+                return;
+            }
+            missing = match reference {
+                FeatureDefinitionReference::Body(id) if !document.bodies.contains_key(id) => {
+                    Some(id.0.clone())
+                }
+                FeatureDefinitionReference::Sketch(id) if !document.sketches.contains_key(id) => {
+                    Some(id.0.clone())
+                }
+                FeatureDefinitionReference::OriginPlane(id)
+                    if !document.origin_planes.contains_key(id) =>
+                {
+                    Some(id.0.clone())
+                }
+                FeatureDefinitionReference::ConstructionPlane(id)
+                    if !document.construction_planes.contains_key(id) =>
+                {
+                    Some(id.0.clone())
+                }
+                FeatureDefinitionReference::Parameter(id)
+                    if !document.parameters.contains_key(id) =>
+                {
+                    Some(id.0.clone())
+                }
+                FeatureDefinitionReference::Region(id)
+                    if !document.region_definitions_v2.contains_key(id) =>
+                {
+                    Some(id.0.clone())
+                }
+                _ => None,
+            };
+        });
+        if let Some(reference) = missing {
+            return Err(MergeError::InvalidMergedDocument(format!(
+                "feature definition {} has missing reference {}",
+                feature_id.0, reference
+            )));
+        }
+        let referenced_sketch =
+            definition
+                .references()
+                .into_iter()
+                .find_map(|reference| match reference {
+                    crawler_document::OwnedFeatureDefinitionReference::Sketch(sketch) => {
+                        Some(sketch)
+                    }
+                    _ => None,
+                });
+        let mut mismatched = None;
+        definition.visit_references(|reference| {
+            if let FeatureDefinitionReference::Region(region) = reference
+                && let Some(stored) = document.region_definitions_v2.get(region)
+                && referenced_sketch
+                    .as_ref()
+                    .is_some_and(|sketch| sketch != &stored.sketch)
+            {
+                mismatched = Some(region.0.clone());
+            }
+        });
+        if let Some(region) = mismatched {
+            return Err(MergeError::InvalidMergedDocument(format!(
+                "feature definition {} and region {} reference different sketches",
+                feature_id.0, region
+            )));
+        }
+    }
     Ok(())
 }
 
@@ -484,10 +681,13 @@ fn validate_accepted_recompute(candidate: &Document, result: &Document) -> Resul
         || result.units != candidate.units
         || result.root_component != candidate.root_component
         || result.origin_planes != candidate.origin_planes
+        || result.construction_planes != candidate.construction_planes
         || result.components != candidate.components
         || result.bodies != candidate.bodies
         || result.sketches != candidate.sketches
+        || result.region_definitions_v2 != candidate.region_definitions_v2
         || result.features != candidate.features
+        || result.feature_definitions_v2 != candidate.feature_definitions_v2
         || result.parameters != candidate.parameters
         || result.transactions != candidate.transactions
         || result.recompute.accepted_revision != result.revision

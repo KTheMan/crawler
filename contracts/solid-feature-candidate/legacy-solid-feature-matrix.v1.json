@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "policy": "preserve_without_implicit_migration",
+  "operations": [
+    { "schema_id": "crawler.part.extrude", "request_schema_version": 1, "disposition": "preserve_v1", "open": "editable", "save": "preserve_v1", "analytic_claim": false },
+    { "schema_id": "crawler.part.extrude.cut", "request_schema_version": 1, "disposition": "preserve_v1", "open": "editable", "save": "preserve_v1", "analytic_claim": false },
+    { "schema_id": "crawler.part.revolve", "request_schema_version": 1, "disposition": "preserve_v1", "open": "editable", "save": "preserve_v1", "analytic_claim": false },
+    { "schema_id": "crawler.part.revolve.cut", "request_schema_version": 1, "disposition": "preserve_v1", "open": "editable", "save": "preserve_v1", "analytic_claim": false },
+    { "schema_id": "crawler.part.loft", "request_schema_version": 1, "disposition": "preserve_v1", "open": "editable", "save": "preserve_v1", "analytic_claim": false },
+    { "schema_id": "crawler.part.sweep", "request_schema_version": 1, "disposition": "preserve_v1", "open": "editable", "save": "preserve_v1", "analytic_claim": false },
+    { "schema_id": "crawler.part.boolean", "request_schema_version": 1, "disposition": "preserve_v1", "open": "editable", "save": "preserve_v1", "analytic_claim": false },
+    { "schema_id": "crawler.part.extrude", "request_schema_version": 2, "disposition": "preserve_v2", "open": "editable", "save": "preserve_v2", "analytic_claim": true }
+  ],
+  "future_schema": { "disposition": "reject", "mutation_allowed": false },
+  "downgrade": { "disposition": "reject", "lossy_conversion_allowed": false },
+  "automatic_v1_to_v2_migration": false,
+  "evidence": [
+    "crates/crawler-part-runtime/tests/fixtures/legacy-solid-feature-goldens.v1.json",
+    "crates/crawler-part-runtime/tests/legacy_solid_feature_compatibility.rs",
+    "crates/crawler-feature-kernel/tests/feature_contract.rs",
+    "crates/crawler-feature-kernel/tests/advanced_feature_contract.rs",
+    "crates/crawler-feature-kernel/tests/native_extrude_v2_contract.rs",
+    "crates/crawler-part-runtime/src/lib.rs"
+  ]
+}

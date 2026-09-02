@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "fixture_id": "extrude-origin-blind-negative",
+  "story_ids": ["E3D-S2-02"],
+  "description": "Ten by six millimeter rectangle extruded four millimeters opposite the positive normal of origin XY.",
+  "units": { "length": "nanometer", "angle": "radian" },
+  "input": {
+    "schema_version": 2,
+    "kind": "extrude_v2",
+    "payload": {
+      "result_mode": "new_body",
+      "direction": "negative",
+      "distance_nm": 4000000,
+      "profile": "rectangle-10x6mm",
+      "support": "origin.xy"
+    }
+  },
+  "expected": {
+    "kind": "success",
+    "result": {
+      "expected_bounds_nm": [-5000000, -3000000, -4000000, 5000000, 3000000, 0],
+      "manifold": true,
+      "body_count": 1,
+      "centroid_nm": [0, 0, -2000000],
+      "signed_volume_nm3": 240000000000000000000,
+      "surface_area_nm2": 248000000000000,
+      "orientation": "outward",
+      "descriptor_direction": "negative",
+      "durable_direction": "negative",
+      "direction_roundtrip": true,
+      "durable_distance_nm": 4000000,
+      "distance_semantics": "one_sided_length",
+      "measured_bounds_nm": [-5000000, -3000000, -4000000, 5000000, 3000000, 0],
+      "measured_centroid_nm": [0, 0, -2000000],
+      "stable_feature_id": "feature:extrude-origin-blind-negative",
+      "stable_body_id": "body:extrude-origin-blind-negative"
+    }
+  },
+  "tolerances": { "relative": 1e-9, "aabb_nm": 1, "signed_volume_nm3": 1000000, "surface_area_nm2": 1000, "centroid_nm": 1 },
+  "identity_sets": { "retained": [], "replaced": [] },
+  "lifecycle_steps": ["preview", "commit", "edit", "save", "reload", "recompute"],
+  "evidence_test_ids": ["native-direction-extrude", "wasm-direction-extrude", "direction-native-wasm-parity"],
+  "legacy_provenance": null
+}

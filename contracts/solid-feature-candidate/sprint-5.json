@@ -1,0 +1,481 @@
+{
+  "schema_version": 1,
+  "candidate_id": "solid-feature-sprint-5",
+  "revision": 3,
+  "scope_frozen": true,
+  "manifest_state": "qualification_ready",
+  "scope_frozen_at": "2026-09-01T00:00:00Z",
+  "source_spec": "docs/specs/solid-feature-modernization-sprint-5.md",
+  "performance_workload_ids": [
+    "cut-single-target-rectangle",
+    "cut-single-target-annulus",
+    "cut-single-target-failure-recovery"
+  ],
+  "stories": [
+    {
+      "id": "E3D-S5-01",
+      "title": "Define durable single-target Cut intent",
+      "capability": "document.cut.single_explicit_target_v1",
+      "disposition": "required",
+      "evidence_policy": "required",
+      "fixture_ids": [
+        "cut-save-reopen-edit",
+        "cut-missing-stale-suppressed-target",
+        "cut-target-cardinality-refused",
+        "cut-cross-component-target-refused"
+      ],
+      "test_ids": [
+        "single-target-cut-contracts",
+        "single-target-cut-command-state"
+      ],
+      "artifact_ids": [
+        "candidate-fixtures"
+      ]
+    },
+    {
+      "id": "E3D-S5-02",
+      "title": "Execute exact Blind Cut and retain the target body",
+      "capability": "part.cut.single_target_blind_exact",
+      "disposition": "required",
+      "evidence_policy": "required",
+      "fixture_ids": [
+        "cut-origin-blind-rectangle",
+        "cut-multi-body-unrelated-preserved",
+        "cut-origin-circle",
+        "cut-origin-annulus",
+        "cut-origin-arc-capsule",
+        "cut-offset-plane-reverse",
+        "cut-offset-plane-upstream-recompute",
+        "cut-planar-face-symmetric",
+        "cut-edit-upstream-recompute",
+        "cut-save-reopen-edit",
+        "cut-no-overlap-refused",
+        "cut-body-erasure-refused"
+      ],
+      "test_ids": [
+        "single-target-cut-contracts",
+        "native-single-target-cut",
+        "wasm-single-target-cut",
+        "single-target-cut-wasm-adapter-regression",
+        "single-target-cut-native-wasm-parity"
+      ],
+      "artifact_ids": [
+        "candidate-fixtures",
+        "release-runtime-wasm",
+        "parity-json",
+        "parity-junit"
+      ]
+    },
+    {
+      "id": "E3D-S5-03",
+      "title": "Complete the production Cut lifecycle",
+      "capability": "ui.cut.single_target_create_edit_lifecycle",
+      "disposition": "required",
+      "evidence_policy": "required",
+      "fixture_ids": [
+        "cut-offset-plane-upstream-recompute",
+        "cut-edit-upstream-recompute",
+        "cut-save-reopen-edit",
+        "production-single-target-cut-lifecycle"
+      ],
+      "test_ids": [
+        "single-target-cut-command-state",
+        "production-single-target-cut-lifecycle",
+        "single-target-cut-performance-regression"
+      ],
+      "artifact_ids": [
+        "browser-junit",
+        "browser-screenshots",
+        "performance-json"
+      ]
+    },
+    {
+      "id": "E3D-S5-04",
+      "title": "Fail invalid subtraction atomically",
+      "capability": "part.cut.single_target_fail_closed",
+      "disposition": "required",
+      "evidence_policy": "required",
+      "fixture_ids": [
+        "cut-missing-stale-suppressed-target",
+        "cut-target-cardinality-refused",
+        "cut-cross-component-target-refused",
+        "cut-no-overlap-refused",
+        "cut-body-erasure-refused",
+        "cut-nonmanifold-result-refused",
+        "cut-invalid-support-refused",
+        "cut-invalid-profile-refused",
+        "cut-last-valid-recovery",
+        "production-single-target-cut-lifecycle"
+      ],
+      "test_ids": [
+        "single-target-cut-contracts",
+        "native-single-target-cut",
+        "wasm-single-target-cut",
+        "single-target-cut-wasm-adapter-regression",
+        "single-target-cut-command-state",
+        "single-target-cut-native-wasm-parity",
+        "production-single-target-cut-lifecycle"
+      ],
+      "artifact_ids": [
+        "candidate-fixtures",
+        "parity-json",
+        "parity-junit",
+        "browser-junit",
+        "browser-screenshots"
+      ]
+    },
+    {
+      "id": "E3D-S5-05",
+      "title": "Qualify the Sprint 5 single-target Cut slice without waivers",
+      "capability": "qualification.sprint_5_single_target_cut_gate",
+      "disposition": "required",
+      "evidence_policy": "required",
+      "fixture_ids": [
+        "cut-origin-blind-rectangle",
+        "cut-origin-circle",
+        "cut-origin-annulus",
+        "cut-origin-arc-capsule",
+        "cut-offset-plane-reverse",
+        "cut-offset-plane-upstream-recompute",
+        "cut-planar-face-symmetric",
+        "cut-edit-upstream-recompute",
+        "cut-save-reopen-edit",
+        "cut-missing-stale-suppressed-target",
+        "cut-target-cardinality-refused",
+        "cut-cross-component-target-refused",
+        "cut-no-overlap-refused",
+        "cut-body-erasure-refused",
+        "cut-nonmanifold-result-refused",
+        "cut-multi-body-unrelated-preserved",
+        "cut-invalid-support-refused",
+        "cut-invalid-profile-refused",
+        "cut-last-valid-recovery",
+        "production-single-target-cut-lifecycle"
+      ],
+      "test_ids": [
+        "candidate-manifest-validation",
+        "single-target-cut-wasm-adapter-regression",
+        "candidate-evidence-completeness"
+      ],
+      "artifact_ids": [
+        "qualification-report",
+        "evidence-checksums"
+      ]
+    }
+  ],
+  "fixtures": [
+    {
+      "id": "cut-origin-blind-rectangle",
+      "path": "contracts/solid-feature-candidate/fixtures/cut-origin-blind-rectangle.json",
+      "parity_required": true
+    },
+    {
+      "id": "cut-multi-body-unrelated-preserved",
+      "path": "contracts/solid-feature-candidate/fixtures/cut-multi-body-unrelated-preserved.json",
+      "parity_required": true
+    },
+    {
+      "id": "cut-origin-circle",
+      "path": "contracts/solid-feature-candidate/fixtures/cut-origin-circle.json",
+      "parity_required": true
+    },
+    {
+      "id": "cut-origin-annulus",
+      "path": "contracts/solid-feature-candidate/fixtures/cut-origin-annulus.json",
+      "parity_required": true
+    },
+    {
+      "id": "cut-origin-arc-capsule",
+      "path": "contracts/solid-feature-candidate/fixtures/cut-origin-arc-capsule.json",
+      "parity_required": true
+    },
+    {
+      "id": "cut-offset-plane-reverse",
+      "path": "contracts/solid-feature-candidate/fixtures/cut-offset-plane-reverse.json",
+      "parity_required": true
+    },
+    {
+      "id": "cut-offset-plane-upstream-recompute",
+      "path": "contracts/solid-feature-candidate/fixtures/cut-offset-plane-upstream-recompute.json",
+      "parity_required": true
+    },
+    {
+      "id": "cut-planar-face-symmetric",
+      "path": "contracts/solid-feature-candidate/fixtures/cut-planar-face-symmetric.json",
+      "parity_required": true
+    },
+    {
+      "id": "cut-edit-upstream-recompute",
+      "path": "contracts/solid-feature-candidate/fixtures/cut-edit-upstream-recompute.json",
+      "parity_required": true
+    },
+    {
+      "id": "cut-save-reopen-edit",
+      "path": "contracts/solid-feature-candidate/fixtures/cut-save-reopen-edit.json",
+      "parity_required": true
+    },
+    {
+      "id": "cut-missing-stale-suppressed-target",
+      "path": "contracts/solid-feature-candidate/fixtures/cut-missing-stale-suppressed-target.json",
+      "parity_required": true
+    },
+    {
+      "id": "cut-target-cardinality-refused",
+      "path": "contracts/solid-feature-candidate/fixtures/cut-target-cardinality-refused.json",
+      "parity_required": true
+    },
+    {
+      "id": "cut-cross-component-target-refused",
+      "path": "contracts/solid-feature-candidate/fixtures/cut-cross-component-target-refused.json",
+      "parity_required": true
+    },
+    {
+      "id": "cut-no-overlap-refused",
+      "path": "contracts/solid-feature-candidate/fixtures/cut-no-overlap-refused.json",
+      "parity_required": true
+    },
+    {
+      "id": "cut-body-erasure-refused",
+      "path": "contracts/solid-feature-candidate/fixtures/cut-body-erasure-refused.json",
+      "parity_required": true
+    },
+    {
+      "id": "cut-nonmanifold-result-refused",
+      "path": "contracts/solid-feature-candidate/fixtures/cut-nonmanifold-result-refused.json",
+      "parity_required": true
+    },
+    {
+      "id": "cut-invalid-support-refused",
+      "path": "contracts/solid-feature-candidate/fixtures/cut-invalid-support-refused.json",
+      "parity_required": true
+    },
+    {
+      "id": "cut-invalid-profile-refused",
+      "path": "contracts/solid-feature-candidate/fixtures/cut-invalid-profile-refused.json",
+      "parity_required": true
+    },
+    {
+      "id": "cut-last-valid-recovery",
+      "path": "contracts/solid-feature-candidate/fixtures/cut-last-valid-recovery.json",
+      "parity_required": true
+    },
+    {
+      "id": "production-single-target-cut-lifecycle",
+      "path": "contracts/solid-feature-candidate/fixtures/production-single-target-cut-lifecycle.json",
+      "parity_required": false
+    }
+  ],
+  "tests": [
+    {
+      "id": "candidate-manifest-validation",
+      "kind": "schema",
+      "command": "pwsh -File scripts/test-solid-feature-candidate.ps1 -Manifest contracts/solid-feature-candidate/sprint-5.json",
+      "story_ids": [
+        "E3D-S5-05"
+      ],
+      "expected_artifact_ids": [
+        "qualification-report"
+      ]
+    },
+    {
+      "id": "single-target-cut-contracts",
+      "kind": "native",
+      "command": "cargo test -p crawler-part-runtime --locked single_target_cut",
+      "story_ids": [
+        "E3D-S5-01",
+        "E3D-S5-02",
+        "E3D-S5-04"
+      ],
+      "expected_artifact_ids": [
+        "candidate-fixtures"
+      ]
+    },
+    {
+      "id": "native-single-target-cut",
+      "kind": "native",
+      "command": "cargo run -p crawler-part-runtime --example solid_feature_evidence -- --manifest contracts/solid-feature-candidate/sprint-5.json --output artifacts/solid-feature-qualification/current/runtime/native",
+      "story_ids": [
+        "E3D-S5-02",
+        "E3D-S5-04"
+      ],
+      "expected_artifact_ids": [
+        "candidate-fixtures"
+      ]
+    },
+    {
+      "id": "wasm-single-target-cut",
+      "kind": "wasm",
+      "command": "node scripts/export-solid-feature-wasm-evidence.mjs --manifest contracts/solid-feature-candidate/sprint-5.json --output artifacts/solid-feature-qualification/current/runtime/release-wasm --module web/crawler-app/src/generated/runtime/crawler_part_runtime.js --wasm web/crawler-app/src/generated/runtime/crawler_part_runtime_bg.wasm",
+      "story_ids": [
+        "E3D-S5-02",
+        "E3D-S5-04"
+      ],
+      "expected_artifact_ids": [
+        "release-runtime-wasm"
+      ]
+    },
+    {
+      "id": "single-target-cut-command-state",
+      "kind": "unit",
+      "command": "pnpm --dir web/crawler-app test:unit",
+      "story_ids": [
+        "E3D-S5-01",
+        "E3D-S5-03",
+        "E3D-S5-04"
+      ],
+      "expected_artifact_ids": [
+        "browser-junit"
+      ]
+    },
+    {
+      "id": "single-target-cut-wasm-adapter-regression",
+      "kind": "wasm",
+      "command": "node --test --test-name-pattern 'Sprint 5|release-WASM topology' scripts/test-export-solid-feature-wasm-evidence.mjs",
+      "story_ids": [
+        "E3D-S5-02",
+        "E3D-S5-04",
+        "E3D-S5-05"
+      ],
+      "expected_artifact_ids": [
+        "candidate-fixtures",
+        "release-runtime-wasm"
+      ]
+    },
+    {
+      "id": "single-target-cut-native-wasm-parity",
+      "kind": "parity",
+      "command": "node scripts/compare-solid-feature-parity.mjs --manifest contracts/solid-feature-candidate/sprint-5.json",
+      "story_ids": [
+        "E3D-S5-02",
+        "E3D-S5-04"
+      ],
+      "expected_artifact_ids": [
+        "parity-json",
+        "parity-junit"
+      ]
+    },
+    {
+      "id": "production-single-target-cut-lifecycle",
+      "kind": "browser",
+      "command": "pnpm --dir web/crawler-app exec playwright test tests/solid-feature-cut-qualification.spec.ts --config playwright.solid-feature-qualification.config.ts",
+      "story_ids": [
+        "E3D-S5-03",
+        "E3D-S5-04"
+      ],
+      "expected_artifact_ids": [
+        "browser-junit",
+        "browser-screenshots"
+      ]
+    },
+    {
+      "id": "single-target-cut-performance-regression",
+      "kind": "performance",
+      "command": "pnpm --dir web/crawler-app exec playwright test tests/solid-feature-cut-performance.spec.ts --config playwright.solid-feature-qualification.config.ts",
+      "story_ids": [
+        "E3D-S5-03"
+      ],
+      "expected_artifact_ids": [
+        "performance-json"
+      ]
+    },
+    {
+      "id": "candidate-evidence-completeness",
+      "kind": "schema",
+      "command": "pwsh -File scripts/test-solid-feature-candidate.ps1 -Manifest contracts/solid-feature-candidate/sprint-5.json -QualificationReady -EvidenceRoot artifacts/solid-feature-qualification/current",
+      "story_ids": [
+        "E3D-S5-05"
+      ],
+      "expected_artifact_ids": [
+        "qualification-report",
+        "evidence-checksums"
+      ]
+    }
+  ],
+  "artifacts": [
+    {
+      "id": "candidate-fixtures",
+      "path": "contracts/solid-feature-candidate/fixtures",
+      "required": true,
+      "lock_required": false,
+      "expected_sha256": null
+    },
+    {
+      "id": "release-runtime-wasm",
+      "path": "web/crawler-app/src/generated/runtime/crawler_part_runtime_bg.wasm",
+      "required": true,
+      "lock_required": true,
+      "expected_sha256": "a8fccae29d36468623da693fc07edd8da4c1f692aa654c75e47e38c42c5d126d"
+    },
+    {
+      "id": "production-index",
+      "path": "web/crawler-app/dist/index.html",
+      "required": true,
+      "lock_required": false,
+      "expected_sha256": null
+    },
+    {
+      "id": "parity-json",
+      "path": "artifacts/solid-feature-qualification/current/parity/parity.json",
+      "required": true,
+      "lock_required": false,
+      "expected_sha256": null
+    },
+    {
+      "id": "parity-junit",
+      "path": "artifacts/solid-feature-qualification/current/parity/parity.junit.xml",
+      "required": true,
+      "lock_required": false,
+      "expected_sha256": null
+    },
+    {
+      "id": "browser-junit",
+      "path": "artifacts/solid-feature-qualification/current/browser/junit.xml",
+      "required": true,
+      "lock_required": false,
+      "expected_sha256": null
+    },
+    {
+      "id": "browser-screenshots",
+      "path": "artifacts/solid-feature-qualification/current/browser/screenshots",
+      "required": true,
+      "lock_required": false,
+      "expected_sha256": null
+    },
+    {
+      "id": "performance-json",
+      "path": "artifacts/solid-feature-qualification/current/performance/results.json",
+      "required": true,
+      "lock_required": false,
+      "expected_sha256": null
+    },
+    {
+      "id": "qualification-report",
+      "path": "artifacts/solid-feature-qualification/current/qualification-report.json",
+      "required": true,
+      "lock_required": false,
+      "expected_sha256": null
+    },
+    {
+      "id": "evidence-checksums",
+      "path": "artifacts/solid-feature-qualification/current/SHA256SUMS.json",
+      "required": true,
+      "lock_required": false,
+      "expected_sha256": null
+    }
+  ],
+  "runtime_lock": {
+    "build_id": "solid-feature-sprint-5-r3-20260831",
+    "wasm_artifact_id": "release-runtime-wasm",
+    "wasm_sha256": "a8fccae29d36468623da693fc07edd8da4c1f692aa654c75e47e38c42c5d126d"
+  },
+  "non_candidate_observation_policy": {
+    "candidate_waivers_permitted": false,
+    "required_fields": [
+      "owner",
+      "rationale",
+      "expires_at",
+      "affected_evidence",
+      "follow_up"
+    ]
+  }
+}

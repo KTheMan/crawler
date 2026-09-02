@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "fixture_id": "construction-plane-missing-reference",
+  "story_ids": ["E3D-S3-02", "E3D-S3-04"],
+  "description": "A construction plane whose parent origin-plane reference is missing fails before preview or commit and preserves the last accepted document and body.",
+  "units": { "length": "nanometer", "angle": "radian" },
+  "input": {
+    "schema_version": 3,
+    "kind": "construction_plane_missing_reference_v3",
+    "payload": {
+      "plane": "construction-plane:missing-parent",
+      "base_plane": "origin.missing",
+      "offset_parameter": "parameter:construction-plane-offset",
+      "offset_nanometers": 12000000,
+      "distance_nm": 4000000,
+      "direction": "positive",
+      "profile": "rectangle-10x6mm"
+    }
+  },
+  "expected": {
+    "kind": "structured_error",
+    "error": {
+      "category": "reference",
+      "code": "missing_construction_plane_base_plane",
+      "field_path": "construction_plane.base_plane",
+      "referenced_entity_ids": ["origin.missing"]
+    }
+  },
+  "tolerances": { "relative": 1e-9, "aabb_nm": 1, "signed_volume_nm3": 1000000, "surface_area_nm2": 1000, "centroid_nm": 1 },
+  "identity_sets": { "retained": ["body:accepted-before-construction-plane-error"], "replaced": [] },
+  "lifecycle_steps": ["preview", "commit", "repair", "recompute"],
+  "evidence_test_ids": ["construction-plane-document-contracts", "native-construction-plane-offset-extrude", "wasm-construction-plane-offset-extrude", "construction-plane-offset-native-wasm-parity"],
+  "legacy_provenance": null
+}

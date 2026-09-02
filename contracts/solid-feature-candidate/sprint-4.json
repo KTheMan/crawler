@@ -1,0 +1,401 @@
+{
+  "schema_version": 1,
+  "candidate_id": "solid-feature-sprint-4",
+  "revision": 1,
+  "scope_frozen": true,
+  "manifest_state": "qualification_ready",
+  "scope_frozen_at": "2026-08-28T00:00:00Z",
+  "source_spec": "docs/specs/solid-feature-modernization-sprint-4.md",
+  "performance_workload_ids": [
+    "extrude-planar-face-rectangle",
+    "planar-face-support-repair"
+  ],
+  "stories": [
+    {
+      "id": "E3D-S4-01",
+      "title": "Define durable current planar-face support authority",
+      "capability": "document.sketch_support.planar_face_current_v1",
+      "disposition": "required",
+      "evidence_policy": "required",
+      "fixture_ids": [
+        "planar-face-missing-reference",
+        "planar-face-stale-current-evidence",
+        "planar-face-nonplanar-reference",
+        "planar-face-suppressed-producer",
+        "planar-face-wrong-body-producer-component",
+        "planar-face-broken-support-explicit-repair",
+        "planar-face-ambiguous-repair-refused"
+      ],
+      "test_ids": [
+        "planar-face-document-authority-contracts"
+      ],
+      "artifact_ids": [
+        "candidate-fixtures"
+      ]
+    },
+    {
+      "id": "E3D-S4-02",
+      "title": "Resolve exact current planar-face frames fail closed",
+      "capability": "part.planar_face.frame_exact_current",
+      "disposition": "required",
+      "evidence_policy": "required",
+      "fixture_ids": [
+        "extrude-planar-face-orientation-matrix",
+        "extrude-planar-face-upstream-edit",
+        "planar-face-missing-reference",
+        "planar-face-stale-current-evidence",
+        "planar-face-nonplanar-reference",
+        "planar-face-suppressed-producer",
+        "planar-face-wrong-body-producer-component"
+      ],
+      "test_ids": [
+        "planar-face-document-authority-contracts",
+        "native-planar-face-extrude",
+        "wasm-planar-face-extrude",
+        "planar-face-native-wasm-parity"
+      ],
+      "artifact_ids": [
+        "candidate-fixtures",
+        "release-runtime-wasm",
+        "parity-json",
+        "parity-junit"
+      ]
+    },
+    {
+      "id": "E3D-S4-03",
+      "title": "Execute blind New Body Extrude from current planar faces",
+      "capability": "part.extrude.planar_face_blind_new_body_exact",
+      "disposition": "required",
+      "evidence_policy": "required",
+      "fixture_ids": [
+        "extrude-planar-face-orientation-matrix",
+        "extrude-planar-face-upstream-edit",
+        "extrude-planar-face-save-reopen-edit",
+        "planar-face-missing-reference",
+        "planar-face-stale-current-evidence",
+        "planar-face-nonplanar-reference",
+        "planar-face-suppressed-producer"
+      ],
+      "test_ids": [
+        "native-planar-face-extrude",
+        "wasm-planar-face-extrude",
+        "planar-face-native-wasm-parity"
+      ],
+      "artifact_ids": [
+        "candidate-fixtures",
+        "release-runtime-wasm",
+        "parity-json",
+        "parity-junit"
+      ]
+    },
+    {
+      "id": "E3D-S4-04",
+      "title": "Complete production planar-face Extrude lifecycle and explicit repair",
+      "capability": "ui.extrude.planar_face_create_edit_repair",
+      "disposition": "required",
+      "evidence_policy": "required",
+      "fixture_ids": [
+        "extrude-planar-face-upstream-edit",
+        "extrude-planar-face-save-reopen-edit",
+        "planar-face-missing-reference",
+        "planar-face-stale-current-evidence",
+        "planar-face-nonplanar-reference",
+        "planar-face-suppressed-producer",
+        "planar-face-wrong-body-producer-component",
+        "planar-face-broken-support-explicit-repair",
+        "planar-face-ambiguous-repair-refused",
+        "production-planar-face-lifecycle"
+      ],
+      "test_ids": [
+        "planar-face-command-state",
+        "production-planar-face-lifecycle",
+        "planar-face-performance-regression"
+      ],
+      "artifact_ids": [
+        "browser-junit",
+        "browser-screenshots",
+        "performance-json"
+      ]
+    },
+    {
+      "id": "E3D-S4-05",
+      "title": "Qualify the Sprint 4 planar-face slice without waivers",
+      "capability": "qualification.sprint_4_planar_face_gate",
+      "disposition": "required",
+      "evidence_policy": "required",
+      "fixture_ids": [
+        "extrude-planar-face-orientation-matrix",
+        "extrude-planar-face-upstream-edit",
+        "extrude-planar-face-save-reopen-edit",
+        "planar-face-missing-reference",
+        "planar-face-stale-current-evidence",
+        "planar-face-nonplanar-reference",
+        "planar-face-suppressed-producer",
+        "planar-face-wrong-body-producer-component",
+        "planar-face-broken-support-explicit-repair",
+        "planar-face-ambiguous-repair-refused",
+        "production-planar-face-lifecycle"
+      ],
+      "test_ids": [
+        "candidate-manifest-validation",
+        "candidate-evidence-completeness"
+      ],
+      "artifact_ids": [
+        "qualification-report",
+        "evidence-checksums"
+      ]
+    }
+  ],
+  "fixtures": [
+    {
+      "id": "extrude-planar-face-orientation-matrix",
+      "path": "contracts/solid-feature-candidate/fixtures/extrude-planar-face-orientation-matrix.json",
+      "parity_required": true
+    },
+    {
+      "id": "extrude-planar-face-upstream-edit",
+      "path": "contracts/solid-feature-candidate/fixtures/extrude-planar-face-upstream-edit.json",
+      "parity_required": true
+    },
+    {
+      "id": "extrude-planar-face-save-reopen-edit",
+      "path": "contracts/solid-feature-candidate/fixtures/extrude-planar-face-save-reopen-edit.json",
+      "parity_required": true
+    },
+    {
+      "id": "planar-face-missing-reference",
+      "path": "contracts/solid-feature-candidate/fixtures/planar-face-missing-reference.json",
+      "parity_required": true
+    },
+    {
+      "id": "planar-face-stale-current-evidence",
+      "path": "contracts/solid-feature-candidate/fixtures/planar-face-stale-current-evidence.json",
+      "parity_required": true
+    },
+    {
+      "id": "planar-face-nonplanar-reference",
+      "path": "contracts/solid-feature-candidate/fixtures/planar-face-nonplanar-reference.json",
+      "parity_required": true
+    },
+    {
+      "id": "planar-face-suppressed-producer",
+      "path": "contracts/solid-feature-candidate/fixtures/planar-face-suppressed-producer.json",
+      "parity_required": true
+    },
+    {
+      "id": "planar-face-wrong-body-producer-component",
+      "path": "contracts/solid-feature-candidate/fixtures/planar-face-wrong-body-producer-component.json",
+      "parity_required": true
+    },
+    {
+      "id": "planar-face-broken-support-explicit-repair",
+      "path": "contracts/solid-feature-candidate/fixtures/planar-face-broken-support-explicit-repair.json",
+      "parity_required": true
+    },
+    {
+      "id": "planar-face-ambiguous-repair-refused",
+      "path": "contracts/solid-feature-candidate/fixtures/planar-face-ambiguous-repair-refused.json",
+      "parity_required": true
+    },
+    {
+      "id": "production-planar-face-lifecycle",
+      "path": "contracts/solid-feature-candidate/fixtures/production-planar-face-lifecycle.json",
+      "parity_required": false
+    }
+  ],
+  "tests": [
+    {
+      "id": "candidate-manifest-validation",
+      "kind": "schema",
+      "command": "pwsh -File scripts/test-solid-feature-candidate.ps1 -Manifest contracts/solid-feature-candidate/sprint-4.json",
+      "story_ids": [
+        "E3D-S4-05"
+      ],
+      "expected_artifact_ids": [
+        "qualification-report"
+      ]
+    },
+    {
+      "id": "planar-face-document-authority-contracts",
+      "kind": "native",
+      "command": "cargo test -p crawler-part-runtime --locked planar_face",
+      "story_ids": [
+        "E3D-S4-01",
+        "E3D-S4-02"
+      ],
+      "expected_artifact_ids": [
+        "candidate-fixtures"
+      ]
+    },
+    {
+      "id": "native-planar-face-extrude",
+      "kind": "native",
+      "command": "cargo run -p crawler-part-runtime --example solid_feature_evidence -- --manifest contracts/solid-feature-candidate/sprint-4.json --output artifacts/solid-feature-qualification/current/runtime/native",
+      "story_ids": [
+        "E3D-S4-02",
+        "E3D-S4-03"
+      ],
+      "expected_artifact_ids": [
+        "candidate-fixtures"
+      ]
+    },
+    {
+      "id": "wasm-planar-face-extrude",
+      "kind": "wasm",
+      "command": "node scripts/export-solid-feature-wasm-evidence.mjs --manifest contracts/solid-feature-candidate/sprint-4.json --output artifacts/solid-feature-qualification/current/runtime/release-wasm --module web/crawler-app/src/generated/runtime/crawler_part_runtime.js --wasm web/crawler-app/src/generated/runtime/crawler_part_runtime_bg.wasm",
+      "story_ids": [
+        "E3D-S4-02",
+        "E3D-S4-03"
+      ],
+      "expected_artifact_ids": [
+        "release-runtime-wasm"
+      ]
+    },
+    {
+      "id": "planar-face-command-state",
+      "kind": "unit",
+      "command": "pnpm --dir web/crawler-app test:unit",
+      "story_ids": [
+        "E3D-S4-04"
+      ],
+      "expected_artifact_ids": [
+        "browser-junit"
+      ]
+    },
+    {
+      "id": "planar-face-native-wasm-parity",
+      "kind": "parity",
+      "command": "node scripts/compare-solid-feature-parity.mjs --manifest contracts/solid-feature-candidate/sprint-4.json",
+      "story_ids": [
+        "E3D-S4-02",
+        "E3D-S4-03"
+      ],
+      "expected_artifact_ids": [
+        "parity-json",
+        "parity-junit"
+      ]
+    },
+    {
+      "id": "production-planar-face-lifecycle",
+      "kind": "browser",
+      "command": "pnpm --dir web/crawler-app exec playwright test tests/solid-feature-planar-face-qualification.spec.ts --config playwright.solid-feature-qualification.config.ts",
+      "story_ids": [
+        "E3D-S4-04"
+      ],
+      "expected_artifact_ids": [
+        "browser-junit",
+        "browser-screenshots"
+      ]
+    },
+    {
+      "id": "planar-face-performance-regression",
+      "kind": "performance",
+      "command": "pnpm --dir web/crawler-app exec playwright test tests/solid-feature-performance.spec.ts --config playwright.solid-feature-qualification.config.ts",
+      "story_ids": [
+        "E3D-S4-04"
+      ],
+      "expected_artifact_ids": [
+        "performance-json"
+      ]
+    },
+    {
+      "id": "candidate-evidence-completeness",
+      "kind": "schema",
+      "command": "pwsh -File scripts/test-solid-feature-candidate.ps1 -Manifest contracts/solid-feature-candidate/sprint-4.json -QualificationReady -EvidenceRoot artifacts/solid-feature-qualification/current",
+      "story_ids": [
+        "E3D-S4-05"
+      ],
+      "expected_artifact_ids": [
+        "qualification-report",
+        "evidence-checksums"
+      ]
+    }
+  ],
+  "artifacts": [
+    {
+      "id": "candidate-fixtures",
+      "path": "contracts/solid-feature-candidate/fixtures",
+      "required": true,
+      "lock_required": false,
+      "expected_sha256": null
+    },
+    {
+      "id": "release-runtime-wasm",
+      "path": "web/crawler-app/src/generated/runtime/crawler_part_runtime_bg.wasm",
+      "required": true,
+      "lock_required": true,
+      "expected_sha256": "0e1f3cb3b3c1605df02ee34e87546563ee199a3678bb7d7b6b3c810cf5e9cd89"
+    },
+    {
+      "id": "production-index",
+      "path": "web/crawler-app/dist/index.html",
+      "required": true,
+      "lock_required": false,
+      "expected_sha256": null
+    },
+    {
+      "id": "parity-json",
+      "path": "artifacts/solid-feature-qualification/current/parity/parity.json",
+      "required": true,
+      "lock_required": false,
+      "expected_sha256": null
+    },
+    {
+      "id": "parity-junit",
+      "path": "artifacts/solid-feature-qualification/current/parity/parity.junit.xml",
+      "required": true,
+      "lock_required": false,
+      "expected_sha256": null
+    },
+    {
+      "id": "browser-junit",
+      "path": "artifacts/solid-feature-qualification/current/browser/junit.xml",
+      "required": true,
+      "lock_required": false,
+      "expected_sha256": null
+    },
+    {
+      "id": "browser-screenshots",
+      "path": "artifacts/solid-feature-qualification/current/browser/screenshots",
+      "required": true,
+      "lock_required": false,
+      "expected_sha256": null
+    },
+    {
+      "id": "performance-json",
+      "path": "artifacts/solid-feature-qualification/current/performance/results.json",
+      "required": true,
+      "lock_required": false,
+      "expected_sha256": null
+    },
+    {
+      "id": "qualification-report",
+      "path": "artifacts/solid-feature-qualification/current/qualification-report.json",
+      "required": true,
+      "lock_required": false,
+      "expected_sha256": null
+    },
+    {
+      "id": "evidence-checksums",
+      "path": "artifacts/solid-feature-qualification/current/SHA256SUMS.json",
+      "required": true,
+      "lock_required": false,
+      "expected_sha256": null
+    }
+  ],
+  "runtime_lock": {
+    "build_id": "solid-feature-sprint-4-r1-20260828",
+    "wasm_artifact_id": "release-runtime-wasm",
+    "wasm_sha256": "0e1f3cb3b3c1605df02ee34e87546563ee199a3678bb7d7b6b3c810cf5e9cd89"
+  },
+  "non_candidate_observation_policy": {
+    "candidate_waivers_permitted": false,
+    "required_fields": [
+      "owner",
+      "rationale",
+      "expires_at",
+      "affected_evidence",
+      "follow_up"
+    ]
+  }
+}

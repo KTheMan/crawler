@@ -1,6 +1,7 @@
 use crawler_document::{
-    ComponentId, Document, Feature, FeatureId, FeatureInput, FeatureRecomputeState,
-    OperationReference,
+    BodyId, ComponentId, Document, ExtrudeDirectionV2, Feature, FeatureDefinitionV2, FeatureId,
+    FeatureInput, FeatureRecomputeState, OperationReference, ParameterId, PlanarSupportReferenceV2,
+    ProfileReferenceV2, RegionReferenceId, SketchId, TopologyReferenceId,
 };
 use crawler_feature_graph::{
     ComputeCostCue, FeatureGraphCommand, FeatureGraphDocument, FeatureGraphError, FeatureGroupId,
@@ -455,4 +456,79 @@ fn persistent_body_inputs_do_not_create_backwards_edges_to_the_final_producer() 
 
     let cut = direct_relationships(&state, &FeatureId::from("feature:base-hole-pair")).unwrap();
     assert_eq!(cut.direct_inputs, vec![FeatureId::from("feature:upright")]);
+}
+
+#[test]
+fn cut_target_contract_persists_and_feature_graph_rejects_invalid_cardinality() {
+    let mut document: Document = serde_json::from_str(FIXTURE.trim_end()).unwrap();
+    let cut_id = FeatureId::from("feature:cut");
+    let cut = feature("feature:cut", "extrude-cut", &["feature:extrude"]);
+    document.features.insert(cut_id.clone(), cut);
+    document
+        .components
+        .get_mut(&ComponentId::from("component:root"))
+        .unwrap()
+        .feature_order
+        .push(cut_id.clone());
+    document.recompute.features.insert(
+        cut_id.clone(),
+        FeatureRecomputeState::Clean {
+            evaluated_revision: document.revision,
+        },
+    );
+    document.feature_definitions_v2.insert(
+        cut_id.clone(),
+        FeatureDefinitionV2::exact_blind_cut_extrude_with_direction(
+            ProfileReferenceV2::SketchRegion {
+                sketch: SketchId::from("sketch:base"),
+                region: RegionReferenceId::from("region:cut"),
+            },
+            PlanarSupportReferenceV2::TopologyFace {
+                reference: TopologyReferenceId::from("topology:top-face"),
+            },
+            ParameterId::from("parameter:height"),
+            ExtrudeDirectionV2::Negative,
+            "body:block".into(),
+        ),
+    );
+
+    let state = FeatureGraphDocument::new(document.clone()).unwrap();
+    let json = serde_json::to_string(&state).unwrap();
+    assert_eq!(
+        serde_json::from_str::<FeatureGraphDocument>(&json).unwrap(),
+        state
+    );
+
+    let mut wrong_owner = document.clone();
+    wrong_owner
+        .topology_references
+        .get_mut(&TopologyReferenceId::from("topology:top-face"))
+        .unwrap()
+        .body = BodyId::from("body:other");
+    assert_eq!(
+        FeatureGraphDocument::new(wrong_owner).unwrap_err(),
+        FeatureGraphError::InvalidFeatureDefinition(cut_id.clone())
+    );
+
+    let mut wrong_producer = document.clone();
+    wrong_producer
+        .topology_references
+        .get_mut(&TopologyReferenceId::from("topology:top-face"))
+        .unwrap()
+        .producer = FeatureId::from("feature:sketch");
+    assert_eq!(
+        FeatureGraphDocument::new(wrong_producer).unwrap_err(),
+        FeatureGraphError::InvalidFeatureDefinition(cut_id.clone())
+    );
+
+    document
+        .feature_definitions_v2
+        .get_mut(&cut_id)
+        .unwrap()
+        .participant_bodies
+        .clear();
+    assert_eq!(
+        FeatureGraphDocument::new(document).unwrap_err(),
+        FeatureGraphError::InvalidFeatureDefinition(cut_id)
+    );
 }

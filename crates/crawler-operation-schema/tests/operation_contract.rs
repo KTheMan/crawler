@@ -62,6 +62,102 @@ fn extrude_schema_drives_a_validated_worker_command() {
 }
 
 #[test]
+fn extrude_direction_catalog_contract_accepts_only_the_three_durable_tokens() {
+    let schema = alpha_operation_catalog()
+        .operation("crawler.part.extrude")
+        .unwrap()
+        .clone();
+    let direction = schema
+        .parameters
+        .iter()
+        .find(|parameter| parameter.key == "direction")
+        .unwrap();
+    assert_eq!(direction.value_kind, ParameterValueKind::Text);
+    assert_eq!(direction.default, ParameterValue::Text("positive".into()));
+    assert_eq!(direction.bounds, None);
+    assert_eq!(direction.choices, ["positive", "negative", "symmetric"]);
+
+    for token in ["positive", "negative", "symmetric"] {
+        let mut invocation = valid_invocation(&schema);
+        invocation
+            .parameters
+            .insert("direction".into(), ParameterValue::Text(token.to_owned()));
+        let command = schema
+            .worker_command(invocation)
+            .unwrap_or_else(|errors| panic!("{token} should be accepted: {errors:#?}"));
+        assert_eq!(
+            command.parameters["direction"],
+            ParameterValue::Text(token.to_owned())
+        );
+    }
+
+    let mut invocation = valid_invocation(&schema);
+    invocation
+        .parameters
+        .insert("direction".into(), ParameterValue::Text("sideways".into()));
+    let errors = schema.worker_command(invocation).unwrap_err();
+    assert!(errors.iter().any(|error| {
+        error.code == ErrorCode::InvalidChoice && error.user_actions[0].target == "direction"
+    }));
+}
+
+#[test]
+fn extrude_result_mode_defaults_to_new_body_and_cut_requires_one_body() {
+    let schema = schema();
+    let default = valid_invocation(&schema);
+    assert_eq!(
+        default.parameters["result_mode"],
+        ParameterValue::Text("new_body".into())
+    );
+    schema
+        .worker_command(default.clone())
+        .expect("legacy/default New Body requires no target");
+
+    let mut invalid_new_body = default.clone();
+    invalid_new_body.inputs.insert(
+        "target_body".into(),
+        vec![InputSelection {
+            kind: SelectionKind::Body,
+            entity_id: "body:target".into(),
+        }],
+    );
+    assert!(
+        schema
+            .worker_command(invalid_new_body)
+            .unwrap_err()
+            .iter()
+            .any(|error| {
+                error.code == ErrorCode::InvalidInputCount
+                    && error.user_actions[0].target == "target_body"
+            })
+    );
+
+    let mut cut = default;
+    cut.parameters
+        .insert("result_mode".into(), ParameterValue::Text("cut".into()));
+    assert!(
+        schema
+            .worker_command(cut.clone())
+            .unwrap_err()
+            .iter()
+            .any(|error| {
+                error.code == ErrorCode::MissingInput
+                    && error.user_actions[0].target == "target_body"
+            })
+    );
+    cut.inputs.insert(
+        "target_body".into(),
+        vec![InputSelection {
+            kind: SelectionKind::Body,
+            entity_id: "body:target".into(),
+        }],
+    );
+    schema
+        .worker_command(cut)
+        .expect("Cut with exactly one explicit body is valid");
+}
+
+#[test]
 fn validation_errors_identify_operation_field_recovery_and_action() {
     let schema = schema();
     let mut invocation = valid_invocation(&schema);
@@ -218,9 +314,15 @@ fn three_dimensional_operations_publish_exact_selection_and_parameter_contracts(
     let extrude = catalog.operation("crawler.part.extrude").unwrap();
     assert_eq!(
         input_contract(extrude),
-        vec![("profile", vec![SelectionKind::SketchProfile], 1, Some(1))]
+        vec![
+            ("profile", vec![SelectionKind::SketchProfile], 1, Some(1)),
+            ("target_body", vec![SelectionKind::Body], 0, Some(1)),
+        ]
     );
-    assert_eq!(parameter_keys(extrude), ["distance"]);
+    assert_eq!(
+        parameter_keys(extrude),
+        ["distance", "direction", "result_mode"]
+    );
 
     let revolve = catalog.operation("crawler.part.revolve").unwrap();
     assert_eq!(

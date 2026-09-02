@@ -1,0 +1,57 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://crawler.local/schemas/solid-feature-source-snapshot.schema.json",
+  "title": "Solid Feature Qualification Source Snapshot",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "algorithm",
+    "sha256",
+    "entry_count",
+    "file_count",
+    "deleted_count",
+    "exclusions",
+    "entries"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "algorithm": { "const": "sha256-git-visible-path-content-v1" },
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "entry_count": { "type": "integer", "minimum": 0 },
+    "file_count": { "type": "integer", "minimum": 0 },
+    "deleted_count": { "type": "integer", "minimum": 0 },
+    "exclusions": {
+      "type": "array",
+      "items": { "const": "artifacts/solid-feature-qualification/**" },
+      "minItems": 1,
+      "maxItems": 1
+    },
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "path", "bytes", "sha256"],
+        "properties": {
+          "kind": { "enum": ["file", "deleted"] },
+          "path": { "type": "string", "minLength": 1, "pattern": "^(?!/)(?!.*\\\\)(?!\\.\\.?/).+" },
+          "bytes": { "type": "integer", "minimum": 0 },
+          "sha256": {
+            "oneOf": [
+              { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+              { "type": "null" }
+            ]
+          }
+        },
+        "allOf": [
+          {
+            "if": { "properties": { "kind": { "const": "file" } } },
+            "then": { "properties": { "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" } } },
+            "else": { "properties": { "bytes": { "const": 0 }, "sha256": { "type": "null" } } }
+          }
+        ]
+      }
+    }
+  }
+}

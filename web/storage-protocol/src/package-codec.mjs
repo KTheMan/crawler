@@ -13,10 +13,13 @@ const DOCUMENT_FIELDS = [
   "units",
   "root_component",
   "origin_planes",
+  "construction_planes",
   "components",
   "bodies",
   "sketches",
+  "region_definitions_v2",
   "features",
+  "feature_definitions_v2",
   "parameters",
   "topology_references",
   "transactions",
@@ -24,14 +27,57 @@ const DOCUMENT_FIELDS = [
 ];
 const MAP_FIELDS = new Set([
   "origin_planes",
+  "construction_planes",
   "components",
   "bodies",
   "sketches",
+  "region_definitions_v2",
   "features",
+  "feature_definitions_v2",
   "parameters",
   "topology_references",
   "inputs",
 ]);
+const CONSTRUCTION_PLANE_FIELDS = ["schema_version", "id", "component", "definition", "suppressed"];
+const OFFSET_PLANE_DEFINITION_FIELDS = ["kind", "base_plane", "offset"];
+const EXTERNAL_LINE_FIELDS = [
+  "kind",
+  "id",
+  "start_nanometers",
+  "end_nanometers",
+  "body",
+  "stable_kernel_id",
+];
+const BODY_FIELDS = ["id", "display_name", "component", "generated_by", "producer_lineage", "visibility"];
+const FEATURE_DEFINITION_FIELDS = [
+  "schema_version",
+  "operation",
+  "result",
+  "participant_bodies",
+  "required_capabilities",
+];
+const EXTRUDE_OPERATION_FIELDS = ["kind", "profile", "support", "extent", "modifiers"];
+const PROFILE_REFERENCE_FIELDS = ["kind", "sketch", "region"];
+const BLIND_EXTENT_FIELDS = ["kind", "distance", "direction"];
+const PARTICIPANT_BODY_FIELDS = ["role", "body"];
+const REGION_DEFINITION_FIELDS = ["id", "sketch", "outer_geometry_ids", "hole_geometry_ids"];
+const TOPOLOGY_REFERENCE_FIELDS = [
+  "schema_version",
+  "id",
+  "component",
+  "body",
+  "producer",
+  "kind",
+  "stable_kernel_id",
+  "stable_token",
+  "fallback_signature",
+];
+const TOPOLOGY_SIGNATURE_FIELDS = {
+  vertex: ["kind", "position_nanometers"],
+  edge: ["kind", "midpoint_nanometers", "length_nanometers"],
+  face: ["kind", "centroid_nanometers", "normal_millionths", "area_square_nanometers"],
+};
+const U64_MAX = 18_446_744_073_709_551_615n;
 const MANIFEST_FIELDS = [
   "format_version",
   "package_id",
@@ -317,6 +363,339 @@ function validateDocumentEnvelope(document) {
   if (typeof document.id !== "string" || document.id.length === 0) {
     throw new StorageProtocolError("INVALID_DOCUMENT", "document id is required");
   }
+  validateBodyProducerLineages(document);
+  validateTopologyReferences(document);
+  validateExternalLines(document);
+  validateFeatureDefinitions(document);
+}
+
+function invalidTopology(message) {
+  throw new StorageProtocolError("INVALID_DOCUMENT", message);
+}
+
+function validateBodyProducerLineages(document) {
+  const bodies = document.bodies;
+  if (!bodies || typeof bodies !== "object" || Array.isArray(bodies)) {
+    invalidTopology("document bodies must be an object");
+  }
+  const features = document.features ?? {};
+  for (const [bodyId, body] of Object.entries(bodies)) {
+    if (!body || typeof body !== "object" || Array.isArray(body)) continue;
+    const lineage = body.producer_lineage ?? [];
+    if (!Array.isArray(lineage)) {
+      invalidTopology(`body ${bodyId} producer_lineage must be an array`);
+    }
+    const seen = new Set();
+    for (const producerId of lineage) {
+      if (
+        typeof producerId !== "string" ||
+        producerId.length === 0 ||
+        producerId === body.generated_by ||
+        seen.has(producerId)
+      ) {
+        invalidTopology(`body ${bodyId} producer_lineage is invalid`);
+      }
+      seen.add(producerId);
+      const producer = features[producerId];
+      if (!producer || typeof producer !== "object" || Array.isArray(producer)) {
+        invalidTopology(`body ${bodyId} producer_lineage uses unknown feature ${producerId}`);
+      }
+      if (producer.component !== body.component) {
+        invalidTopology(`body ${bodyId} producer_lineage feature ${producerId} is cross-component`);
+      }
+    }
+  }
+}
+
+function requireTopologyString(value, field, referenceId) {
+  if (typeof value !== "string" || value.length === 0) {
+    invalidTopology(`topology reference ${referenceId} ${field} is required`);
+  }
+  return value;
+}
+
+function requireTopologyFields(value, fields, context) {
+  const missing = fields.find((field) => !Object.hasOwn(value, field));
+  if (missing !== undefined) invalidTopology(`${context} ${missing} is required`);
+  const allowed = new Set(fields);
+  const unknown = Object.keys(value).find((field) => !allowed.has(field));
+  if (unknown !== undefined) invalidTopology(`${context} contains unknown field ${unknown}`);
+}
+
+function requireI64Tuple(value, field, referenceId) {
+  if (
+    !Array.isArray(value) ||
+    value.length !== 3 ||
+    !value.every((coordinate) => Number.isSafeInteger(coordinate))
+  ) {
+    invalidTopology(
+      `topology reference ${referenceId} fallback_signature ${field} must contain exactly three safe integers`,
+    );
+  }
+}
+
+function requireU64Number(value, field, referenceId) {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    invalidTopology(
+      `topology reference ${referenceId} fallback_signature ${field} must be a non-negative safe integer`,
+    );
+  }
+}
+
+function validateTopologySignature(value, referenceId) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    invalidTopology(`topology reference ${referenceId} fallback_signature is required`);
+  }
+  const fields = TOPOLOGY_SIGNATURE_FIELDS[value.kind];
+  if (!fields) {
+    invalidTopology(`topology reference ${referenceId} fallback_signature kind is invalid`);
+  }
+  requireTopologyFields(
+    value,
+    fields,
+    `topology reference ${referenceId} fallback_signature`,
+  );
+  if (value.kind === "vertex") {
+    requireI64Tuple(value.position_nanometers, "position_nanometers", referenceId);
+  } else if (value.kind === "edge") {
+    requireI64Tuple(value.midpoint_nanometers, "midpoint_nanometers", referenceId);
+    requireU64Number(value.length_nanometers, "length_nanometers", referenceId);
+  } else {
+    requireI64Tuple(value.centroid_nanometers, "centroid_nanometers", referenceId);
+    requireI64Tuple(value.normal_millionths, "normal_millionths", referenceId);
+    requireU64Number(value.area_square_nanometers, "area_square_nanometers", referenceId);
+  }
+}
+
+function validateTopologyReferences(document) {
+  const references = document.topology_references;
+  if (!references || typeof references !== "object" || Array.isArray(references)) {
+    invalidTopology("document topology_references must be an object");
+  }
+  const components = document.components ?? {};
+  const bodies = document.bodies ?? {};
+  const features = document.features ?? {};
+  for (const [referenceKey, value] of Object.entries(references)) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      invalidTopology(`topology reference ${referenceKey} must be an object`);
+    }
+    requireTopologyFields(value, TOPOLOGY_REFERENCE_FIELDS, `topology reference ${referenceKey}`);
+    if (value.schema_version !== 1) {
+      invalidTopology(
+        `unsupported topology reference schema version ${String(value.schema_version)}`,
+      );
+    }
+    const id = requireTopologyString(value.id, "id", referenceKey);
+    if (id !== referenceKey) {
+      invalidTopology(`topology reference map key ${referenceKey} does not match embedded id ${id}`);
+    }
+    const component = requireTopologyString(value.component, "component", referenceKey);
+    const bodyId = requireTopologyString(value.body, "body", referenceKey);
+    const producerId = requireTopologyString(value.producer, "producer", referenceKey);
+    requireTopologyString(value.stable_token, "stable_token", referenceKey);
+    if (!Object.hasOwn(components, component)) {
+      invalidTopology(`topology reference ${referenceKey} uses unknown component ${component}`);
+    }
+    const body = bodies[bodyId];
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      invalidTopology(`topology reference ${referenceKey} uses unknown body ${bodyId}`);
+    }
+    const producer = features[producerId];
+    if (!producer || typeof producer !== "object" || Array.isArray(producer)) {
+      invalidTopology(`topology reference ${referenceKey} uses unknown producer ${producerId}`);
+    }
+    const lineage = body.producer_lineage ?? [];
+    if (
+      body.component !== component ||
+      producer.component !== component ||
+      (body.generated_by !== producerId && !lineage.includes(producerId))
+    ) {
+      invalidTopology(
+        `topology reference ${referenceKey} component ${component} does not match its body and producer`,
+      );
+    }
+    if (!["vertex", "edge", "face", "shell", "solid"].includes(value.kind)) {
+      invalidTopology(`topology reference ${referenceKey} kind is invalid`);
+    }
+    if (
+      typeof value.stable_kernel_id !== "string" ||
+      !/^(0|[1-9][0-9]*)$/.test(value.stable_kernel_id) ||
+      BigInt(value.stable_kernel_id) > U64_MAX
+    ) {
+      invalidTopology(
+        `topology reference ${referenceKey} stable_kernel_id must be a canonical u64 decimal string`,
+      );
+    }
+    validateTopologySignature(value.fallback_signature, referenceKey);
+  }
+}
+
+function requireExternalLinePair(value, field, context) {
+  if (
+    !Array.isArray(value) ||
+    value.length !== 2 ||
+    !value.every((coordinate) => Number.isSafeInteger(coordinate))
+  ) {
+    invalidTopology(`${context} ${field} must contain exactly two safe integers`);
+  }
+}
+
+function requireCanonicalU64Decimal(value, field) {
+  if (
+    typeof value !== "string" ||
+    !/^(0|[1-9][0-9]*)$/.test(value) ||
+    BigInt(value) > U64_MAX
+  ) {
+    invalidTopology(`${field} must be a canonical u64 decimal string`);
+  }
+}
+
+function validateExternalLines(document) {
+  const sketches = document.sketches;
+  if (!sketches || typeof sketches !== "object" || Array.isArray(sketches)) {
+    invalidTopology("document sketches must be an object");
+  }
+  for (const [sketchKey, sketch] of Object.entries(sketches)) {
+    if (!sketch || typeof sketch !== "object" || Array.isArray(sketch)) continue;
+    if (!Array.isArray(sketch.elements)) continue;
+    for (const [index, element] of sketch.elements.entries()) {
+      if (!element || typeof element !== "object" || Array.isArray(element)) continue;
+      if (!Object.hasOwn(element, "kind")) {
+        invalidTopology(`sketch ${sketchKey} element ${index} kind is required`);
+      }
+      if (element.kind !== "external_line") continue;
+      const context = `sketch ${sketchKey} external_line element ${index}`;
+      requireTopologyFields(element, EXTERNAL_LINE_FIELDS, context);
+      if (typeof element.id !== "string" || element.id.length === 0) {
+        invalidTopology(`${context} id is required`);
+      }
+      requireExternalLinePair(element.start_nanometers, "start_nanometers", context);
+      requireExternalLinePair(element.end_nanometers, "end_nanometers", context);
+      if (typeof element.body !== "string" || element.body.length === 0) {
+        invalidTopology(`${context} body is required`);
+      }
+      requireCanonicalU64Decimal(
+        element.stable_kernel_id,
+        `${context} stable_kernel_id`,
+      );
+    }
+  }
+}
+
+function invalidFeature(message) {
+  throw new StorageProtocolError("INVALID_DOCUMENT", message);
+}
+
+function featureRecord(value, context) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    invalidFeature(`${context} must be an object`);
+  }
+  return value;
+}
+
+function featureId(value, context) {
+  if (typeof value !== "string" || value.length === 0) invalidFeature(`${context} is required`);
+  return value;
+}
+
+function featureFields(value, required, optional, context) {
+  const allowed = new Set([...required, ...optional]);
+  const missing = required.find((field) => !Object.hasOwn(value, field));
+  if (missing !== undefined) invalidFeature(`${context} ${missing} is required`);
+  const unknown = Object.keys(value).find((field) => !allowed.has(field));
+  if (unknown !== undefined) invalidFeature(`${context} contains unknown field ${unknown}`);
+}
+
+function validateFeatureDefinitions(document) {
+  if (document.feature_definitions_v2 === undefined) return;
+  const definitions = featureRecord(document.feature_definitions_v2, "document feature_definitions_v2");
+  const features = document.features ?? {};
+  const bodies = document.bodies ?? {};
+  for (const [featureKey, value] of Object.entries(definitions)) {
+    featureRecord(value, `feature definition ${featureKey}`);
+    featureFields(
+      value,
+      ["schema_version", "operation", "result", "required_capabilities"],
+      ["participant_bodies"],
+      `feature definition ${featureKey}`,
+    );
+    if (value.schema_version !== 2) {
+      invalidFeature(`unsupported crawler feature-definition schema version ${String(value.schema_version)}`);
+    }
+    const feature = featureRecord(features[featureKey], `feature definition ${featureKey} semantic feature`);
+    const operation = featureRecord(value.operation, `feature definition ${featureKey} operation`);
+    featureFields(operation, EXTRUDE_OPERATION_FIELDS, [], `feature definition ${featureKey} operation`);
+    if (operation.kind !== "extrude" || operation.modifiers !== "none") {
+      invalidFeature(`feature definition ${featureKey} operation is not a bounded Extrude`);
+    }
+    const profile = featureRecord(operation.profile, `feature definition ${featureKey} profile`);
+    featureFields(profile, PROFILE_REFERENCE_FIELDS, [], `feature definition ${featureKey} profile`);
+    if (profile.kind !== "sketch_region") invalidFeature(`feature definition ${featureKey} profile kind is invalid`);
+    featureId(profile.sketch, `feature definition ${featureKey} sketch`);
+    featureId(profile.region, `feature definition ${featureKey} region`);
+    const support = featureRecord(operation.support, `feature definition ${featureKey} support`);
+    const supportField = support.kind === "topology_face" ? "reference" : "plane";
+    featureFields(support, ["kind", supportField], [], `feature definition ${featureKey} support`);
+    if (!["origin_plane", "construction_plane", "topology_face"].includes(support.kind)) {
+      invalidFeature(`feature definition ${featureKey} support kind is invalid`);
+    }
+    featureId(support[supportField], `feature definition ${featureKey} support ${supportField}`);
+    const extent = featureRecord(operation.extent, `feature definition ${featureKey} extent`);
+    featureFields(extent, BLIND_EXTENT_FIELDS, [], `feature definition ${featureKey} extent`);
+    if (extent.kind !== "blind" || !["positive", "negative", "symmetric"].includes(extent.direction)) {
+      invalidFeature(`feature definition ${featureKey} Blind extent is invalid`);
+    }
+    featureId(extent.distance, `feature definition ${featureKey} distance`);
+    const result = featureRecord(value.result, `feature definition ${featureKey} result`);
+    const participants = value.participant_bodies ?? [];
+    if (!Array.isArray(participants)) invalidFeature(`feature definition ${featureKey} participant_bodies must be an array`);
+    if (!Array.isArray(value.required_capabilities)) invalidFeature(`feature definition ${featureKey} required_capabilities must be an array`);
+    if (result.mode === "new_body") {
+      featureFields(result, ["mode", "body"], [], `feature definition ${featureKey} result`);
+      const output = featureId(result.body, `feature definition ${featureKey} result body`);
+      if (participants.length !== 0) invalidFeature(`feature definition ${featureKey} New Body cannot contain participant bodies`);
+      if (JSON.stringify(value.required_capabilities) !== JSON.stringify(["exact_blind_new_body_extrude"])) {
+        invalidFeature(`feature definition ${featureKey} New Body capability is invalid`);
+      }
+      const body = bodies[output];
+      if (body && body.component !== feature.component) invalidFeature(`feature definition ${featureKey} result body is cross-component`);
+    } else if (result.mode === "cut") {
+      featureFields(result, ["mode"], [], `feature definition ${featureKey} result`);
+      if (participants.length !== 1) invalidFeature(`feature definition ${featureKey} Cut requires exactly one target body`);
+      const participant = featureRecord(participants[0], `feature definition ${featureKey} target`);
+      featureFields(participant, PARTICIPANT_BODY_FIELDS, [], `feature definition ${featureKey} target`);
+      const target = featureId(participant.body, `feature definition ${featureKey} target body`);
+      if (participant.role !== "target") invalidFeature(`feature definition ${featureKey} Cut participant role is invalid`);
+      const body = bodies[target];
+      if (!body) invalidFeature(`feature definition ${featureKey} target body ${target} does not exist`);
+      if (body.component !== feature.component) invalidFeature(`feature definition ${featureKey} target body is cross-component`);
+      if (operation.support.kind === "topology_face") {
+        const topology = (document.topology_references ?? {})[operation.support.reference];
+        const producer = topology && (document.features ?? {})[topology.producer];
+        const lineage = body.producer_lineage ?? [];
+        if (
+          !topology ||
+          typeof topology !== "object" ||
+          Array.isArray(topology) ||
+          topology.kind !== "face" ||
+          topology.body !== target ||
+          topology.component !== feature.component ||
+          !producer ||
+          typeof producer !== "object" ||
+          Array.isArray(producer) ||
+          producer.component !== feature.component ||
+          (body.generated_by !== topology.producer && !lineage.includes(topology.producer))
+        ) {
+          invalidFeature(`feature definition ${featureKey} topology-face support is not owned by its Cut target`);
+        }
+      }
+      if (JSON.stringify(value.required_capabilities) !== JSON.stringify(["exact_blind_cut_extrude"])) {
+        invalidFeature(`feature definition ${featureKey} Cut capability is invalid`);
+      }
+    } else {
+      invalidFeature(`feature definition ${featureKey} result mode is invalid`);
+    }
+  }
 }
 
 function canonicalizeDocument(document) {
@@ -337,15 +716,57 @@ function canonicalizeDocument(document) {
 
 function canonicalizeValue(value, field = "") {
   if (Array.isArray(value)) {
-    return value.map((item) => canonicalizeValue(item));
+    const childField = field === "elements"
+      ? "sketch_element"
+      : field === "participant_bodies"
+        ? "participant_body"
+        : "";
+    return value.map((item) => canonicalizeValue(item, childField));
   }
   if (!value || typeof value !== "object") {
     return value;
   }
-  const keys = MAP_FIELDS.has(field) ? Object.keys(value).sort() : Object.keys(value);
+  const keys = MAP_FIELDS.has(field)
+    ? Object.keys(value).sort()
+    : field === "topology_reference"
+      ? TOPOLOGY_REFERENCE_FIELDS
+      : field === "fallback_signature"
+        ? TOPOLOGY_SIGNATURE_FIELDS[value.kind]
+      : field === "sketch_element" && value.kind === "external_line"
+          ? EXTERNAL_LINE_FIELDS
+        : field === "body"
+          ? BODY_FIELDS.filter((key) => Object.hasOwn(value, key))
+        : field === "region_definition_v2"
+          ? REGION_DEFINITION_FIELDS.filter((key) => Object.hasOwn(value, key))
+        : field === "feature_definition_v2"
+          ? FEATURE_DEFINITION_FIELDS.filter((key) => Object.hasOwn(value, key))
+        : field === "operation" && value.kind === "extrude"
+          ? EXTRUDE_OPERATION_FIELDS
+        : field === "profile" && value.kind === "sketch_region"
+          ? PROFILE_REFERENCE_FIELDS
+        : field === "extent" && value.kind === "blind"
+          ? BLIND_EXTENT_FIELDS
+        : field === "participant_body"
+          ? PARTICIPANT_BODY_FIELDS
+    : field === "construction_plane_definition"
+      ? [...CONSTRUCTION_PLANE_FIELDS.filter((key) => Object.hasOwn(value, key)), ...Object.keys(value).filter((key) => !CONSTRUCTION_PLANE_FIELDS.includes(key)).sort()]
+      : field === "definition" && value.kind === "offset"
+        ? [...OFFSET_PLANE_DEFINITION_FIELDS.filter((key) => Object.hasOwn(value, key)), ...Object.keys(value).filter((key) => !OFFSET_PLANE_DEFINITION_FIELDS.includes(key)).sort()]
+        : Object.keys(value);
   const result = {};
   for (const key of keys) {
-    result[key] = canonicalizeValue(value[key], key);
+    const childField = field === "construction_planes"
+      ? "construction_plane_definition"
+      : field === "bodies"
+        ? "body"
+      : field === "region_definitions_v2"
+        ? "region_definition_v2"
+      : field === "feature_definitions_v2"
+        ? "feature_definition_v2"
+      : field === "topology_references"
+        ? "topology_reference"
+        : key;
+    result[key] = canonicalizeValue(value[key], childField);
   }
   if (field === "recompute" && result.features) {
     result.features = Object.fromEntries(

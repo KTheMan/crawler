@@ -1,4 +1,5 @@
 import type { Point2, StableId } from "./sketch-editor";
+import type { PlanarFaceFrameAuthority } from "./protocol";
 
 export type Vector3Tuple = readonly [number, number, number];
 export type OriginPlane = "xy" | "xz" | "yz";
@@ -40,6 +41,7 @@ export type CurrentPlanarFaceEvidence = {
 };
 
 export type CurrentPlanarFaceEvidenceLookup = ReadonlyMap<string, CurrentPlanarFaceEvidence>;
+export type NativePlanarFaceAuthorityLookup = ReadonlyMap<string, PlanarFaceFrameAuthority>;
 
 /** Body-qualified lookup key because kernel topology IDs are body-local. */
 export function planarFaceEvidenceKey(body: StableId, stableKernelId: string): string {
@@ -47,15 +49,20 @@ export function planarFaceEvidenceKey(body: StableId, stableKernelId: string): s
 }
 
 export type SketchPlaneDocument = {
-  bodies?: Record<string, { id?: string; generated_by?: string }>;
+  revision?: number;
+  bodies?: Record<string, { id?: string; component?: string; generated_by?: string; producer_lineage?: readonly string[]; suppressed?: boolean }>;
+  features?: Record<string, { id?: string; component?: string; suppressed?: boolean }>;
   origin_planes?: Record<string, {
     id?: string;
+    component?: string;
     plane?: OriginPlane;
     normal_millionths?: number[];
     x_axis_millionths?: number[];
   }>;
   topology_references?: Record<string, {
+    schema_version?: number;
     id?: string;
+    component?: string;
     body?: string;
     producer?: string;
     kind?: string;
@@ -70,16 +77,26 @@ export type SketchPlaneDocument = {
     };
   }>;
   construction_planes?: Record<string, {
+    schema_version?: number;
     id?: string;
-    origin_nanometers?: number[];
-    x_axis_millionths?: number[];
-    normal_millionths?: number[];
+    component?: string;
+    definition?: {
+      kind?: string;
+      base_plane?: StableId;
+      offset?: StableId;
+    };
+    suppressed?: boolean;
+  }>;
+  parameters?: Record<string, {
+    value?: { kind?: string; value?: number };
   }>;
 };
 
 export type PlaneResolution =
   | { status: "ready"; plane: ResolvedSketchPlane }
   | { status: "missing_reference"; support: SketchPlaneSupport; reference: StableId }
+  | { status: "suppressed_reference"; support: Extract<SketchPlaneSupport, { kind: "construction_plane_reference" }>; reference: StableId }
+  | { status: "invalid_reference"; support: Extract<SketchPlaneSupport, { kind: "construction_plane_reference" }>; reference: StableId; reason: string }
   | { status: "surface_evidence_required"; support: Extract<SketchPlaneSupport, { kind: "topology" }>; stable_kernel_id?: string };
 
 const MILLION = 1_000_000;
@@ -113,6 +130,7 @@ export function resolveSketchPlane(
   support: SketchPlaneSupport,
   document: SketchPlaneDocument,
   currentPlanarFaces: CurrentPlanarFaceEvidenceLookup | ReadonlySet<string> = new Map(),
+  nativePlanarFaceAuthorities: NativePlanarFaceAuthorityLookup = new Map(),
 ): PlaneResolution {
   if (support.kind === "origin_plane") return { status: "ready", plane: { support, ...canonicalOriginPlanes[support.plane] } };
   if (support.kind === "origin_plane_reference") {
@@ -126,11 +144,31 @@ export function resolveSketchPlane(
   }
   if (support.kind === "construction_plane_reference") {
     const definition = document.construction_planes?.[support.plane];
-    const origin = tuple(definition?.origin_nanometers);
-    const xAxis = tuple(definition?.x_axis_millionths);
-    const normal = tuple(definition?.normal_millionths);
-    if (!definition || !origin || !xAxis || !normal) return { status: "missing_reference", support, reference: support.plane };
-    return { status: "ready", plane: makeFrame(support, "construction_plane", origin, xAxis, normal) };
+    if (!definition) return { status: "missing_reference", support, reference: support.plane };
+    if (definition.suppressed) return { status: "suppressed_reference", support, reference: support.plane };
+    if (definition.schema_version !== 1) return { status: "invalid_reference", support, reference: support.plane, reason: "construction plane schema_version must be 1" };
+    if (definition.definition?.kind !== "offset") return { status: "invalid_reference", support, reference: support.plane, reason: "construction plane definition kind must be offset" };
+    if (!definition.definition.base_plane) return { status: "invalid_reference", support, reference: support.plane, reason: "construction plane base_plane is missing" };
+    if (!definition.definition.offset) return { status: "invalid_reference", support, reference: support.plane, reason: "construction plane offset parameter is missing" };
+    const baseDefinition = document.origin_planes?.[definition.definition.base_plane];
+    if (!baseDefinition) return { status: "missing_reference", support, reference: definition.definition.base_plane };
+    if (definition.component && baseDefinition.component && definition.component !== baseDefinition.component) {
+      return { status: "invalid_reference", support, reference: support.plane, reason: "construction plane and base plane belong to different components" };
+    }
+    const offset = document.parameters?.[definition.definition.offset]?.value;
+    if (!offset) return { status: "missing_reference", support, reference: definition.definition.offset };
+    if (offset.kind !== "length_nanometers" || typeof offset.value !== "number" || !Number.isSafeInteger(offset.value)) {
+      return { status: "invalid_reference", support, reference: support.plane, reason: "construction plane offset must be an exact length_nanometers integer" };
+    }
+    const base = resolveSketchPlane({ kind: "origin_plane_reference", plane: definition.definition.base_plane }, document, currentPlanarFaces, nativePlanarFaceAuthorities);
+    if (base.status !== "ready") return { status: "missing_reference", support, reference: definition.definition.base_plane };
+    const origin = base.plane.origin_nanometers.map((coordinate, index) => {
+      const translated = BigInt(coordinate) + BigInt(base.plane.normal_millionths[index]) * BigInt(offset.value!) / BigInt(MILLION);
+      const value = Number(translated);
+      if (!Number.isSafeInteger(value)) throw new RangeError("construction plane origin exceeds the exact nanometer range");
+      return value === 0 ? 0 : value;
+    }) as unknown as Vector3Tuple;
+    return { status: "ready", plane: makeFrame(support, "construction_plane", origin, base.plane.x_axis_millionths, base.plane.normal_millionths) };
   }
 
   const reference = document.topology_references?.[support.reference];
@@ -142,27 +180,35 @@ export function resolveSketchPlane(
   if (!reference || reference.kind !== "face" || signature?.kind !== "face" || !fallbackOrigin || !fallbackNormal || !body) {
     return { status: "missing_reference", support, reference: support.reference };
   }
-  // Sets are accepted temporarily so renderer/main migration can type-check,
-  // but an ID alone cannot authorize a frame. Only current body-qualified
-  // surface evidence can provide working-frame coordinates.
-  const evidenceLookup = currentPlanarFaces as Partial<CurrentPlanarFaceEvidenceLookup>;
-  const evidence = stableKernelId === undefined || typeof evidenceLookup.get !== "function"
+  // Renderer evidence may locate a face and populate a repair signature, but
+  // only the native runtime may authorize the working frame.
+  void currentPlanarFaces;
+  const authority = stableKernelId === undefined
     ? undefined
-    : evidenceLookup.get(planarFaceEvidenceKey(body, stableKernelId));
-  const origin = tuple(evidence?.centroid_nanometers);
-  const observedNormal = tuple(evidence?.normal_millionths);
-  const evidenceMatchesReference = evidence?.body === body && evidence.stable_kernel_id === stableKernelId;
-  if (!evidenceMatchesReference || !origin || !observedNormal || length(observedNormal) === 0) {
+    : nativePlanarFaceAuthorities.get(planarFaceEvidenceKey(body, stableKernelId));
+  if (!authority || authority.bodyId !== body || authority.faceStableId !== stableKernelId) {
     return { status: "surface_evidence_required", support, stable_kernel_id: stableKernelId };
   }
-  // Tessellation winding is not semantic orientation. Preserve the durable
-  // support's polarity while sourcing the actual plane from current topology.
-  const normal = dot(observedNormal, fallbackNormal) < 0 ? scale(observedNormal, -1) : observedNormal;
-  return { status: "ready", plane: makeFrame(support, "planar_face", origin, deterministicXAxis(normal), normal) };
+  return { status: "ready", plane: {
+    support, source: "planar_face",
+    origin_nanometers: authority.frame.originNanometers,
+    x_axis_millionths: authority.frame.xAxisMillionths,
+    y_axis_millionths: authority.frame.yAxisMillionths,
+    normal_millionths: authority.frame.normalMillionths,
+  } };
 }
 
 export function originPlaneSupport(plane: OriginPlane): SketchPlaneSupport {
   return { kind: "origin_plane_reference", plane: `origin-plane:${plane}` };
+}
+
+/** Compare canonical working frames rather than their serialized support form. */
+export function resolvedSketchPlanesEqual(left: ResolvedSketchPlane, right: ResolvedSketchPlane): boolean {
+  return left.source === right.source
+    && tuplesEqual(left.origin_nanometers, right.origin_nanometers)
+    && tuplesEqual(left.x_axis_millionths, right.x_axis_millionths)
+    && tuplesEqual(left.y_axis_millionths, right.y_axis_millionths)
+    && tuplesEqual(left.normal_millionths, right.normal_millionths);
 }
 
 export function planeLocalToWorldMillimeters(point: Point2, plane: ResolvedSketchPlane): Vector3Tuple {
@@ -225,6 +271,10 @@ function makeFrame(
     y_axis_millionths: yAxis,
     normal_millionths: normal,
   };
+}
+
+function tuplesEqual(left: Vector3Tuple, right: Vector3Tuple): boolean {
+  return left[0] === right[0] && left[1] === right[1] && left[2] === right[2];
 }
 
 function deterministicXAxis(normalInput: Vector3Tuple): Vector3Tuple {

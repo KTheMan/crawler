@@ -375,7 +375,9 @@ export type PreparedSketchPreview = Readonly<{
 }>;
 
 export type SketchTopologyReference = {
+  schema_version: 1;
   id: StableId;
+  component: StableId;
   body: StableId;
   producer: StableId;
   kind: "face";
@@ -1353,6 +1355,26 @@ export class SketchEditSession {
 
   diagnosticsInstrumentation(): ProfileDiagnosticsInstrumentation {
     return { ...this.diagnosticsCounters };
+  }
+
+  /**
+   * Populate the derived solve and profile state for an existing draft without
+   * creating an edit or an undo entry. Hydrated sketches contain durable
+   * geometry and constraints, while profile regions are derived by the
+   * canonical runtime and therefore must be rebuilt when an edit session opens.
+   */
+  async initialize(): Promise<void> {
+    const generation = this.draftGeneration;
+    const isolated = this.runtime.transportIsolation === "structured-clone";
+    const preview = await this.runtime.applySketchCommands({
+      sketch: isolated ? this.draftValue : structuredClone(this.draftValue),
+      commands: [],
+    });
+    if (generation !== this.draftGeneration) return;
+    this.publishSolve(this.draftValue, preview.solve, isolated);
+    this.scheduleProfileDiagnostics(preview.profile, isolated);
+    this.acceptedSolve = this.solve ? structuredClone(this.solve) : undefined;
+    this.acceptedProfile = this.profile ? structuredClone(this.profile) : undefined;
   }
 
   private invalidateDiagnostics(): void {

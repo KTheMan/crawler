@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "fixture_id": "planar-face-stale-current-evidence",
+  "story_ids": ["E3D-S4-01", "E3D-S4-02", "E3D-S4-04"],
+  "description": "A dirty or failed producer, stale accepted revision, or packet-only face observation cannot authorize the current face frame.",
+  "units": { "length": "nanometer", "angle": "radian" },
+  "input": { "schema_version": 4, "kind": "planar_face_stale_current_evidence_v4", "payload": { "support_body": "body:part", "support_face": "current-cap-id", "stale_revision": 1, "accepted_revision": 2, "producer_states": ["dirty", "failed"], "packet_evidence_present": true } },
+  "expected": { "kind": "structured_error", "error": { "category": "stale_reference", "code": "stale_body", "field_path": "planar_face.body_id", "referenced_entity_ids": ["body:part", "feature:extrude"] } },
+  "tolerances": { "relative": 1e-9, "aabb_nm": 1, "signed_volume_nm3": 1000000, "surface_area_nm2": 1000, "centroid_nm": 1 },
+  "identity_sets": { "retained": ["body:last-valid", "packet:last-valid"], "replaced": [] },
+  "lifecycle_steps": ["preview", "commit", "recompute"],
+  "evidence_test_ids": ["planar-face-document-authority-contracts", "wasm-planar-face-extrude", "planar-face-native-wasm-parity", "production-planar-face-lifecycle"],
+  "legacy_provenance": null
+}

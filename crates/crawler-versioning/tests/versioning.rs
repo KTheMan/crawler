@@ -1,6 +1,8 @@
 use crawler_document::{
-    Document, DocumentChange, FeatureId, FeatureInput, FeatureRecomputeState, Parameter,
-    ParameterId, ParameterValue, SketchId, TopologyReferenceId, TopologySignature, TransactionId,
+    BodyId, Document, DocumentChange, FeatureDefinitionV2, FeatureId, FeatureInput,
+    FeatureRecomputeState, Parameter, ParameterId, ParameterValue, PlanarSupportReferenceV2,
+    ProfileReferenceV2, RegionDefinitionV2, RegionReferenceId, SketchId, TopologyReferenceId,
+    TopologySignature, TransactionId,
 };
 use crawler_history::DocumentHistory;
 use crawler_versioning::{
@@ -36,6 +38,154 @@ fn versioned() -> VersionedDocument {
         },
     );
     document
+}
+
+fn exact_extrude_definition(distance: &str) -> FeatureDefinitionV2 {
+    FeatureDefinitionV2::exact_blind_new_body_extrude(
+        ProfileReferenceV2::SketchRegion {
+            sketch: SketchId::from("sketch:base"),
+            region: RegionReferenceId::from("region:base"),
+        },
+        // The legacy fixture predates evaluated construction-plane entities;
+        // versioning treats the typed ID opaquely and preserves it exactly.
+        PlanarSupportReferenceV2::ConstructionPlane {
+            plane: crawler_document::ConstructionPlaneId::from("construction-plane:base"),
+        },
+        ParameterId::from(distance),
+        BodyId::from("body:block"),
+    )
+}
+
+fn region_definition(id: &str) -> RegionDefinitionV2 {
+    RegionDefinitionV2 {
+        id: RegionReferenceId::from(id),
+        sketch: SketchId::from("sketch:base"),
+        outer_geometry_ids: vec![
+            "line:bottom".into(),
+            "line:right".into(),
+            "line:top".into(),
+            "line:left".into(),
+        ],
+        hole_geometry_ids: Vec::new(),
+    }
+}
+
+#[test]
+fn structural_diff_tracks_typed_feature_definitions_as_feature_intent() {
+    let base = versioned();
+    let mut target = base.clone();
+    let feature_id = FeatureId::from("feature:extrude");
+    target.document.region_definitions_v2.insert(
+        RegionReferenceId::from("region:base"),
+        region_definition("region:base"),
+    );
+    target.document.feature_definitions_v2.insert(
+        feature_id.clone(),
+        exact_extrude_definition("parameter:height"),
+    );
+
+    let added = structural_diff(&base, &target);
+    assert!(added.changes.iter().any(|change| {
+        change.address.entity_kind == "feature_definition_v2"
+            && change.address.semantic_id == feature_id.0
+            && change.kind == ChangeKind::Added
+    }));
+
+    let mut edited = target.clone();
+    edited.document.feature_definitions_v2.insert(
+        feature_id.clone(),
+        exact_extrude_definition("parameter:width"),
+    );
+    let diff = structural_diff(&target, &edited);
+    assert!(diff.changes.iter().any(|change| {
+        change.address.entity_kind == "feature_definition_v2"
+            && change.address.semantic_id == feature_id.0
+            && change.kind == ChangeKind::FeatureEdited
+    }));
+}
+
+#[test]
+fn concurrent_feature_definition_edits_conflict_fail_closed() {
+    let feature_id = FeatureId::from("feature:extrude");
+    let mut base = versioned();
+    base.document.region_definitions_v2.insert(
+        RegionReferenceId::from("region:base"),
+        region_definition("region:base"),
+    );
+    base.document.feature_definitions_v2.insert(
+        feature_id.clone(),
+        exact_extrude_definition("parameter:height"),
+    );
+    let mut left = base.clone();
+    left.document.feature_definitions_v2.insert(
+        feature_id.clone(),
+        exact_extrude_definition("parameter:width"),
+    );
+    let mut right = base.clone();
+    let definition = right
+        .document
+        .feature_definitions_v2
+        .get_mut(&feature_id)
+        .unwrap();
+    let crawler_document::FeatureOperationV2::Extrude { profile, .. } = &mut definition.operation;
+    *profile = ProfileReferenceV2::SketchRegion {
+        sketch: SketchId::from("sketch:base"),
+        region: RegionReferenceId::from("region:alternate"),
+    };
+    right.document.region_definitions_v2.insert(
+        RegionReferenceId::from("region:alternate"),
+        region_definition("region:alternate"),
+    );
+
+    let error = merge_three_way(&base, &left, &right, &FixtureRecompute).unwrap_err();
+    let MergeError::Conflicts(conflicts) = error else {
+        panic!("expected feature-definition conflict");
+    };
+    assert!(conflicts.iter().any(|conflict| {
+        conflict.kind == ConflictKind::FeatureEdit
+            && conflict.semantic_id == feature_id.0
+            && conflict.field == "feature_definitions_v2"
+    }));
+}
+
+#[test]
+fn structural_diff_and_merge_conflicts_cover_region_definitions() {
+    let mut base = versioned();
+    base.document.region_definitions_v2.insert(
+        RegionReferenceId::from("region:base"),
+        region_definition("region:base"),
+    );
+    let mut left = base.clone();
+    left.document
+        .region_definitions_v2
+        .get_mut(&RegionReferenceId::from("region:base"))
+        .unwrap()
+        .outer_geometry_ids
+        .rotate_left(1);
+    let diff = structural_diff(&base, &left);
+    assert!(diff.changes.iter().any(|change| {
+        change.address.entity_kind == "region_definition_v2"
+            && change.address.semantic_id == "region:base"
+            && change.kind == ChangeKind::ReferenceChanged
+    }));
+
+    let mut right = base.clone();
+    right
+        .document
+        .region_definitions_v2
+        .get_mut(&RegionReferenceId::from("region:base"))
+        .unwrap()
+        .outer_geometry_ids
+        .reverse();
+    let error = merge_three_way(&base, &left, &right, &FixtureRecompute).unwrap_err();
+    let MergeError::Conflicts(conflicts) = error else {
+        panic!("expected region-definition conflict");
+    };
+    assert!(conflicts.iter().any(|conflict| {
+        conflict.kind == ConflictKind::EntityEdit
+            && conflict.semantic_id == "region:base"
+            && conflict.field == "region_definitions_v2"
+    }));
 }
 
 fn commit_branch(

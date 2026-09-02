@@ -8,7 +8,9 @@ export const wasmpartruntime_applySketchCommandsJson: (a: number, b: number, c: 
 export const wasmpartruntime_bodySnapshotJson: (a: number, b: number, c: number) => [number, number, number, number];
 export const wasmpartruntime_commitChangesJson: (a: number, b: number, c: number) => [number, number, number, number];
 export const wasmpartruntime_commitLength: (a: number, b: number, c: number, d: bigint) => [number, number, number, number];
+export const wasmpartruntime_commitOffsetConstructionPlaneJson: (a: number, b: number, c: number) => [number, number, number, number];
 export const wasmpartruntime_commitSketchExtrudeJson: (a: number, b: number, c: number) => [number, number, number, number];
+export const wasmpartruntime_constructionPlaneFrameJson: (a: number, b: number, c: number) => [number, number, number, number];
 export const wasmpartruntime_decomposeSketchJson: (a: number, b: number, c: number) => [number, number, number, number];
 export const wasmpartruntime_dimensionsJson: (a: number) => [number, number, number, number];
 export const wasmpartruntime_documentJson: (a: number) => [number, number, number, number];
@@ -29,10 +31,13 @@ export const wasmpartruntime_importedStepSource: (a: number, b: number, c: numbe
 export const wasmpartruntime_new: (a: number, b: number, c: number, d: number) => [number, number, number];
 export const wasmpartruntime_newValidationRectangularPart: (a: number, b: number, c: number, d: number, e: bigint, f: bigint, g: bigint) => [number, number, number];
 export const wasmpartruntime_parametersJson: (a: number) => [number, number, number, number];
+export const wasmpartruntime_planarFaceFrameJson: (a: number, b: number, c: number, d: number, e: number) => [number, number, number, number];
 export const wasmpartruntime_prepareSketchFeatureEnvelopeJson: (a: number, b: number, c: number) => [number, number, number, number];
 export const wasmpartruntime_previewExtrudeJson: (a: number, b: bigint, c: number) => [number, number, number, number];
 export const wasmpartruntime_previewFeatureJson: (a: number, b: number, c: number) => [number, number, number, number];
+export const wasmpartruntime_previewOffsetConstructionPlaneJson: (a: number, b: number, c: number) => [number, number, number, number];
 export const wasmpartruntime_previewSketchExtrudeJson: (a: number, b: number, c: number) => [number, number, number, number];
+export const wasmpartruntime_previewTopologyRebindJson: (a: number, b: number, c: number) => [number, number, number, number];
 export const wasmpartruntime_promoteOrReuseParameterJson: (a: number, b: number, c: number) => [number, number, number, number];
 export const wasmpartruntime_recomputeFromHereJson: (a: number, b: number, c: number) => [number, number, number, number];
 export const wasmpartruntime_redo: (a: number) => [number, number, number, number];
@@ -46,7 +51,9 @@ export const wasmpartruntime_setTimelineRollback: (a: number, b: number, c: numb
 export const wasmpartruntime_sketchSolverContractJson: (a: number) => [number, number, number, number];
 export const wasmpartruntime_solveSketchJson: (a: number, b: number, c: number) => [number, number, number, number];
 export const wasmpartruntime_timelineRollbackJson: (a: number) => [number, number, number, number];
+export const wasmpartruntime_topologySupportDiagnosticJson: (a: number, b: number, c: number, d: number, e: number) => [number, number, number, number];
 export const wasmpartruntime_undo: (a: number) => [number, number, number, number];
+export const wasmpartruntime_validateSingleTargetCutTargetsJson: (a: number, b: number, c: number) => [number, number, number, number];
 export const __wbg_wasmrenderpacket_free: (a: number, b: number) => void;
 export const wasmrenderpacket_bounds: (a: number) => [number, number];
 export const wasmrenderpacket_edgePositions: (a: number) => [number, number];

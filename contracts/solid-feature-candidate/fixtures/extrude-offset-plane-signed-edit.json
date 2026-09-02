@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "fixture_id": "extrude-offset-plane-signed-edit",
+  "story_ids": ["E3D-S3-01", "E3D-S3-02", "E3D-S3-04"],
+  "description": "A negative construction-plane offset round-trips exactly and an accepted offset edit recomputes the Extrude while retaining plane, sketch, feature, and body identities.",
+  "units": { "length": "nanometer", "angle": "radian" },
+  "input": {
+    "schema_version": 3,
+    "kind": "extrude_offset_plane_v3",
+    "payload": {
+      "result_mode": "new_body",
+      "base_plane": "origin.xy",
+      "offset_parameter": "parameter:construction-plane-offset",
+      "initial_offset_nanometers": -7000000,
+      "edited_offset_nanometers": -9000000,
+      "zero_offset_nanometers": 0,
+      "distance_nm": 4000000,
+      "direction": "positive",
+      "construction_plane_definition_kind": "offset",
+      "durable_base_plane": "origin-plane:xy",
+      "durable_offset_parameter": "parameter:construction-plane-offset",
+      "profile": "rectangle-10x6mm"
+    }
+  },
+  "expected": {
+    "kind": "success",
+    "result": {
+      "initial_frame_origin_nm": [0, 0, -7000000],
+      "edited_frame_origin_nm": [0, 0, -9000000],
+      "zero_offset_frame_origin_nm": [0, 0, 0],
+      "initial_bounds_nm": [-5000000, -3000000, -7000000, 5000000, 3000000, -3000000],
+      "edited_bounds_nm": [-5000000, -3000000, -9000000, 5000000, 3000000, -5000000],
+      "zero_offset_bounds_nm": [-5000000, -3000000, 0, 5000000, 3000000, 4000000],
+      "durable_offset_nm": -9000000,
+      "durable_distance_nm": 4000000,
+      "direction": "positive",
+      "offset_parameter_roundtrip": true,
+      "frame_roundtrip": true,
+      "recompute_deterministic": true,
+      "stable_plane_id": "construction-plane:extrude-offset-plane-signed-edit",
+      "stable_sketch_id": "sketch:extrude-offset-plane-signed-edit",
+      "stable_feature_id": "feature:extrude-offset-plane-signed-edit",
+      "stable_body_id": "body:extrude-offset-plane-signed-edit",
+      "zero_offset_stable_plane_id": "construction-plane:extrude-offset-plane-signed-edit",
+      "zero_offset_stable_sketch_id": "sketch:extrude-offset-plane-signed-edit",
+      "zero_offset_stable_feature_id": "feature:extrude-offset-plane-signed-edit",
+      "zero_offset_stable_body_id": "body:extrude-offset-plane-signed-edit"
+    }
+  },
+  "tolerances": { "relative": 1e-9, "aabb_nm": 1, "signed_volume_nm3": 1000000, "surface_area_nm2": 1000, "centroid_nm": 1 },
+  "identity_sets": {
+    "retained": ["construction-plane:extrude-offset-plane-signed-edit", "sketch:extrude-offset-plane-signed-edit", "feature:extrude-offset-plane-signed-edit", "body:extrude-offset-plane-signed-edit"],
+    "replaced": []
+  },
+  "lifecycle_steps": ["preview", "cancel", "commit", "edit", "suppress", "unsuppress", "undo", "redo", "save", "reload", "recompute"],
+  "evidence_test_ids": ["construction-plane-document-contracts", "native-construction-plane-offset-extrude", "wasm-construction-plane-offset-extrude", "construction-plane-offset-native-wasm-parity"],
+  "legacy_provenance": null
+}

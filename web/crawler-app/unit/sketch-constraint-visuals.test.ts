@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { Constraint, Sketch } from "../src/sketch-editor.ts";
-import { constraintPointKey, constraintVisualOperands, layoutConstraintGlyphs, positionedConstraintVisualOperands, selectedConstraintIds, sketchConstraintCoverage, sketchConstraintIcon, sketchConstraintVisualState, sketchPointMobility } from "../src/sketch-constraint-visuals.ts";
+import { constraintPointKey, constraintVisualOperands, layoutConstraintGlyphs, positionedConstraintVisualOperands, selectedConstraintIds, sketchConstraintCoverage, sketchConstraintIcon, sketchConstraintVisualState, sketchPointMobility, visibleConstraintIds } from "../src/sketch-constraint-visuals.ts";
 
 const sketch = (): Sketch => ({
   id: "sketch:constraint-visuals",
@@ -65,6 +65,14 @@ test("viewport relations are scoped to a whole curve or its specifically selecte
     ["join"],
   );
   assert.deepEqual([...selectedConstraintIds(value, [], [], "diameter")], ["diameter"]);
+});
+
+test("explicit dimensions remain in the visible canvas set without a selection", () => {
+  const value = sketch();
+  assert.deepEqual([...visibleConstraintIds(value, [], [])], ["diameter"]);
+  assert.deepEqual([...visibleConstraintIds(value, ["line"], [])], ["join", "diameter"]);
+  value.suppressed_constraints = ["diameter"];
+  assert.deepEqual([...visibleConstraintIds(value, [], [])], ["diameter"]);
 });
 
 test("constraint symbols are real vector glyphs rather than letter placeholders", () => {

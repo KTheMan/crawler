@@ -267,9 +267,11 @@ pub fn preview_first_unresolved(
             };
             let expected = document.topology_references.get(reference_id).cloned();
             let resolved = expected.as_ref().is_some_and(|expected| {
-                observed
-                    .iter()
-                    .any(|candidate| same_stable_identity(expected, candidate))
+                reference_has_document_owner(document, expected)
+                    && observed.iter().any(|candidate| {
+                        reference_has_document_owner(document, candidate)
+                            && same_stable_identity(expected, candidate)
+                    })
             });
             if resolved {
                 continue;
@@ -281,7 +283,7 @@ pub fn preview_first_unresolved(
             };
             let candidates = expected
                 .as_ref()
-                .map(|expected| rank_candidates(expected, observed))
+                .map(|expected| rank_candidates(document, expected, observed))
                 .unwrap_or_default();
             let selection = selection(&candidates);
             let blocked_features = downstream_features(document, &feature_id);
@@ -461,13 +463,20 @@ fn validate_transaction(
         Some(FeatureInput::Topology(current)) if current == &change.from_reference => {}
         _ => return Err(fail(RepairErrorKind::StaleTopologyBinding)),
     }
-    if !document
+    let source = document
         .topology_references
-        .contains_key(&change.from_reference)
+        .get(&change.from_reference)
+        .ok_or_else(|| {
+            fail(RepairErrorKind::MissingSourceReference(
+                change.from_reference.clone(),
+            ))
+        })?;
+    if source.component != change.replacement.component
+        || source.body != change.replacement.body
+        || source.producer != change.replacement.producer
+        || !reference_has_document_owner(document, &change.replacement)
     {
-        return Err(fail(RepairErrorKind::MissingSourceReference(
-            change.from_reference.clone(),
-        )));
+        return Err(fail(RepairErrorKind::ReplacementOwnershipMismatch));
     }
     Ok(())
 }
@@ -517,19 +526,40 @@ fn validate_document(document: &Document) -> Result<(), RepairErrorKind> {
 
 fn same_stable_identity(expected: &TopologyReference, observed: &TopologyReference) -> bool {
     expected.kind == observed.kind
+        && expected.component == observed.component
         && expected.body == observed.body
         && expected.producer == observed.producer
-        && (expected.stable_token == observed.stable_token
-            || expected.stable_kernel_id == observed.stable_kernel_id)
+        // The kernel ID is the identity consumed by native evaluation.  A
+        // retained application token must never mask a changed kernel entity.
+        // Requiring both also prevents a recycled kernel ID from resolving a
+        // different durable token without an explicit repair.
+        && expected.stable_token == observed.stable_token
+        && expected.stable_kernel_id == observed.stable_kernel_id
+}
+
+fn reference_has_document_owner(document: &Document, reference: &TopologyReference) -> bool {
+    document.bodies.get(&reference.body).is_some_and(|body| {
+        body.component == reference.component && body.generated_by == reference.producer
+    }) && document
+        .features
+        .get(&reference.producer)
+        .is_some_and(|producer| producer.component == reference.component)
 }
 
 fn rank_candidates(
+    document: &Document,
     expected: &TopologyReference,
     observed: &[TopologyReference],
 ) -> Vec<RankedCandidate> {
     let mut scored: Vec<_> = observed
         .iter()
-        .filter(|candidate| candidate.kind == expected.kind)
+        .filter(|candidate| {
+            reference_has_document_owner(document, candidate)
+                && candidate.kind == expected.kind
+                && candidate.component == expected.component
+                && candidate.body == expected.body
+                && candidate.producer == expected.producer
+        })
         .filter_map(|candidate| {
             signature_distance(&expected.fallback_signature, &candidate.fallback_signature)
                 .map(|score| (score, candidate.clone()))
@@ -678,6 +708,7 @@ pub enum RepairErrorKind {
     InvalidResultRevision,
     RevisionOverflow,
     InvalidReplacementIdentity,
+    ReplacementOwnershipMismatch,
     ReplacementNotInPreview(TopologyReferenceId),
     ReplacementKindMismatch {
         expected: TopologyKind,

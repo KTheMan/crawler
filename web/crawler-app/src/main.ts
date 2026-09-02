@@ -76,11 +76,14 @@ import {
 } from "lucide";
 
 import { adapterFromWorkerSnapshot, DocumentAdapter, loadDocumentAdapter } from "./document-adapter";
-import type { AdvancedFeatureCommand, AdvancedFeatureOperationId, ExportFormat, FeatureServicesView, NamedParameterView, RepairInspectionView, Selection, TopologyKind, TopologyReferenceView, WorkerResponse } from "./protocol";
+import type { AdvancedFeatureCommand, AdvancedFeatureOperationId, ExportFormat, FeatureServicesView, NamedParameterView, OffsetConstructionPlaneFrame, OffsetConstructionPlaneRequest, PlanarFaceFrameAuthority, PlanarFaceFrameRequest, RenderPacket, RepairInspectionView, Selection, TopologyKind, TopologyReferenceView, WorkerResponse } from "./protocol";
+import { normalizeExtrudeDistance, visibleExtrudeDistance, type ExtrudeDirection } from "./extrude-direction";
+import { ExtrudeTargetError, isExtrudeCutErrorCode, parseExtrudeResultMode, requireSingleCutTarget, retainedExtrudeBody, type ExtrudeResultMode } from "./extrude-result-mode";
+import { buildOffsetConstructionPlaneRequest, constructionPlaneOffsetInputError, isConstructionPlaneRuntimeErrorCode, isConstructionPlaneSupportRuntimeErrorCode, offsetNanometersToMillimeters } from "./offset-construction-plane";
 import { SKETCH_SVG_LAYER_NAMES, SketchSvgLayerCache, type SketchSvgLayerName } from "./sketch-svg-layer-cache";
 import { SketchSnapSpatialIndexCache } from "./sketch-snap-spatial-index";
 import { firstRetainedOperationId, retainedOperationGeometry, SketchRenderIndexCache } from "./sketch-render-indexes";
-import { constraintKindLabel, constraintPointKey, constraintVisualOperands, layoutConstraintGlyphs, positionedConstraintVisualOperands, selectedConstraintIds, sketchConstraintCoverage, sketchConstraintIcon, sketchConstraintIconBody, sketchConstraintVisualState, sketchPointMobility, type ConstraintGlyphPlacement, type SketchConstraintVisualState, type SketchMobilityKind } from "./sketch-constraint-visuals";
+import { constraintKindLabel, constraintPointKey, constraintVisualOperands, layoutConstraintGlyphs, positionedConstraintVisualOperands, selectedConstraintIds, sketchConstraintCoverage, sketchConstraintIcon, sketchConstraintIconBody, sketchConstraintVisualState, sketchPointMobility, visibleConstraintIds, type ConstraintGlyphPlacement, type SketchConstraintVisualState, type SketchMobilityKind } from "./sketch-constraint-visuals";
 import { IdentityRevisionTracker, LatestFrameCoordinator, mergeLatestPointerFrameWork, SketchPointerRenderCoordinator, type LatestPointerFrameWork } from "./sketch-pointer-render";
 import { keyedSketchSvgMarkup, reconcileSketchSvgFragments, type SketchSvgFragment } from "./sketch-svg-reconciler";
 import { WorkspaceRenderer, type CommittedSketchDisplay, type SketchSupportPick, type WorkspaceViewState } from "./renderer";
@@ -92,10 +95,11 @@ import { PerformanceEvidence } from "./performance-evidence";
 import { installPwa, type PwaStatus } from "./pwa";
 import { CONSTRAINT_SCHEMA, SKETCH_TOOL_SCHEMA, SketchEditSession, StableSketchIds, constraintCommand, filterCenterOnLineTangencies, hydrateSketchFromDocument, sketchToolFacsimile, toolCommands, type Constraint, type ConstraintTool, type Geometry, type Point2, type PointRef, type PreparedSketchPreview, type Sketch, type SketchCommand, type SketchDraftView, type SketchOperation, type SketchRecipe, type SketchSupport, type SketchTool, type SketchTopologyReference } from "./sketch-editor";
 import { SKETCH_CONSTRAINT_MANIFEST, SKETCH_TOOL_MANIFEST, constraintDisabledReason, parseSketchDimensionExpression, sketchEntityMatchesFilter, smartDimensionDisabledReason, smartDimensionKind, smartDimensionLinePlacementMode, summarizeSketchSelection, toolDisabledReason } from "./sketch-tool-manifest";
-import { originPlaneSupport, planeLocalToWorldMillimeters, resolveSketchPlane, worldMillimetersToPlaneLocal, type CurrentPlanarFaceEvidenceLookup, type ResolvedSketchPlane, type SketchPlaneDocument } from "./sketch-plane";
+import { originPlaneSupport, planeLocalToWorldMillimeters, resolvedSketchPlanesEqual, resolveSketchPlane, worldMillimetersToPlaneLocal, type CurrentPlanarFaceEvidenceLookup, type ResolvedSketchPlane, type SketchPlaneDocument } from "./sketch-plane";
+import { bodyAcceptsFeatureProducer, planarFaceAuthorityKey } from "./planar-face-authority";
 import { sketchReferenceId } from "./parameter-references";
 import { planIntersectionTrim } from "./sketch-trim";
-import { closedProfilePolylines, constraintAnnotations, geometryPointRefs, inferSketchPoint, pointForRef, sketchGeometrySelectionPath, type SketchInference, type SketchSnap } from "./sketch-workspace";
+import { closedProfileGeometryIds, closedProfilePolylines, constraintAnnotations, geometryPointRefs, inferSketchPoint, pointForRef, sketchGeometrySelectionPath, sketchProfileId, type SketchInference, type SketchSnap } from "./sketch-workspace";
 import { blendCommands, breakCommands, canonicalOffsetCommands, chamferCommands, circularPatternCommands, conicCommands, ellipseCommands, ellipticalArcCommands, extendCommands, filletCommands, fitSplineCommands, linearPatternCommands, mirrorCommands, moveCopyCommands, planConnectedOffsetChain, pointCommands, scaleCommands, splineCommands, type OffsetChainInstrumentation } from "./sketch-operations";
 import { evaluateGeometryCurve, projectPointToGeometryCurve, sampleConic, sampleControlPointSpline, sampleEllipse, sampleEllipticalArc, sampleFitPointSpline } from "./sketch-spline";
 import { WorkerSketchBridge } from "./sketch-worker-bridge";
@@ -119,6 +123,12 @@ import {
 
 const rectangleOperation = operationById("crawler.sketch.rectangle");
 const extrudeOperation = operationById("crawler.part.extrude");
+const extrudeCutOperation = operationById("crawler.part.extrude.cut");
+const extrudeDirectionParameter = parameterByKey(extrudeOperation, "direction");
+const extrudeDirectionLabels: Record<string, string> = { positive: "Forward", negative: "Reverse", symmetric: "Symmetric" };
+const extrudeDirectionOptions = extrudeDirectionParameter.choices
+  .map((value) => `<option value="${value}" ${value === extrudeDirectionParameter.default.value ? "selected" : ""}>${extrudeDirectionLabels[value] ?? value}</option>`)
+  .join("");
 const ABSOLUTE_SKETCH_ORIGIN: Point2 = { x_nm: 0, y_nm: 0 };
 
 interface RibbonTool {
@@ -144,6 +154,7 @@ type ColorTheme = "light" | "dark";
 
 const THEME_STORAGE_KEY = "crawler.theme";
 const TOOLBAR_PREFERENCES_KEY = "crawler.toolbar-preferences";
+const ACTIVE_DOCUMENT_ID_KEY = "crawler.active-document-id";
 const qualificationReferencePart = new URLSearchParams(location.search).has("qualificationReferencePart");
 const exposeFutureCapabilities = new URLSearchParams(location.search).has("showFutureCapabilities");
 const systemTheme = window.matchMedia("(prefers-color-scheme: light)");
@@ -159,6 +170,21 @@ function readToolbarPreferences(): ToolbarPreferences {
   }
 }
 const toolbarPreferences = readToolbarPreferences();
+
+function readActiveDocumentId(): string | undefined {
+  try {
+    const value = localStorage.getItem(ACTIVE_DOCUMENT_ID_KEY);
+    return value && value.startsWith("document:") && value.length <= 512 ? value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function writeActiveDocumentId(documentId: string): void {
+  if (!documentId.startsWith("document:") || documentId.length > 512) return;
+  try { localStorage.setItem(ACTIVE_DOCUMENT_ID_KEY, documentId); } catch { /* Recovery remains available in-session. */ }
+}
+
 function writeToolbarPreferences(): void {
   try { localStorage.setItem(TOOLBAR_PREFERENCES_KEY, JSON.stringify(toolbarPreferences)); } catch { /* The current toolbar remains usable without persistence. */ }
 }
@@ -215,9 +241,10 @@ function renderRibbonGroup(section: RibbonSection, pinned: ReadonlySet<string>):
 }
 
 const workbenchSpecs: WorkbenchSpec[] = [
-  { id: "Part Design", color: "#0ea5e9", pinned: ["select", "box-select", "new-sketch", "extrude", "revolve", "extrude-cut", "fillet", "chamfer", "linear-pattern", "combine", "measure"], sections: [
+  { id: "Part Design", color: "#0ea5e9", pinned: ["select", "box-select", "new-sketch", "offset-plane", "extrude", "revolve", "extrude-cut", "fillet", "chamfer", "linear-pattern", "combine", "measure"], sections: [
     { id: "select", label: "Select", tools: [{ key: "select", label: "Select", icon: "mouse-pointer-2", id: "select-tool" }, { key: "box-select", label: "Box Select", icon: "box-select", comingSoon: true }] },
     { id: "sketch", label: "Sketch", tools: [{ key: "new-sketch", label: "New Sketch", icon: "pencil-ruler", id: "edit-sketch", tone: "violet" }, { key: "rectangle", label: rectangleOperation.label, icon: "square", id: "start-rectangle", tone: "violet" }] },
+    { id: "datum", label: "Reference", tools: [{ key: "offset-plane", label: "Plane", icon: "panel-top", id: "create-offset-plane", tone: "cyan" }] },
     { id: "add", label: "Create", tools: [{ key: "extrude", label: "Extrude", icon: "box-select", id: "start-pad", tone: "green" }, { key: "revolve", label: "Revolve", icon: "rotate-3-d", operationId: "crawler.part.revolve", tone: "green" }, { key: "loft", label: "Loft", icon: "layers-3", operationId: "crawler.part.loft", tone: "green" }, { key: "sweep", label: "Sweep", icon: "spline", operationId: "crawler.part.sweep", tone: "green" }] },
     { id: "remove", label: "Cut", tools: [{ key: "extrude-cut", label: "Extrude Cut", icon: "box", operationId: "crawler.part.extrude.cut", tone: "cyan" }, { key: "revolve-cut", label: "Revolve Cut", icon: "orbit", operationId: "crawler.part.revolve.cut", tone: "cyan" }] },
     { id: "modify", label: "Modify", tools: [{ key: "fillet", label: "Fillet", icon: "circle-dot", operationId: "crawler.part.fillet", tone: "violet" }, { key: "chamfer", label: "Chamfer", icon: "square", operationId: "crawler.part.chamfer", tone: "violet" }, { key: "draft", label: "Draft", icon: "spline", operationId: "crawler.part.draft", tone: "violet" }, { key: "shell", label: "Shell", icon: "box", operationId: "crawler.part.shell", tone: "violet" }] },
@@ -411,7 +438,11 @@ root.innerHTML = `
         <fieldset class="dimension-panel" data-operation="idle" aria-label="Active operation dimensions" aria-hidden="true"><legend>Operation input</legend>
           <label class="dimension-control rectangle-dimension"><span>${parameterByKey(rectangleOperation, "width").label}</span><input id="part-width" aria-label="Rectangle width in millimeters" type="number" min="0.001" step="0.001" value="40" /><b>mm</b></label>
           <label class="dimension-control rectangle-dimension"><span>${parameterByKey(rectangleOperation, "height").label}</span><input id="part-height" aria-label="Rectangle height in millimeters" type="number" min="0.001" step="0.001" value="28" /><b>mm</b></label>
-          <label class="dimension-control pad-dimension"><span>${parameterByKey(extrudeOperation, "distance").label}</span><input id="pad-length" aria-label="Extrude distance in millimeters" aria-describedby="operation-dimension-hint" type="number" min="0.001" step="0.001" value="20" /><b>mm</b></label>
+          <label class="dimension-control pad-dimension"><span id="extrude-distance-label">${parameterByKey(extrudeOperation, "distance").label}</span><input id="pad-length" aria-label="Extrude distance in millimeters" aria-describedby="operation-dimension-hint extrude-normalization-status" type="number" min="0.001" step="0.000001" value="20" /><b>mm</b></label>
+          <label class="dimension-control pad-dimension extrude-direction-control"><span>${extrudeDirectionParameter.label}</span><select id="extrude-direction-mode" aria-label="Extrude direction mode" data-value-kind="${extrudeDirectionParameter.value_kind}">${extrudeDirectionOptions}</select></label>
+          <label class="dimension-control pad-dimension extrude-result-control"><span>Result</span><select id="extrude-result-mode" aria-label="Extrude result mode"><option value="new_body">New Body</option><option value="cut">Cut</option></select></label>
+          <label id="extrude-target-control" class="dimension-control pad-dimension extrude-target-control" hidden><span>Target body</span><select id="extrude-target-body" aria-label="Cut target body"><option value="">Select target…</option></select></label>
+          <small id="extrude-normalization-status" class="extrude-normalization-status" role="status"></small>
           <small id="operation-dimension-hint" class="operation-dimension-hint">Enter accepts · Escape cancels</small>
         </fieldset>
         <button id="extrude-manipulator" class="extrude-manipulator" type="button" role="slider" aria-label="Extrude distance" aria-valuemin="0.001" aria-valuenow="12" hidden>
@@ -610,7 +641,11 @@ let worker: Worker | undefined;
 let renderer: WorkspaceRenderer | undefined;
 let viewportState: ViewportStateController | undefined;
 let acceptedPlanarFaceEvidence: CurrentPlanarFaceEvidenceLookup = new Map();
+const nativePlanarFaceAuthorities = new Map<string, PlanarFaceFrameAuthority>();
+const pendingPlanarFaceFrameRequests = new Map<string, PlanarFaceFrameRequest>();
 let pendingAcceptedPacket: Extract<WorkerResponse, { type: "packet" }> | undefined;
+let lastAcceptedPacket: Extract<WorkerResponse, { type: "packet" }> | undefined;
+let suppressedRepairCancelPacketHash: string | undefined;
 let viewportBackground = activeTheme === "light" ? "#b8bec8" : "#0c0d10";
 let viewportGridVisible = true;
 let viewportDisplayMode: "shaded-edges" | "shaded" | "wireframe" | "hidden-line" | "no-shading" = "shaded-edges";
@@ -622,6 +657,34 @@ let startupFailurePending = new URLSearchParams(location.search).has("failWorker
 let storage: AppStorage | undefined;
 let acceptedPersistence: Promise<void> = Promise.resolve();
 let acceptedPersistenceRevision = 0;
+const persistenceWorker = new Worker(new URL("./persistence.worker.ts", import.meta.url), { type: "module" });
+let persistenceRequestId = 0;
+const pendingPersistence = new Map<number, { resolve(): void; reject(error: Error): void }>();
+
+persistenceWorker.addEventListener("message", (event: MessageEvent<{ type: "persisted-accepted" | "persistence-error"; requestId: number; message?: string }>) => {
+  const pending = pendingPersistence.get(event.data.requestId);
+  if (!pending) return;
+  pendingPersistence.delete(event.data.requestId);
+  if (event.data.type === "persisted-accepted") pending.resolve();
+  else pending.reject(new Error(event.data.message ?? "accepted document persistence failed"));
+});
+persistenceWorker.addEventListener("error", (event) => {
+  const error = new Error(event.message || "accepted document persistence worker failed");
+  for (const pending of pendingPersistence.values()) pending.reject(error);
+  pendingPersistence.clear();
+});
+
+function persistAcceptedOffMainThread(
+  documentJson: string,
+  semanticHash: string,
+  options: { transaction?: import("./protocol").AcceptedTransaction; action?: import("./storage").AcceptedStateAction },
+): Promise<void> {
+  const requestId = ++persistenceRequestId;
+  return new Promise<void>((resolve, reject) => {
+    pendingPersistence.set(requestId, { resolve, reject });
+    persistenceWorker.postMessage({ type: "persist-accepted", requestId, documentJson, semanticHash, ...options });
+  });
+}
 let importedSourcePersistence: Promise<void> = Promise.resolve();
 type PortableWritable = { write(data: BlobPart): Promise<void>; close(): Promise<void> };
 type PortableFileHandle = { name: string; getFile(): Promise<File>; createWritable(): Promise<PortableWritable> };
@@ -639,12 +702,16 @@ let currentBounds: number[] = [];
 let lastPacketSemanticHash: string | undefined;
 let acceptedBodyId = "";
 let acceptedExtrudeDistanceNanometers = 0;
+let acceptedExtrudeDirection: ExtrudeDirection = "positive";
+let acceptedExtrudeResultMode: ExtrudeResultMode = "new_body";
 let extrudePreviewRequest = 0;
 let latestExtrudePreviewRequest = 0;
 const extrudePreviewStarted = new Map<number, number>();
-type SketchExtrudeSource = { sketch: Sketch; support: SketchSupport; featureId: string; bodyId: string; transactionId: string };
+type SketchExtrudeSource = { sketch: Sketch; support: SketchSupport; profileGeometryIds?: readonly string[]; featureId: string; bodyId: string; newBodyId: string; resultMode: ExtrudeResultMode; targetBodyId?: string; transactionId: string; editing?: boolean };
 let activeSketchExtrudeSource: SketchExtrudeSource | undefined;
+let acceptedCutPreviewBasis: { semanticHash: string; baseRevision: number; requestId: number } | undefined;
 let lastRecompute = { dirtyRoots: [] as string[], evaluationOrder: [] as string[] };
+let lastRecomputeOutcome: Extract<WorkerResponse, { type: "recompute-from-here" }> | undefined;
 let safeMode = false;
 let faultCount = 0;
 let recoveryProvenance = "Canonical seed";
@@ -666,6 +733,15 @@ let pendingOperationCompletion: { type: "advanced" | "parameter" | "step-import"
 let featureServices: FeatureServicesView | undefined;
 let repairInspection: RepairInspectionView | undefined;
 let repairObservedTopology: readonly TopologyReferenceView[] = [];
+type TopologyRebindPreviewState = {
+  requestId: string;
+  selected: string;
+  phase: "loading" | "ready";
+  baseDocumentHash?: string;
+  baseRevision?: number;
+  candidateFrame?: OffsetConstructionPlaneFrame;
+};
+let topologyRebindPreview: TopologyRebindPreviewState | undefined;
 let historyActionMessage = "";
 let sketchBridge: WorkerSketchBridge | undefined;
 let sketchSession: SketchEditSession | undefined;
@@ -673,6 +749,30 @@ let activeSketchPlane: ResolvedSketchPlane | undefined;
 let sketchChoosingSupport = false;
 let selectedSketchSupport: SketchSupport | undefined;
 let selectedSketchId: string | undefined;
+let selectedConstructionPlaneId: string | undefined;
+const hiddenConstructionPlaneIds = new Set<string>();
+type OffsetConstructionPlaneEdit = {
+  mode: "create" | "edit";
+  planeId: string;
+  componentId: string;
+  offsetParameterId: string;
+  basePlane: "xy" | "xz" | "yz";
+  offsetMillimeters: string;
+  suppressed: boolean;
+  transactionId: string;
+  baseRevision: number;
+  requestId: number;
+  previewReady: boolean;
+  previewFrame?: OffsetConstructionPlaneFrame | null;
+  error?: string;
+};
+let activeOffsetConstructionPlane: OffsetConstructionPlaneEdit | undefined;
+let offsetConstructionPlaneRequest = 0;
+type SketchProfileSelection = { sketchId: string; profileId: string; geometryIds: string[] };
+type SketchConstructionAxisSelection = { sketchId: string; geometryId: string };
+let selectedSketchProfile: SketchProfileSelection | undefined;
+let selectedSketchConstructionAxis: SketchConstructionAxisSelection | undefined;
+let sketchProfileRepairMessage: string | undefined;
 // v2 intentionally drops the legacy auto-hidden-on-finish values. Only an
 // explicit browser visibility toggle may hide a committed sketch now.
 const SKETCH_VISIBILITY_STORAGE_KEY = "crawler.sketch.hidden-committed.v2";
@@ -800,7 +900,7 @@ let sketchToolPhase: SketchToolPhase = "idle";
 let activeSketchOperationLabel = "Sketch";
 let sketchReturnFocus: HTMLElement | null = null;
 let sketchHoverPoint: Point2 | undefined;
-let sketchHoverTarget: { kind: "geometry" | "point" | "constraint" | "origin" | "plane"; id?: string; anchor?: PointRef["anchor"]; segment?: number; valid: boolean; reason?: string } | undefined;
+let sketchHoverTarget: { kind: "geometry" | "point" | "constraint" | "profile" | "origin" | "plane"; id?: string; anchor?: PointRef["anchor"]; segment?: number; valid: boolean; reason?: string } | undefined;
 let sketchHoverClientPoint: { x: number; y: number } | undefined;
 let sketchHoverModifiers = { shift: false, toggle: false };
 const sketchSelectionFilters = new Set(["curves", "points", "construction", "external", "constraints", "dimensions"]);
@@ -810,7 +910,7 @@ let activeToolContext: ActiveToolContext | undefined;
 let sketchDrag:
   | { kind: "point"; pointerId: number; point: PointRef; handle: SVGCircleElement; startClient: { x: number; y: number }; moved: boolean }
   | { kind: "radius"; pointerId: number; geometry: string; center: Point2; handle: SVGCircleElement; startClient: { x: number; y: number }; moved: boolean }
-  | { kind: "entity"; pointerId: number; geometry: string[]; startPlane: Point2; currentPlane: Point2; startClient: { x: number; y: number }; moved: boolean }
+  | { kind: "entity"; pointerId: number; geometry: string[]; point: PointRef; pointStart: Point2; startPlane: Point2; currentPlane: Point2; startClient: { x: number; y: number }; moved: boolean }
   | undefined;
 let stepImportRunning = false;
 let stepSourceRetained = false;
@@ -855,6 +955,42 @@ function persistSketchDimensionExpressions(): void {
   try { localStorage.setItem(SKETCH_DIMENSION_EXPRESSION_STORAGE_KEY, JSON.stringify(Object.fromEntries(sketchDimensionExpressions))); } catch { /* storage is optional */ }
 }
 
+function requestNativePlanarFaceFrame(
+  support: SketchSupport,
+  supportReference?: SketchTopologyReference,
+): boolean {
+  if (!worker || support.kind !== "topology") return support.kind !== "topology";
+  const documentValue = adapter.durableDocument() as SketchPlaneDocument;
+  const reference = supportReference ?? documentValue.topology_references?.[support.reference];
+  const body = reference?.body ? documentValue.bodies?.[reference.body] : undefined;
+  const producer = reference?.producer ? documentValue.features?.[reference.producer] : undefined;
+  const component = body?.component;
+  const stableId = reference?.stable_kernel_id;
+  if (!reference || reference.kind !== "face" || !reference.body || !reference.producer || !stableId
+    || !Number.isSafeInteger(documentValue.revision) || !body || body.suppressed
+    || !bodyAcceptsFeatureProducer(body, reference.producer)
+    || !producer || producer.suppressed || !component || producer.component !== component) return false;
+  const key = planarFaceAuthorityKey(reference.body, stableId);
+  const cached = nativePlanarFaceAuthorities.get(key);
+  if (cached && cached.acceptedRevision === documentValue.revision && cached.producerFeatureId === reference.producer && cached.componentId === component) return true;
+  // Different retained references may legitimately point at the same current
+  // face. De-duplicate only an identical waiter so every active reference is
+  // resumed by its own response rather than being stranded behind another
+  // sketch's request.
+  if ([...pendingPlanarFaceFrameRequests.values()].some((pending) => pending.topologyReferenceId === support.reference
+    && pending.bodyId === reference.body && pending.faceStableId === stableId
+    && pending.expectedAcceptedRevision === documentValue.revision)) return false;
+  const request: PlanarFaceFrameRequest = {
+    type: "resolve-planar-face-frame", requestId: `planar-face-frame:${crypto.randomUUID()}`,
+    topologyReferenceId: support.reference, bodyId: reference.body, faceStableId: stableId,
+    expectedAcceptedRevision: documentValue.revision!, expectedProducerFeatureId: reference.producer,
+    expectedComponentId: component,
+  };
+  pendingPlanarFaceFrameRequests.set(request.requestId, request);
+  worker.postMessage(request);
+  return false;
+}
+
 function syncCommittedSketches(): void {
   if (!renderer) return;
   const documentValue = adapter.durableDocument() as SketchPlaneDocument & { sketches?: Record<string, { id?: string }> };
@@ -862,7 +998,8 @@ function syncCommittedSketches(): void {
   for (const storedId of Object.keys(documentValue.sketches ?? {})) {
     const hydrated = hydrateSketchFromDocument(documentValue, storedId);
     if (!hydrated) continue;
-    const resolution = resolveSketchPlane(hydrated.support, documentValue, acceptedPlanarFaceEvidence);
+    if (hydrated.support.kind === "topology") requestNativePlanarFaceFrame(hydrated.support);
+    const resolution = resolveSketchPlane(hydrated.support, documentValue, acceptedPlanarFaceEvidence, nativePlanarFaceAuthorities);
     if (resolution.status !== "ready") continue;
     displays.push({
       id: hydrated.sketch.id,
@@ -877,6 +1014,11 @@ function syncCommittedSketches(): void {
 
 function requestFeatureServices(observedTopology?: readonly TopologyReferenceView[]): void {
   if (!worker || !state.selectedFeatureId.startsWith("feature:")) return;
+  const unresolvedFeature = repairInspection?.status === "evaluation_blocked" ? repairInspection.preview.unresolved.feature : undefined;
+  if (topologyRebindPreview && unresolvedFeature && unresolvedFeature !== state.selectedFeatureId) {
+    worker.postMessage({ type: "cancel-topology-rebind-preview", requestId: topologyRebindPreview.requestId });
+    topologyRebindPreview = undefined;
+  }
   const observed = observedTopology ?? currentObservedTopology();
   worker.postMessage({ type: "feature-services", feature: state.selectedFeatureId, observedTopology: observed });
 }
@@ -884,12 +1026,15 @@ function requestFeatureServices(observedTopology?: readonly TopologyReferenceVie
 function currentObservedTopology(): readonly TopologyReferenceView[] {
   const documentValue = adapter.durableDocument() as SketchPlaneDocument;
   return [...acceptedPlanarFaceEvidence.values()].flatMap((evidence) => {
-    const producer = documentValue.bodies?.[evidence.body]?.generated_by;
-    if (!producer) return [];
+    const body = documentValue.bodies?.[evidence.body];
     const retained = Object.values(documentValue.topology_references ?? {}).find((reference) =>
       reference.kind === "face" && reference.body === evidence.body && reference.stable_kernel_id === evidence.stable_kernel_id);
+    const producer = retained?.producer ?? body?.generated_by;
+    if (!producer || !body?.component) return [];
     return [{
+      schema_version: 1 as const,
       id: retained?.id ?? `observed:face:${evidence.body}:${evidence.stable_kernel_id}`,
+      component: body.component,
       body: evidence.body,
       producer,
       kind: "face" as const,
@@ -974,13 +1119,16 @@ function setSafeMode(value: boolean, reason = "", action = "Editing"): void {
   panel.hidden = !value;
   document.querySelector("#safe-mode-title")!.textContent = `${action} couldn’t continue`;
   document.querySelector("#safe-reason")!.textContent = reason || "The last operation stopped before it could be completed.";
-  for (const selector of ["#edit-sketch", "#undo", "#redo", "#import-step", "#cancel-step-import", "#reimport-step"]) document.querySelector<HTMLButtonElement | HTMLInputElement>(selector)!.disabled = value;
+  for (const selector of ["#edit-sketch", "#create-offset-plane", "#undo", "#redo", "#import-step", "#cancel-step-import", "#reimport-step"]) document.querySelector<HTMLButtonElement | HTMLInputElement>(selector)!.disabled = value;
   document.querySelectorAll<HTMLButtonElement | HTMLInputElement | HTMLSelectElement>("[data-parameter-name], [data-parameter-expression], [data-rename-parameter], [data-apply-parameter], [data-reuse-parameter], [data-promote-parameter]").forEach((control) => { control.disabled = value; });
   document.querySelector(".shell")!.classList.toggle("safe", value);
   synchronizeRuntimeCommandAvailability();
 }
 
 function actionErrorExplanation(message: string): { reason: string; next: string } {
+  if (/replacement profile must belong to this Extrude's source sketch and resolved support/i.test(message)) {
+    return { reason: message, next: "Select a closed region from the original source sketch, or clear the incompatible profile selection." };
+  }
   if (/start or edit a sketch/i.test(message)) {
     return { reason: "Sketch interchange needs an active sketch.", next: "Start or edit a sketch, then choose the import or export command again." };
   }
@@ -1304,6 +1452,154 @@ function renderBodyContext(bodyId = adapter.activeBody()?.id ?? ""): { id: strin
   };
 }
 
+function constructionPlaneDocumentState(): SketchPlaneDocument & { revision?: number } {
+  return adapter.durableDocument() as SketchPlaneDocument & { revision?: number };
+}
+
+function syncConstructionPlaneDisplay(): void {
+  if (!renderer) return;
+  const documentState = constructionPlaneDocumentState();
+  const accepted = adapter.getSnapshot().components.flatMap((component) => component.constructionPlanes).flatMap((plane) => {
+    if (plane.suppressed || hiddenConstructionPlaneIds.has(plane.id)) return [];
+    const resolved = resolveSketchPlane({ kind: "construction_plane_reference", plane: plane.id }, documentState);
+    if (resolved.status !== "ready") return [];
+    return [{
+      id: plane.id,
+      frame: {
+        origin_nanometers: resolved.plane.origin_nanometers,
+        x_axis_millionths: resolved.plane.x_axis_millionths,
+        y_axis_millionths: resolved.plane.y_axis_millionths,
+        normal_millionths: resolved.plane.normal_millionths,
+      },
+      selected: selectedConstructionPlaneId === plane.id,
+    }];
+  });
+  const preview = activeOffsetConstructionPlane?.previewFrame && !activeOffsetConstructionPlane.suppressed
+    ? [{ id: activeOffsetConstructionPlane.planeId, frame: activeOffsetConstructionPlane.previewFrame, selected: true, preview: true }]
+    : [];
+  renderer.setConstructionPlanes([...accepted.filter((plane) => plane.id !== activeOffsetConstructionPlane?.planeId), ...preview]);
+}
+
+function currentDocumentRevision(): number {
+  const revision = constructionPlaneDocumentState().revision;
+  return Number.isSafeInteger(revision) && Number(revision) >= 0 ? Number(revision) : 0;
+}
+
+function startOffsetConstructionPlaneEdit(planeId?: string): void {
+  if (!documentReady || !modelingRuntimeReady()) {
+    showActionError("Plane", "The model runtime is not ready");
+    return;
+  }
+  const snapshot = adapter.getSnapshot();
+  const existing = planeId
+    ? snapshot.components.flatMap((component) => component.constructionPlanes.map((plane) => ({ component, plane }))).find((entry) => entry.plane.id === planeId)
+    : undefined;
+  const component = existing?.component ?? snapshot.components.find((candidate) => !candidate.parentId) ?? snapshot.components[0];
+  if (!component) {
+    showActionError("Plane", "No component is available for the construction plane");
+    return;
+  }
+  const revision = currentDocumentRevision();
+  const id = existing?.plane.id ?? `construction-plane:${crypto.randomUUID()}`;
+  const selectedBase = selectedSketchSupport?.kind === "origin_plane_reference"
+    ? selectedSketchSupport.plane.replace("origin-plane:", "")
+    : "xy";
+  const basePlane = existing?.plane.basePlaneId.replace("origin-plane:", "") ?? selectedBase;
+  activeOffsetConstructionPlane = {
+    mode: existing ? "edit" : "create",
+    planeId: id,
+    componentId: component.id,
+    offsetParameterId: existing?.plane.offsetParameterId ?? `parameter:construction-plane-offset:${crypto.randomUUID()}`,
+    basePlane: basePlane === "xz" || basePlane === "yz" ? basePlane : "xy",
+    offsetMillimeters: existing ? offsetNanometersToMillimeters(existing.plane.offsetNanometers) : "10",
+    suppressed: existing?.plane.suppressed ?? false,
+    transactionId: `transaction:${revision + 1}:construction-plane:${crypto.randomUUID()}`,
+    baseRevision: revision,
+    requestId: 0,
+    previewReady: false,
+  };
+  selectedConstructionPlaneId = existing?.plane.id;
+  selectedCatalogOperationId = null;
+  setOperation("preview", "construction-plane");
+  renderInspector();
+  requestOffsetConstructionPlanePreview();
+}
+
+function currentOffsetConstructionPlaneRequest(): OffsetConstructionPlaneRequest | undefined {
+  const edit = activeOffsetConstructionPlane;
+  if (!edit) return undefined;
+  return buildOffsetConstructionPlaneRequest({
+    planeId: edit.planeId,
+    componentId: edit.componentId,
+    basePlane: edit.basePlane,
+    offsetParameterId: edit.offsetParameterId,
+    offsetMillimeters: edit.offsetMillimeters,
+    suppressed: edit.suppressed,
+    transactionId: edit.transactionId,
+    baseRevision: edit.baseRevision,
+  });
+}
+
+function requestOffsetConstructionPlanePreview(): void {
+  const edit = activeOffsetConstructionPlane;
+  if (!edit) return;
+  const request = currentOffsetConstructionPlaneRequest();
+  edit.previewReady = false;
+  edit.previewFrame = undefined;
+  edit.error = request ? undefined : constructionPlaneOffsetInputError(edit.offsetMillimeters);
+  syncConstructionPlaneDisplay();
+  const status = document.querySelector<HTMLElement>("#construction-plane-status");
+  if (status) status.textContent = edit.error ?? "Computing an exact preview…";
+  const apply = document.querySelector<HTMLButtonElement>("#apply-construction-plane");
+  if (apply) apply.disabled = true;
+  if (!request) return;
+  edit.requestId = ++offsetConstructionPlaneRequest;
+  worker?.postMessage({ type: "preview-offset-construction-plane", requestId: edit.requestId, request });
+}
+
+function commitOffsetConstructionPlane(): void {
+  const edit = activeOffsetConstructionPlane;
+  const request = currentOffsetConstructionPlaneRequest();
+  if (!edit || !request || !edit.previewReady) return;
+  edit.previewReady = false;
+  document.querySelector<HTMLButtonElement>("#apply-construction-plane")?.setAttribute("disabled", "true");
+  const status = document.querySelector<HTMLElement>("#construction-plane-status");
+  if (status) status.textContent = edit.mode === "edit" ? "Applying plane update…" : "Creating plane…";
+  worker?.postMessage({ type: "commit-offset-construction-plane", requestId: edit.requestId, request });
+}
+
+function cancelOffsetConstructionPlane(): void {
+  if (!activeOffsetConstructionPlane) return;
+  offsetConstructionPlaneRequest += 1;
+  activeOffsetConstructionPlane = undefined;
+  setOperation("cancelled", "construction-plane");
+  syncConstructionPlaneDisplay();
+  renderDocument();
+}
+
+function renderOffsetConstructionPlaneInspector(): void {
+  const edit = activeOffsetConstructionPlane;
+  if (!edit) return;
+  const inspector = document.querySelector<HTMLElement>("#inspector")!;
+  inspector.innerHTML = `<header class="inspector-selection-header"><i aria-hidden="true"></i><span><h2>${edit.mode === "edit" ? "Edit" : "Create"} offset plane</h2><p class="feature-type">Construction geometry · exact signed offset</p></span></header>
+    <section class="inspector-section inspector-parameters offset-construction-plane-editor" aria-label="Offset construction plane">
+      <h3>Plane definition</h3>
+      <label><span>Base plane</span><select id="construction-plane-base" aria-label="Base origin plane"><option value="xy" ${edit.basePlane === "xy" ? "selected" : ""}>XY plane</option><option value="xz" ${edit.basePlane === "xz" ? "selected" : ""}>XZ plane</option><option value="yz" ${edit.basePlane === "yz" ? "selected" : ""}>YZ plane</option></select></label>
+      <label><span>Offset</span><span class="dimension-control"><input id="construction-plane-offset" inputmode="decimal" aria-label="Signed plane offset in millimeters" value="${escapeHtml(edit.offsetMillimeters)}"/><b>mm</b></span></label>
+      ${edit.mode === "edit" ? `<label class="construction-plane-suppression"><input id="construction-plane-suppressed" type="checkbox" ${edit.suppressed ? "checked" : ""}/><span>Suppress plane</span></label>` : ""}
+      <output id="construction-plane-status" role="status">${escapeHtml(edit.error ?? (edit.previewReady ? "Preview ready. Enter accepts; Escape cancels." : "Computing an exact preview…"))}</output>
+      <div class="operation-actions"><button id="apply-construction-plane" type="button" ${edit.previewReady ? "" : "disabled"}>${edit.mode === "edit" ? "Apply update" : "Create plane"}</button><button id="cancel-construction-plane" type="button">Cancel</button></div>
+    </section>`;
+  const base = inspector.querySelector<HTMLSelectElement>("#construction-plane-base")!;
+  const offset = inspector.querySelector<HTMLInputElement>("#construction-plane-offset")!;
+  base.addEventListener("change", () => { edit.basePlane = base.value as typeof edit.basePlane; requestOffsetConstructionPlanePreview(); });
+  offset.addEventListener("input", () => { edit.offsetMillimeters = offset.value; requestOffsetConstructionPlanePreview(); });
+  offset.addEventListener("keydown", (event) => { if (event.key === "Enter") { event.preventDefault(); commitOffsetConstructionPlane(); } });
+  inspector.querySelector<HTMLInputElement>("#construction-plane-suppressed")?.addEventListener("change", (event) => { edit.suppressed = (event.currentTarget as HTMLInputElement).checked; requestOffsetConstructionPlanePreview(); });
+  inspector.querySelector<HTMLButtonElement>("#apply-construction-plane")!.addEventListener("click", commitOffsetConstructionPlane);
+  inspector.querySelector<HTMLButtonElement>("#cancel-construction-plane")!.addEventListener("click", cancelOffsetConstructionPlane);
+}
+
 function renderBrowser(): void {
   const snapshot = adapter.getSnapshot();
   const browser = document.querySelector<HTMLElement>("#feature-browser")!;
@@ -1313,6 +1609,10 @@ function renderBrowser(): void {
     const component = componentById.get(componentId);
     if (!component) return "";
     const planes = component.originPlanes.map((plane) => `<li role="treeitem"><button type="button" class="tree-row plane-row ${selectedSketchSupport?.kind === "origin_plane_reference" && selectedSketchSupport.plane === plane.id ? "selected" : ""}" data-tree-row data-origin-plane-id="${escapeHtml(plane.id)}" data-entity-kind="origin-plane" data-entity-id="${escapeHtml(plane.id)}"><i>◇</i><span>${escapeHtml(plane.name)}</span><small>construction</small></button></li>`).join("");
+    const constructionPlanes = component.constructionPlanes.map((plane) => {
+      const visible = !plane.suppressed && !hiddenConstructionPlaneIds.has(plane.id);
+      return `<li role="treeitem" class="construction-plane-tree-item"><button type="button" class="tree-row construction-plane-row ${selectedConstructionPlaneId === plane.id || selectedSketchSupport?.kind === "construction_plane_reference" && selectedSketchSupport.plane === plane.id ? "selected" : ""}" data-tree-row data-construction-plane-id="${escapeHtml(plane.id)}" data-entity-kind="construction-plane" data-entity-id="${escapeHtml(plane.id)}"><i>◇</i><span>${escapeHtml(plane.name)}</span><small>${plane.suppressed ? "suppressed" : `${offsetNanometersToMillimeters(plane.offsetNanometers)} mm`}</small></button><button type="button" class="visibility-toggle" data-construction-plane-visibility="${escapeHtml(plane.id)}" aria-pressed="${visible}" aria-label="${visible ? "Hide" : "Show"} ${escapeHtml(plane.name)}" title="${visible ? "Hide" : "Show"} plane" ${plane.suppressed ? "disabled" : ""}>${cadIcon(visible ? "eye" : "eye-off", visible ? "eye" : "eye-off")}</button></li>`;
+    }).join("");
     const bodies = component.bodies.map((body) => {
       const selected = state.selection?.kind === "body" && state.selection.stableId === body.id;
       const visible = body.visibility === "visible";
@@ -1320,10 +1620,10 @@ function renderBrowser(): void {
     }).join("");
     const sketches = component.sketches.map((sketch) => {
       const visible = !hiddenCommittedSketchIds.has(sketch.id);
-      return `<li role="treeitem"><button type="button" class="tree-row sketch-row ${selectedSketchId === sketch.id || (!selectedSketchId && sketch.featureId === state.selectedFeatureId) ? "selected" : ""}" data-tree-row data-sketch-id="${escapeHtml(sketch.id)}" data-sketch-feature-id="${escapeHtml(sketch.featureId ?? "")}" data-entity-kind="sketch" data-entity-id="${escapeHtml(sketch.id)}"><i>⌑</i><span>${escapeHtml(sketch.name)}</span><small>${escapeHtml(sketch.support)}</small></button><button type="button" class="visibility-toggle" data-sketch-visibility="${escapeHtml(sketch.id)}" aria-pressed="${visible}" aria-label="${visible ? "Hide" : "Show"} ${escapeHtml(sketch.name)}" title="${visible ? "Hide" : "Show"} sketch">${cadIcon(visible ? "eye" : "eye-off", visible ? "eye" : "eye-off")}</button></li>`;
+      return `<li role="treeitem" class="sketch-tree-item"><button type="button" class="tree-row sketch-row ${selectedSketchId === sketch.id || (!selectedSketchId && sketch.featureId === state.selectedFeatureId) ? "selected" : ""}" data-tree-row data-sketch-id="${escapeHtml(sketch.id)}" data-sketch-feature-id="${escapeHtml(sketch.featureId ?? "")}" data-entity-kind="sketch" data-entity-id="${escapeHtml(sketch.id)}"><i>⌑</i><span>${escapeHtml(sketch.name)}</span><small>${escapeHtml(sketch.support)}</small></button><button type="button" class="visibility-toggle" data-sketch-visibility="${escapeHtml(sketch.id)}" aria-pressed="${visible}" aria-label="${visible ? "Hide" : "Show"} ${escapeHtml(sketch.name)}" title="${visible ? "Hide" : "Show"} sketch">${cadIcon(visible ? "eye" : "eye-off", visible ? "eye" : "eye-off")}</button></li>`;
     }).join("");
     const children = component.childComponentIds.map(renderComponent).join("");
-    return `<li role="treeitem" aria-expanded="true" class="tree-component" data-component-id="${escapeHtml(component.id)}"><button type="button" class="tree-row component-row" data-tree-row data-entity-kind="component" data-entity-id="${escapeHtml(component.id)}"><i>▾</i><span>${escapeHtml(component.name)}</span><small>component</small></button><ul role="group">${group("Origin & construction", "origin-planes", planes)}${group("Bodies", "bodies", bodies)}${group("Sketches", "sketches", sketches)}${children}</ul></li>`;
+    return `<li role="treeitem" aria-expanded="true" class="tree-component" data-component-id="${escapeHtml(component.id)}"><button type="button" class="tree-row component-row" data-tree-row data-entity-kind="component" data-entity-id="${escapeHtml(component.id)}"><i>▾</i><span>${escapeHtml(component.name)}</span><small>component</small></button><ul role="group">${group("Origin & construction", "origin-planes", planes + constructionPlanes)}${group("Bodies", "bodies", bodies)}${group("Sketches", "sketches", sketches)}${children}</ul></li>`;
   };
   const roots = snapshot.components.filter((component) => !component.parentId || !componentById.has(component.parentId));
   const featureIndex = snapshot.features.map((feature) => feature.name).join(" ");
@@ -1336,11 +1636,39 @@ function renderBrowser(): void {
     }
     state.selectedFeatureId = "origin";
     selectedSketchId = undefined;
+    selectedConstructionPlaneId = undefined;
+    selectedSketchProfile = undefined;
     selectedSketchSupport = { kind: "origin_plane_reference", plane: button.dataset.originPlaneId! };
     renderDocument();
   }));
+  browser.querySelectorAll<HTMLButtonElement>("[data-construction-plane-id]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const id = button.dataset.constructionPlaneId!;
+      const plane = adapter.getSnapshot().components.flatMap((component) => component.constructionPlanes).find((candidate) => candidate.id === id);
+      if (!plane || plane.suppressed) return;
+      state.selectedFeatureId = "origin";
+      selectedConstructionPlaneId = id;
+      selectedSketchId = undefined;
+      selectedSketchProfile = undefined;
+      selectedSketchSupport = { kind: "construction_plane_reference", plane: id };
+      if (sketchChoosingSupport) {
+        handleSketchSupportPick({ kind: "construction_plane", plane: id });
+        return;
+      }
+      renderDocument();
+    });
+    button.addEventListener("dblclick", () => startOffsetConstructionPlaneEdit(button.dataset.constructionPlaneId));
+  });
+  browser.querySelectorAll<HTMLButtonElement>("[data-construction-plane-visibility]").forEach((button) => button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const id = button.dataset.constructionPlaneVisibility!;
+    if (hiddenConstructionPlaneIds.has(id)) hiddenConstructionPlaneIds.delete(id); else hiddenConstructionPlaneIds.add(id);
+    syncConstructionPlaneDisplay();
+    renderBrowser();
+  }));
   browser.querySelectorAll<HTMLButtonElement>("[data-sketch-id]").forEach((button) => button.addEventListener("click", () => {
     selectedSketchId = button.dataset.sketchId;
+    selectedConstructionPlaneId = undefined;
     if (selectedSketchId) { hiddenCommittedSketchIds.delete(selectedSketchId); persistCommittedSketchVisibility(); }
     if (button.dataset.sketchFeatureId) state.selectedFeatureId = button.dataset.sketchFeatureId;
     selectedSketchSupport = undefined;
@@ -1357,6 +1685,7 @@ function renderBrowser(): void {
   }));
   browser.querySelectorAll<HTMLButtonElement>("[data-body-id]").forEach((button) => button.addEventListener("click", () => {
     selectedSketchId = undefined;
+    selectedConstructionPlaneId = undefined;
     const bodyId = button.dataset.bodyId!;
     applySelection(adapter.selectionAllowed(bodyId) ? { kind: "body", stableId: bodyId, bodyId, token: 0 } : null);
     renderDocument();
@@ -1479,6 +1808,7 @@ function renderDocument(): void {
   document.querySelector("#browser-summary")!.textContent = `${bodyCount} ${bodyCount === 1 ? "body" : "bodies"} · ${sketchCount} ${sketchCount === 1 ? "sketch" : "sketches"} · ${featureCount} ${featureCount === 1 ? "feature" : "features"}`;
   syncEmptyDocumentActions();
   renderBrowser();
+  syncConstructionPlaneDisplay();
   renderInspector();
   const timeline = document.querySelector<HTMLElement>("#timeline")!;
   const inputs = new Set(featureServices?.relationships.direct_inputs ?? []);
@@ -1612,7 +1942,7 @@ function setInspectorTab(tab: InspectorTab): void {
 }
 
 function hasSketchSelection(): boolean {
-  return selectedSketchGeometry.length > 0 || selectedSketchPoints.length > 0 || sketchOriginSelected;
+  return selectedSketchGeometry.length > 0 || selectedSketchPoints.length > 0 || sketchOriginSelected || Boolean(selectedSketchProfile);
 }
 
 function hasAnySketchSelection(): boolean {
@@ -1638,6 +1968,9 @@ function clearSketchSelection(render = true): void {
   selectedSketchSegments = [];
   selectedSketchConstraint = undefined;
   sketchOriginSelected = false;
+  selectedSketchProfile = undefined;
+  selectedSketchConstructionAxis = undefined;
+  sketchProfileRepairMessage = undefined;
   sketchSelectionMode = "replace";
   if (render) {
     renderSketchSelectionChanged();
@@ -1655,7 +1988,8 @@ function sketchSelectionPresentation(): { count: number; label: string; mix: str
   if (selectedSketchPoints.length) parts.push(`${selectedSketchPoints.length} ${selectedSketchPoints.length === 1 ? "point" : "points"}`);
   if (selectedSketchConstraint) parts.push(sketchConstraintDimension(selectedSketchConstraint) === undefined ? "1 constraint" : "1 dimension");
   if (sketchOriginSelected) parts.push("origin");
-  const count = entityCount + selectedSketchPoints.length + (selectedSketchConstraint ? 1 : 0) + (sketchOriginSelected ? 1 : 0);
+  if (selectedSketchProfile) parts.push("1 closed profile");
+  const count = entityCount + selectedSketchPoints.length + (selectedSketchConstraint ? 1 : 0) + (sketchOriginSelected ? 1 : 0) + (selectedSketchProfile ? 1 : 0);
   return { count, label: `${count} selected`, mix: parts.join(" + ") || "Selection" };
 }
 
@@ -1684,7 +2018,10 @@ function syncSketchSelectionAssistUi(): void {
   let title = target.kind.replace(/^./, (value) => value.toUpperCase());
   let id = target.id;
   let selected = false;
-  if (target.kind === "geometry" || target.kind === "point") {
+  if (target.kind === "profile") {
+    title = "Closed profile";
+    selected = selectedSketchProfile?.profileId === target.id;
+  } else if (target.kind === "geometry" || target.kind === "point") {
     const entity = sketchSession.draft.geometry[target.id];
     const geometryName = entity?.geometry.kind.replaceAll("_", " ").replace(/^./, (value) => value.toUpperCase()) ?? "Geometry";
     title = target.kind === "point" ? `${target.anchor?.replaceAll(":", " ") ?? "Point"} · ${geometryName}` : `${geometryName}${target.segment === undefined ? "" : ` · segment ${target.segment + 1}`}`;
@@ -1821,6 +2158,11 @@ function sketchHoverEligibility(target: Element | null): typeof sketchHoverTarge
   if (!sketchSession) return undefined;
   if (!target) return { kind: "plane", valid: Boolean(sketchToolArmed || pendingDimensionPlacement), reason: "Move over compatible sketch geometry" };
   if (target.closest("[data-sketch-origin]")) return { kind: "origin", id: "reference:origin", valid: sketchSelectionFilters.has("points"), reason: sketchSelectionFilters.has("points") ? undefined : "Point selection is filtered out" };
+  const profile = target.closest<SVGPathElement>("[data-sketch-profile-id]");
+  if (profile) {
+    const valid = !activeSketchToolKey() && !pendingSketchConstraint && !sketchSmartDimensionActive;
+    return { kind: "profile", id: profile.dataset.sketchProfileId, valid, reason: valid ? undefined : "Finish the active sketch tool before selecting a profile" };
+  }
   const constraint = target.closest<SVGGElement>("[data-sketch-constraint-id]");
   if (constraint) {
     const id = constraint.dataset.sketchConstraintId;
@@ -2111,7 +2453,7 @@ function selectedSketchEntityPanel(): string {
   if (!sketchSession) return "";
   const entities = selectedSketchGeometry.map((id) => sketchSession!.draft.geometry[id]).filter(Boolean);
   const presentation = sketchSelectionPresentation();
-  if (!entities.length && !selectedSketchPoints.length && !sketchOriginSelected && !selectedSketchConstraint) {
+  if (!entities.length && !selectedSketchPoints.length && !sketchOriginSelected && !selectedSketchConstraint && !selectedSketchProfile) {
     if (activeSketchToolKey()) return "";
     return `<section class="property-section sketch-selection-panel" data-empty="true" aria-label="Sketch selection properties">
       <h3><span>Selection</span><small>None</small></h3>
@@ -2136,11 +2478,11 @@ function selectedSketchEntityPanel(): string {
     return "";
   })() : "";
   const summary = summarizeSketchSelection(sketchSession.draft, selectedSketchGeometry, selectedSketchPoints, sketchOriginSelected);
-  const suggestions = (Object.keys(SKETCH_CONSTRAINT_MANIFEST) as ConstraintTool[])
+  const suggestions = selectedSketchProfile ? [] : (Object.keys(SKETCH_CONSTRAINT_MANIFEST) as ConstraintTool[])
     .filter((kind) => SKETCH_CONSTRAINT_MANIFEST[kind].family !== "dimension" && !constraintDisabledReason(kind, summary))
     .slice(0, 6);
   const selectedConstraintKind = selectedSketchConstraint ? sketch.constraints[selectedSketchConstraint]?.kind.replaceAll("_", " ") : undefined;
-  const primaryType = kinds.join(", ") || selectedConstraintKind || (sketchOriginSelected ? "origin reference" : "point");
+  const primaryType = selectedSketchProfile ? "closed profile" : kinds.join(", ") || selectedConstraintKind || (sketchOriginSelected ? "origin reference" : "point");
   return `<section class="property-section sketch-selection-panel" aria-label="Sketch selection properties">
     <h3><span>Selection</span><small>${presentation.label}</small></h3>
     <div class="sketch-selection-hero"><span class="sketch-selection-hero-mark" aria-hidden="true">${presentation.count}</span><div><strong>${escapeHtml(presentation.mix)}</strong><span>${escapeHtml(primaryType)}</span></div></div>
@@ -2589,6 +2931,10 @@ function installInspectorDisclosures(): void {
 }
 
 function renderInspector(): void {
+  if (activeOffsetConstructionPlane) {
+    renderOffsetConstructionPlaneInspector();
+    return;
+  }
   if (selectedCatalogOperationId) {
     renderOperationInspector(operationById(selectedCatalogOperationId));
     return;
@@ -2601,8 +2947,14 @@ function renderInspector(): void {
   state.selectedFeatureId = feature.id;
   const selection = state.selection;
   const definition = operationForFeatureType(feature.type);
+  const selectionDefinition = feature.type === "pad" && feature.parameters.result_mode === "cut"
+    ? extrudeCutOperation
+    : definition;
   const selectedSketch = feature.type === "sketch" ? sketchForFeature(feature.id) : undefined;
   const catalogFields = definition?.parameters.map((parameter) => ({ key: parameter.key, label: parameter.label, kind: valueKindLabel(parameter.value_kind), fallback: displayDefault(parameter) })) ?? [];
+  if (feature.type === "pad" && feature.parameters.result_mode === "cut") {
+    catalogFields.push({ key: "target_body", label: "Target body", kind: "Document value", fallback: "—" });
+  }
   const fields = definition ? catalogFields : Object.keys(feature.parameters).sort().map((key) => ({ key, label: titleCaseField(key), kind: "Document value", fallback: "—" }));
   const sketchOverview = feature.type === "sketch" ? [
     { key: "support", label: "Support", kind: "Document value", fallback: "Unbound" },
@@ -2612,6 +2964,7 @@ function renderInspector(): void {
   const isTimelineFeature = feature.id.startsWith("feature:");
   const isBaseFeature = feature.id === "feature:rectangle-sketch" || feature.id === "feature:extrude";
   const isEditableAdvancedFeature = Boolean(definition && isAdvancedFeatureOperation(definition.id) && durableAdvancedEditState(feature.id).request);
+  const isEditableExtrudeFeature = definition?.id === extrudeOperation.id && feature.id.startsWith("feature:extrude:");
   const orderedFeatures = adapter.getSnapshot().features;
   const featureIndex = orderedFeatures.findIndex((candidate) => candidate.id === feature.id);
   const previousFeature = featureIndex > 0 ? orderedFeatures[featureIndex - 1] : undefined;
@@ -2635,15 +2988,15 @@ function renderInspector(): void {
     <p data-feature-timing>${timing ? `${(timing.elapsed_microseconds / 1000).toFixed(3)} ms · ${timing.cost_cue.replaceAll("_", " ")} · ${(timing.cost_share_ppm / 10_000).toFixed(1)}%` : "Timing available after recompute"}</p>
     <div><button data-history-action="recompute" type="button">Recompute from here</button>${previousFeature ? `<button data-history-action="group" type="button">Group with ${escapeHtml(previousFeature.name)}</button><button data-history-action="reorder" type="button">Move before ${escapeHtml(previousFeature.name)}</button>` : ""}<button data-history-action="rollback-end" type="button">Return to end</button></div>
     <output id="history-action-status">${escapeHtml(historyActionMessage)}</output>
-    ${repair ? `<section class="repair-preview" role="alert"><strong>Repair ${escapeHtml(repair.unresolved.input_name)}</strong><p>Evaluation stopped at ${escapeHtml(repair.unresolved.feature)}. ${repair.downstream_stop.blocked_features.length} feature(s) blocked.</p>${repair.candidates.length ? repair.candidates.map((ranked) => `<button type="button" data-repair-candidate="${escapeHtml(ranked.candidate.id)}">Use #${ranked.rank} ${escapeHtml(ranked.candidate.id)} · Δ ${ranked.score.position_delta}/${ranked.score.normal_delta}/${ranked.score.measure_delta}</button>`).join("") : `<p data-no-repair-candidate>No candidate available; the document remains unchanged.</p>`}</section>` : ""}
+    ${repair ? `<section class="repair-preview" role="alert"><strong>Repair ${escapeHtml(repair.unresolved.input_name)}</strong><p>Evaluation stopped at ${escapeHtml(repair.unresolved.feature)}. ${repair.downstream_stop.blocked_features.length} feature(s) blocked.</p>${repair.candidates.length ? repair.candidates.map((ranked) => `<button type="button" data-repair-candidate="${escapeHtml(ranked.candidate.id)}" ${topologyRebindPreview ? "disabled" : ""}>Preview #${ranked.rank} ${escapeHtml(ranked.candidate.id)} · Δ ${ranked.score.position_delta}/${ranked.score.normal_delta}/${ranked.score.measure_delta}</button>`).join("") : `<p data-no-repair-candidate>No candidate available; the document remains unchanged.</p>`}${topologyRebindPreview ? `<div class="repair-geometry-preview" data-repair-preview-state="${topologyRebindPreview.phase}" data-repair-preview-candidate="${escapeHtml(topologyRebindPreview.selected)}"><p>${topologyRebindPreview.phase === "ready" ? "Native replacement geometry preview ready. Apply uses this exact accepted-document basis." : "Computing native replacement geometry without changing the document…"}</p><button type="button" data-apply-repair ${topologyRebindPreview.phase === "ready" ? "" : "disabled"}>Apply repair</button><button type="button" data-cancel-repair>Cancel preview</button></div>` : ""}</section>` : ""}
   </section>` : "";
   document.querySelector<HTMLElement>("#inspector")!.innerHTML = `
     <header class="inspector-selection-header"><i aria-hidden="true"></i><span><h2>${feature.type === "sketch" ? `Sketch — ${escapeHtml(selectedSketch?.name ?? feature.name)}` : escapeHtml(feature.name)}</h2><p class="feature-type">${escapeHtml(feature.type)} · ${escapeHtml(feature.status)}${definition ? ` · ${escapeHtml(lifecycleLabel(definition))}` : ""}</p></span></header>
     <section class="inspector-section inspector-parameters"><h3>${feature.type === "sketch" ? "Sketch" : "Parameters"}</h3>${selectedSketch ? `<div class="sketch-identity"><label><span>Alias</span><input id="sketch-alias" value="${escapeHtml(selectedSketch.name)}" data-accepted-value="${escapeHtml(selectedSketch.name)}" /></label><button type="button" data-rename-sketch-alias="${escapeHtml(selectedSketch.id)}">Rename</button><div><span>Sketch ID</span><code>${escapeHtml(sketchReferenceId(selectedSketch.id))}</code></div></div>` : ""}<dl>${(feature.type === "sketch" ? sketchOverview : fields).map((field) => `<div data-parameter-key="${escapeHtml(field.key)}"><dt>${escapeHtml(field.label)}<small>${escapeHtml(field.kind)}</small></dt><dd>${escapeHtml(inspectorFieldDisplay(feature.parameters[field.key] ?? field.fallback, field.kind))}</dd></div>`).join("")}</dl></section>
     ${renderPlacementSection()}
-    ${definition ? renderSelectionRequirements(definition) : ""}
+    ${selectionDefinition ? renderSelectionRequirements(selectionDefinition) : ""}
     ${feature.type === "sketch" ? renderSketchDimensions(feature.id) : ""}
-    ${isTimelineFeature ? `<section class="feature-actions inspector-section" aria-label="feature actions"><h3>Feature</h3><label><span>${feature.type === "sketch" ? "Feature name" : "Name"}</span><input id="feature-name" value="${escapeHtml(feature.name)}" /></label><div><button data-feature-action="rename" type="button">Rename</button>${isEditableAdvancedFeature ? `<button data-feature-action="edit-parameters" type="button">Edit parameters</button>` : ""}<button data-feature-action="suppress" type="button">${feature.status === "suppressed" ? "Resume" : "Suppress"}</button><button data-feature-action="rollback" type="button">Rollback here</button>${isBaseFeature ? "" : `<button data-feature-action="delete" type="button">Delete</button>`}</div></section>` : ""}
+    ${isTimelineFeature ? `<section class="feature-actions inspector-section" aria-label="feature actions"><h3>Feature</h3><label><span>${feature.type === "sketch" ? "Feature name" : "Name"}</span><input id="feature-name" value="${escapeHtml(feature.name)}" /></label><div><button data-feature-action="rename" type="button">Rename</button>${isEditableAdvancedFeature ? `<button data-feature-action="edit-parameters" type="button">Edit parameters</button>` : ""}${isEditableExtrudeFeature ? `<button data-feature-action="edit-extrude" type="button">Edit Extrude</button>` : ""}<button data-feature-action="suppress" type="button">${feature.status === "suppressed" ? "Resume" : "Suppress"}</button><button data-feature-action="rollback" type="button">Rollback here</button>${isBaseFeature ? "" : `<button data-feature-action="delete" type="button">Delete</button>`}</div></section>` : ""}
     ${historyServices}
     ${stepMeasurements}
     <section class="selection-card"><small>Viewport selection</small><strong>${selection ? `${selection.kind} · ${selection.stableId}` : "None"}</strong></section>`;
@@ -2660,6 +3013,10 @@ function renderInspector(): void {
       setOperation("preview", "advanced");
       renderInspector();
       document.querySelector<HTMLInputElement | HTMLSelectElement>("[data-operation-parameter]")?.focus();
+      return;
+    }
+    if (action === "edit-extrude") {
+      beginExtrudeFeatureEdit(feature.id);
       return;
     }
     const changes: Record<string, unknown>[] = [];
@@ -2691,8 +3048,35 @@ function renderInspector(): void {
     if (action === "reorder" && previousFeature) worker?.postMessage({ type: "commit-document-changes", operation: "reorder_feature", transactionId: `transaction:${crypto.randomUUID()}:reorder`, changes: [{ kind: "reorder_feature", component: "component:root", feature: feature.id, before: previousFeature.id }] });
   }));
   document.querySelectorAll<HTMLButtonElement>("[data-repair-candidate]").forEach((button) => button.addEventListener("click", () => {
-    worker?.postMessage({ type: "explicit-rebind", transactionId: `transaction:${crypto.randomUUID()}:repair`, selected: button.dataset.repairCandidate, observedTopology: repairObservedTopology });
+    const selected = button.dataset.repairCandidate;
+    if (!selected || topologyRebindPreview) return;
+    topologyRebindPreview = { requestId: `topology-rebind-preview:${crypto.randomUUID()}`, selected, phase: "loading" };
+    worker?.postMessage({ type: "preview-topology-rebind", requestId: topologyRebindPreview.requestId, selected, observedTopology: repairObservedTopology });
+    renderInspector();
   }));
+  document.querySelector<HTMLButtonElement>("[data-cancel-repair]")?.addEventListener("click", () => {
+    const preview = topologyRebindPreview;
+    if (!preview) return;
+    topologyRebindPreview = undefined;
+    const acceptedHash = adapter.checksum();
+    if (lastAcceptedPacket?.semanticHash === acceptedHash) {
+      // Restore immediately, then discard the worker's equivalent accepted
+      // packet. Reinstalling both copies can force two GPU rebuilds into the
+      // following preview action when users cycle quickly.
+      suppressedRepairCancelPacketHash = acceptedHash;
+      installAcceptedRenderPacket(lastAcceptedPacket);
+    }
+    worker?.postMessage({ type: "cancel-topology-rebind-preview", requestId: preview.requestId });
+    renderInspector();
+  });
+  document.querySelector<HTMLButtonElement>("[data-apply-repair]")?.addEventListener("click", () => {
+    const preview = topologyRebindPreview;
+    if (!preview || preview.phase !== "ready" || preview.baseDocumentHash === undefined || preview.baseRevision === undefined) return;
+    worker?.postMessage({
+      type: "explicit-rebind", requestId: preview.requestId, transactionId: `transaction:${crypto.randomUUID()}:repair`,
+      selected: preview.selected, baseDocumentHash: preview.baseDocumentHash, baseRevision: preview.baseRevision,
+    });
+  });
   installParameterControls();
   document.querySelectorAll<HTMLButtonElement>("#inspector [data-coming-soon]").forEach(installComingSoon);
   installInspectorDisclosures();
@@ -2807,6 +3191,92 @@ function bodyOptions(selectedBodyId?: string, multiple = false): string {
   return acceptedKernelBodyIds().map((bodyId) => `<option value="${escapeHtml(bodyId)}" ${(multiple ? bodyId !== selectedBodyId : bodyId === (selectedBodyId ?? activeBodyId)) ? "selected" : ""}>${escapeHtml(adapter.findBody(bodyId)?.name ?? bodyId)}</option>`).join("");
 }
 
+function extrudeSupportOwnerBodyId(support: SketchSupport): string | undefined {
+  if (support.kind !== "topology") return undefined;
+  const durable = adapter.durableDocument() as { topology_references?: Record<string, { body?: string }> };
+  return durable.topology_references?.[support.reference]?.body;
+}
+
+function eligibleCutTargetBodyIds(source?: Pick<SketchExtrudeSource, "sketch" | "support">): string[] {
+  if (!source) return [];
+  const durable = adapter.durableDocument() as {
+    sketches?: Record<string, { component?: string }>;
+    bodies?: Record<string, { component?: string; generated_by?: string; suppressed?: boolean }>;
+    features?: Record<string, { component?: string; suppressed?: boolean }>;
+  };
+  const component = durable.sketches?.[source.sketch.id]?.component;
+  return acceptedKernelBodyIds().filter((bodyId) => {
+    const body = durable.bodies?.[bodyId];
+    const producer = body?.generated_by ? durable.features?.[body.generated_by] : undefined;
+    return Boolean(body && !body.suppressed && producer && !producer.suppressed && component
+      && body.component === component && producer.component === component);
+  });
+}
+
+function selectedExtrudeResultMode(): ExtrudeResultMode {
+  return parseExtrudeResultMode(document.querySelector<HTMLSelectElement>("#extrude-result-mode")!.value) ?? "new_body";
+}
+
+function syncExtrudeResultControls(mode = selectedExtrudeResultMode()): void {
+  const result = document.querySelector<HTMLSelectElement>("#extrude-result-mode")!;
+  result.value = mode;
+  document.querySelector<HTMLElement>(".dimension-panel")!.dataset.resultMode = mode;
+  document.querySelector<HTMLButtonElement>("#extrude-manipulator")!.dataset.resultMode = mode;
+  result.disabled = !activeSketchExtrudeSource || Boolean(activeSketchExtrudeSource.editing);
+  const targetControl = document.querySelector<HTMLElement>("#extrude-target-control")!;
+  const target = document.querySelector<HTMLSelectElement>("#extrude-target-body")!;
+  targetControl.hidden = mode !== "cut";
+  target.disabled = mode !== "cut" || Boolean(activeSketchExtrudeSource?.editing);
+  const explicitlySelectedBody = state.selection?.kind === "body" ? state.selection.bodyId : undefined;
+  const prior = activeSketchExtrudeSource?.targetBodyId ?? (target.value || explicitlySelectedBody);
+  const eligible = eligibleCutTargetBodyIds(activeSketchExtrudeSource);
+  target.innerHTML = `<option value="">Select target…</option>${eligible.map((bodyId) => `<option value="${escapeHtml(bodyId)}">${escapeHtml(adapter.findBody(bodyId)?.name ?? bodyId)}</option>`).join("")}`;
+  if (prior && eligible.includes(prior)) target.value = prior;
+}
+
+function applyExtrudeResultSelection(): boolean {
+  const source = activeSketchExtrudeSource;
+  if (!source) return true;
+  const mode = selectedExtrudeResultMode();
+  if (mode === "new_body") {
+    source.resultMode = mode;
+    source.targetBodyId = undefined;
+    source.bodyId = source.newBodyId;
+    document.querySelector<HTMLElement>("#extrude-normalization-status")!.textContent = "";
+    return true;
+  }
+  // Cut is a two-stage explicit choice. Retain the selected mode while the
+  // required target is still absent so the target control remains visible and
+  // the user can recover without any implicit Boolean dispatch.
+  source.resultMode = mode;
+  try {
+    const selected = document.querySelector<HTMLSelectElement>("#extrude-target-body")!.value || source.targetBodyId;
+    const targetBodyId = requireSingleCutTarget(selected, eligibleCutTargetBodyIds(source), extrudeSupportOwnerBodyId(source.support));
+    source.resultMode = mode;
+    source.targetBodyId = targetBodyId;
+    source.bodyId = targetBodyId;
+    document.querySelector<HTMLElement>("#extrude-normalization-status")!.textContent = "Cut retains the explicitly selected target body.";
+    return true;
+  } catch (error) {
+    if (!(error instanceof ExtrudeTargetError)) throw error;
+    document.querySelector<HTMLElement>("#extrude-normalization-status")!.textContent = error.message;
+    worker?.postMessage({ type: "restore-accepted-packet" });
+    return false;
+  }
+}
+
+function retainedConstructionAxisPolyline(): [number, number, number][] | undefined {
+  if (!selectedSketchConstructionAxis) return undefined;
+  const hydrated = hydrateSketchFromDocument(adapter.durableDocument(), selectedSketchConstructionAxis.sketchId);
+  const entity = hydrated?.sketch.geometry[selectedSketchConstructionAxis.geometryId];
+  if (!hydrated || !entity?.construction || entity.geometry.kind !== "line") return undefined;
+  const resolution = resolveSketchPlane(hydrated.support, adapter.durableDocument() as SketchPlaneDocument, acceptedPlanarFaceEvidence, nativePlanarFaceAuthorities);
+  if (resolution.status !== "ready") return undefined;
+  const start = planeLocalToWorldMillimeters(entity.geometry.start, resolution.plane);
+  const end = planeLocalToWorldMillimeters(entity.geometry.end, resolution.plane);
+  return Math.hypot(...end.map((value, index) => value - start[index])) > 0 ? [[...start], [...end]] as [number, number, number][] : undefined;
+}
+
 function renderAdvancedSelectionControls(operation: AlphaOperation): string {
   const activeBodyId = renderer?.bodyId();
   const bodies = acceptedKernelBodyIds();
@@ -2819,10 +3289,11 @@ function renderAdvancedSelectionControls(operation: AlphaOperation): string {
     const plane = support?.kind === "origin_plane" || support?.kind === "origin_plane_reference" ? support.plane : "";
     return String(plane).endsWith("yz") ? "y" : "x";
   })();
-  const axisControl = `<label>Axis <select data-advanced-axis><option value="x" ${defaultRevolveAxis === "x" ? "selected" : ""}>Origin X</option><option value="y" ${defaultRevolveAxis === "y" ? "selected" : ""}>Origin Y</option><option value="z">Origin Z</option>${state.selections.some((selection) => selection.kind === "edge") ? `<option value="selected-edge">Selected straight edge</option>` : ""}</select></label>`;
+  const constructionAxisReady = Boolean(retainedConstructionAxisPolyline());
+  const axisControl = `<label>Axis <select data-advanced-axis><option value="x" ${!constructionAxisReady && defaultRevolveAxis === "x" ? "selected" : ""}>Origin X</option><option value="y" ${!constructionAxisReady && defaultRevolveAxis === "y" ? "selected" : ""}>Origin Y</option><option value="z">Origin Z</option>${constructionAxisReady ? `<option value="selected-construction" selected>Selected construction line</option>` : ""}${state.selections.some((selection) => selection.kind === "edge") ? `<option value="selected-edge">Selected straight edge</option>` : ""}</select></label>`;
   if (operation.id === "crawler.part.revolve" || operation.id === "crawler.part.revolve.cut") {
     const target = operation.id.endsWith(".cut") ? `<label>Target body <select data-advanced-target-body>${bodyOptions(activeBodyId)}</select></label>` : "";
-    return `<section class="advanced-selection" aria-label="Resolved feature inputs">${target}<label>Profile <select data-advanced-profile-sketch>${sketchSourceOptions(profiles)}</select></label>${axisControl}<p>${escapeHtml(profileHelp)}. Choose an origin axis or select one straight viewport edge.</p></section>`;
+    return `<section class="advanced-selection" aria-label="Resolved feature inputs">${target}<label>Profile <select data-advanced-profile-sketch>${sketchSourceOptions(profiles)}</select></label>${axisControl}<p>${escapeHtml(profileHelp)}. Choose an origin axis, a selected construction line, or one straight viewport edge.</p></section>`;
   }
   if (operation.id === "crawler.part.loft") {
     return `<section class="advanced-selection" aria-label="Resolved feature inputs"><label>Profiles in loft order <select data-advanced-profile-sketches multiple size="${Math.max(2, Math.min(6, profiles.length))}">${sketchSourceOptions(profiles, true)}</select></label><p>Select at least two ${escapeHtml(profileHelp.toLowerCase())} in section order.</p></section>`;
@@ -2901,11 +3372,11 @@ function previewCatalogOperation(operation: AlphaOperation, requestId = ++advanc
     ];
     const availableSketches = acceptedSketchFeatureSources(false);
     const sourceRecord = (id: string) => availableSketches.find((candidate) => candidate.sketch.id === id);
-    const profileSources = profileIds.map(sourceRecord).filter((candidate): candidate is AcceptedSketchFeatureSource => Boolean(candidate)).map(({ sketch, support, featureId }) => ({ sketch, support, featureId }));
+    const profileSources = profileIds.map(sourceRecord).filter((candidate): candidate is AcceptedSketchFeatureSource => Boolean(candidate)).map(({ sketch, support, featureId, profileGeometryIds }) => ({ sketch, support, featureId, ...(profileGeometryIds ? { profileGeometryIds } : {}) }));
     const pathRecord = sourceRecord(document.querySelector<HTMLSelectElement>("[data-advanced-path-sketch]")?.value ?? "");
     const selectedAxisEdge = axisValue === "selected-edge" ? state.selections.find((selection) => selection.kind === "edge") : undefined;
-    const axisPolyline = selectedAxisEdge ? renderer?.edgePolyline(selectedAxisEdge.token) ?? [] : [];
-    if (axisValue === "selected-edge") {
+    const axisPolyline = axisValue === "selected-construction" ? retainedConstructionAxisPolyline() ?? [] : selectedAxisEdge ? renderer?.edgePolyline(selectedAxisEdge.token) ?? [] : [];
+    if (axisValue === "selected-edge" || axisValue === "selected-construction") {
       if (axisPolyline.length < 2) throw new Error("Selected revolve axis edge has no usable endpoints");
       const origin = axisPolyline[0];
       const direction = axisPolyline.at(-1)!.map((value, index) => value - origin[index]);
@@ -3078,24 +3549,41 @@ function applyPreselection(selection: Selection | null): void {
   document.querySelector("#preselection-readout")!.textContent = selection ? `Hover: ${selection.kind}, stable ID ${selection.stableId}${projectReason ? ` · ${projectReason}` : ""}` : "Hover: none";
 }
 
+function installOrReplaceWorkspacePacket(packet: RenderPacket, body: { id: string; visible: boolean; selectable: boolean }): WorkspaceRenderer {
+  if (renderer) {
+    renderer.replacePacket(packet, body);
+    return renderer;
+  }
+  const created = new WorkspaceRenderer(
+    document.querySelector<HTMLCanvasElement>("#viewport")!,
+    packet,
+    body,
+    applySelection,
+    applyPreselection,
+    viewportState,
+  );
+  viewportState = created.sharedViewportState();
+  created.setViewChangedListener(renderSketchViewChanged);
+  created.attachViewCube(document.querySelector<HTMLElement>("#view-cube")!);
+  created.setBackground(viewportBackground);
+  created.setGridVisible(viewportGridVisible);
+  created.setDisplayMode(viewportDisplayMode);
+  created.setAppearance(appearanceColor, appearanceOpacity, appearanceEdgesVisible);
+  created.setFilters(state.selectionFilters);
+  renderer = created;
+  return created;
+}
+
 function installAcceptedRenderPacket(packet: Extract<WorkerResponse, { type: "packet" }>): void {
   if (packet.semanticHash !== adapter.checksum()) return;
+  lastAcceptedPacket = packet;
   transferredBytes = packet.transferredBytes;
   performanceEvidence.setTransferBytes(transferredBytes);
   acceptedBodyId = packet.bodyId;
   lastPacketSemanticHash = packet.semanticHash;
   currentBounds = Array.from(packet.packet.bounds);
   viewportState ??= renderer?.sharedViewportState();
-  renderer?.dispose();
-  renderer = new WorkspaceRenderer(document.querySelector<HTMLCanvasElement>("#viewport")!, packet.packet, renderBodyContext(packet.bodyId), applySelection, applyPreselection, viewportState);
-  viewportState = renderer.sharedViewportState();
-  renderer.setViewChangedListener(renderSketchViewChanged);
-  renderer.attachViewCube(document.querySelector<HTMLElement>("#view-cube")!);
-  renderer.setBackground(viewportBackground);
-  renderer.setGridVisible(viewportGridVisible);
-  renderer.setDisplayMode(viewportDisplayMode);
-  renderer.setAppearance(appearanceColor, appearanceOpacity, appearanceEdgesVisible);
-  renderer.setFilters(state.selectionFilters);
+  renderer = installOrReplaceWorkspacePacket(packet.packet, renderBodyContext(packet.bodyId));
   acceptedPlanarFaceEvidence = renderer.planarFaceEvidenceMap();
   if (sketchChoosingSupport) renderer.setSketchSupportSelection(true, handleSketchSupportPick);
   else if (activeSketchPlane && sketchSession) resolveAndAlignSketchPlane(true);
@@ -3110,23 +3598,7 @@ function installAdvancedPreviewPacket(preview: Extract<WorkerResponse, { type: "
   performanceEvidence.setTransferBytes(transferredBytes);
   currentBounds = Array.from(preview.packet.bounds);
   viewportState ??= renderer?.sharedViewportState();
-  renderer?.dispose();
-  renderer = new WorkspaceRenderer(
-    document.querySelector<HTMLCanvasElement>("#viewport")!,
-    preview.packet,
-    { id: preview.bodyId, visible: true, selectable: false },
-    applySelection,
-    applyPreselection,
-    viewportState,
-  );
-  viewportState = renderer.sharedViewportState();
-  renderer.setViewChangedListener(renderSketchViewChanged);
-  renderer.attachViewCube(document.querySelector<HTMLElement>("#view-cube")!);
-  renderer.setBackground(viewportBackground);
-  renderer.setGridVisible(viewportGridVisible);
-  renderer.setDisplayMode(viewportDisplayMode);
-  renderer.setAppearance(appearanceColor, appearanceOpacity, appearanceEdgesVisible);
-  renderer.setFilters(state.selectionFilters);
+  renderer = installOrReplaceWorkspacePacket(preview.packet, { id: preview.bodyId, visible: true, selectable: false });
   syncCommittedSketches();
 }
 
@@ -3156,8 +3628,41 @@ function startRuntime(): void {
   worker.addEventListener("message", (event: MessageEvent<WorkerResponse>) => {
     workerMessageProcessing = workerMessageProcessing.then(async () => {
     if (event.data.type === "wasm-ready") { setReadiness("wasm", "ready"); setReadiness("worker", "ready"); }
+    if (event.data.type === "planar-face-frame" || event.data.type === "planar-face-frame-error") {
+      const pending = pendingPlanarFaceFrameRequests.get(event.data.requestId);
+      if (!pending) return;
+      pendingPlanarFaceFrameRequests.delete(event.data.requestId);
+      if (event.data.semanticHash !== adapter.checksum()) return;
+      if (event.data.type === "planar-face-frame") {
+        const authority = event.data.authority;
+        if (authority.acceptedRevision !== pending.expectedAcceptedRevision || authority.bodyId !== pending.bodyId
+          || authority.faceStableId !== pending.faceStableId || authority.producerFeatureId !== pending.expectedProducerFeatureId
+          || authority.componentId !== pending.expectedComponentId) return;
+        nativePlanarFaceAuthorities.set(planarFaceAuthorityKey(authority.bodyId, authority.faceStableId), authority);
+        syncCommittedSketches();
+        if (sketchSession?.support.kind === "topology" && sketchSession.support.reference === pending.topologyReferenceId) {
+          resolveAndAlignSketchPlane(true);
+          updateSketchStatus();
+        }
+      } else if (sketchSession?.support.kind === "topology" && sketchSession.support.reference === pending.topologyReferenceId) {
+        activeSketchPlane = undefined;
+        sketchChoosingSupport = false;
+        sketchSolverStatus = `${event.data.diagnostic.field}: ${event.data.diagnostic.message}`;
+        updateSketchToolInspectorState();
+        renderSketchOverlay();
+      }
+      return;
+    }
     if (event.data.type === "packet") {
       try {
+        if (suppressedRepairCancelPacketHash === event.data.semanticHash) {
+          suppressedRepairCancelPacketHash = undefined;
+          lastAcceptedPacket = event.data;
+          pendingAcceptedPacket = undefined;
+          transferredBytes = event.data.transferredBytes;
+          performanceEvidence.setTransferBytes(transferredBytes);
+          return;
+        }
         pendingAcceptedPacket = event.data;
         if (event.data.semanticHash === adapter.checksum()) installAcceptedRenderPacket(event.data);
       } catch (error) { setReadiness("renderer", "error", error instanceof Error ? error.message : String(error)); }
@@ -3173,22 +3678,52 @@ function startRuntime(): void {
         performanceEvidence.setTransferBytes(transferredBytes);
         currentBounds = Array.from(event.data.packet.bounds);
         viewportState ??= renderer?.sharedViewportState();
-        renderer?.dispose();
-        renderer = new WorkspaceRenderer(document.querySelector<HTMLCanvasElement>("#viewport")!, event.data.packet, { id: event.data.bodyId || acceptedBodyId, visible: true, selectable: false }, applySelection, applyPreselection, viewportState);
-        viewportState = renderer.sharedViewportState();
-        renderer.setViewChangedListener(renderSketchViewChanged);
-        renderer.attachViewCube(document.querySelector<HTMLElement>("#view-cube")!);
-        renderer.setBackground(viewportBackground);
-        renderer.setGridVisible(viewportGridVisible);
-        renderer.setDisplayMode(viewportDisplayMode);
-        renderer.setAppearance(appearanceColor, appearanceOpacity, appearanceEdgesVisible);
-        renderer.setFilters(state.selectionFilters);
+        renderer = installOrReplaceWorkspacePacket(event.data.packet, { id: event.data.bodyId || acceptedBodyId, visible: true, selectable: false });
+        renderer.setCutRemovalPreview(event.data.resultMode === "cut" ? event.data.removalPacket : undefined);
+        acceptedCutPreviewBasis = event.data.resultMode === "cut"
+          ? { semanticHash: event.data.semanticHash, baseRevision: event.data.baseRevision, requestId: event.data.requestId }
+          : undefined;
         if (sketchChoosingSupport) renderer.setSketchSupportSelection(true, handleSketchSupportPick);
         else if (activeSketchPlane) renderer.alignToSketchPlane(activeSketchPlane);
         syncCommittedSketches();
-        setExtrudeManipulatorValue(event.data.distanceNanometers);
-        document.querySelector("#operation-state")!.setAttribute("data-preview-source", "worker-render-packet");
+        setExtrudeManipulatorValue(visibleExtrudeDistance(event.data.distanceNanometers, event.data.direction), event.data.direction);
+        const operationState = document.querySelector<HTMLElement>("#operation-state")!;
+        delete operationState.dataset.errorCode;
+        delete operationState.dataset.errorCategory;
+        delete operationState.dataset.errorField;
+        delete operationState.dataset.errorReferences;
+        operationState.setAttribute("data-preview-source", "worker-render-packet");
+        operationState.dataset.resultMode = event.data.resultMode ?? "new_body";
+        if (event.data.targetBodyId) {
+          operationState.dataset.targetBodyId = event.data.targetBodyId;
+          operationState.textContent = `Operation: Cut preview removes material from ${adapter.findBody(event.data.targetBodyId)?.name ?? event.data.targetBodyId}; the target body identity is retained.`;
+        } else {
+          delete operationState.dataset.targetBodyId;
+        }
       } catch (error) { setReadiness("renderer", "error", error instanceof Error ? error.message : String(error)); }
+    }
+    if (event.data.type === "offset-construction-plane-preview") {
+      const edit = activeOffsetConstructionPlane;
+      if (!edit || event.data.requestId !== edit.requestId || event.data.requestId !== offsetConstructionPlaneRequest || state.operation.type !== "construction-plane") return;
+      if (event.data.semanticHash !== adapter.checksum()) {
+        edit.error = "The accepted document changed; cancel and reopen the plane command.";
+        edit.previewReady = false;
+      } else if (event.data.plane.suppressed !== edit.suppressed
+        || (event.data.plane.suppressed ? event.data.frame !== null : event.data.frame === null)) {
+        edit.error = "The construction-plane preview returned an inconsistent suppression frame.";
+        edit.previewReady = false;
+        edit.previewFrame = undefined;
+      } else {
+        edit.previewFrame = event.data.frame;
+        edit.previewReady = true;
+        edit.error = undefined;
+      }
+      syncConstructionPlaneDisplay();
+      const status = document.querySelector<HTMLElement>("#construction-plane-status");
+      if (status) status.textContent = edit.error ?? "Preview ready. Enter accepts; Escape cancels.";
+      const apply = document.querySelector<HTMLButtonElement>("#apply-construction-plane");
+      if (apply) apply.disabled = !edit.previewReady;
+      document.querySelector("#operation-state")?.setAttribute("data-preview-source", "document-derived-frame");
     }
     if (event.data.type === "advanced-feature-preview") {
       if (event.data.requestId !== advancedFeaturePreviewRequest || selectedCatalogOperationId !== event.data.operationId || state.operation.type !== "advanced") return;
@@ -3221,6 +3756,11 @@ function startRuntime(): void {
     }
     if (event.data.type === "document") {
       try {
+        // Accepted feature payloads can be large. Keep one immutable parsed
+        // value for adaptation, recovery, and persistence rather than cloning
+        // and reparsing the complete history several times on the main thread.
+        const documentJson = event.data.documentJson;
+        const acceptedDocument = JSON.parse(documentJson) as { id: string };
         storage ??= await AppStorage.open();
         await importedSourcePersistence;
         if (!runtimeHydrated) {
@@ -3229,7 +3769,7 @@ function startRuntime(): void {
             worker?.postMessage({ type: "hydrate-document", documentJson: JSON.stringify(sessionRecoveryDocument) });
             return;
           }
-          const result = await storage.initializeOrRecover(JSON.parse(event.data.documentJson), event.data.semanticHash);
+          const result = await storage.initializeOrRecover(acceptedDocument, event.data.semanticHash);
           runtimeHydrated = true;
           if (result.status === "recovered") {
             recoveryChoices = result.choices;
@@ -3242,13 +3782,17 @@ function startRuntime(): void {
           }
           document.querySelector("#storage-status")!.textContent = result.status === "recovered" ? "recovered" : "autosave ready";
         }
-        adapter = adapterFromWorkerSnapshot(event.data.documentJson, event.data.semanticHash, event.data.dimensionsJson);
+        adapter = adapterFromWorkerSnapshot(event.data.documentJson, event.data.semanticHash, event.data.dimensionsJson, acceptedDocument);
+        nativePlanarFaceAuthorities.clear();
+        pendingPlanarFaceFrameRequests.clear();
+        writeActiveDocumentId(acceptedDocument.id);
         if (pendingAcceptedPacket?.semanticHash === event.data.semanticHash) installAcceptedRenderPacket(pendingAcceptedPacket);
-        await restoreImportedStepSources(adapter.durableDocument());
+        await restoreImportedStepSources(acceptedDocument);
         currentParameters = event.data.parameters;
         if (!document.querySelector<HTMLElement>("#parameters-dialog")!.hidden) renderParametersDialog();
         if (renderer) renderer.setBodyContext(renderBodyContext(renderer.bodyId()));
         syncCommittedSketches();
+        if (sketchSession?.support.kind === "topology") resolveAndAlignSketchPlane(true);
         if (state.selections.some((selection) => !adapter.selectionAllowed(selection.bodyId))) applySelection(null);
         const dimensions = JSON.parse(event.data.dimensionsJson) as { width_nanometers: number; height_nanometers: number; distance_nanometers: number } | null;
         hasBaseDimensions = dimensions !== null;
@@ -3261,7 +3805,7 @@ function startRuntime(): void {
         document.querySelector<HTMLInputElement>("#pad-length")!.value = dimensions ? String(dimensions.distance_nanometers / 1_000_000) : "10";
         if (!adapter.findFeature(state.selectedFeatureId)) state.selectedFeatureId = "origin";
         updateBaseOperationAvailability();
-        sessionRecoveryDocument = adapter.durableDocument();
+        sessionRecoveryDocument = acceptedDocument;
         renderDocument();
         requestFeatureServices();
         documentReady = true;
@@ -3274,18 +3818,17 @@ function startRuntime(): void {
         if (event.data.historyAction === "hydrate") document.querySelector("#storage-status")!.textContent = "recovered";
         if (event.data.historyAction === "new" || event.data.historyAction === "open") {
           stepImportRunning = false; stepSourceRetained = false; updateStepImportControls();
-          await storage.adoptPortableDocument(adapter.durableDocument(), event.data.semanticHash, event.data.historyAction === "new" ? "new_document" : "open");
+          await storage.adoptPortableDocument(acceptedDocument, event.data.semanticHash, event.data.historyAction === "new" ? "new_document" : "open");
           runtimeHydrated = true;
           recoveryChoices = [];
           recoveryProvenance = event.data.historyAction === "open" ? "Opened portable part file" : "New canonical part";
           document.querySelector("#storage-status")!.textContent = event.data.historyAction === "open" ? "opened" : "new part";
         }
         if (event.data.historyAction === "undo" || event.data.historyAction === "redo") {
-          const acceptedDocument = adapter.durableDocument();
           const semanticHash = event.data.semanticHash;
           const historyAction = event.data.historyAction;
           const persistenceRevision = ++acceptedPersistenceRevision;
-          const persistence = acceptedPersistence.then(() => storage!.recordAcceptedState((acceptedDocument as { id: string }).id, acceptedDocument, semanticHash, historyAction));
+          const persistence = acceptedPersistence.then(() => persistAcceptedOffMainThread(documentJson, semanticHash, { action: historyAction }));
           acceptedPersistence = persistence;
           await persistence;
           if (persistenceRevision === acceptedPersistenceRevision) document.querySelector("#storage-status")!.textContent = lastExplicitSaveChecksum === adapter.checksum() ? "saved" : "autosaved";
@@ -3293,31 +3836,101 @@ function startRuntime(): void {
         if (event.data.transaction) {
           const committedOperationType = state.operation.type;
           performanceEvidence.finishRecompute();
-          const acceptedDocument = adapter.durableDocument();
           const transaction = event.data.transaction;
+          const committedPadTransaction = committedOperationType === "pad" && (
+            activeSketchExtrudeSource
+              ? transaction.id === activeSketchExtrudeSource.transactionId
+              : transaction.changes.some((change) => change.kind === "set_parameter_value" && change.parameter === "parameter:distance")
+          );
           const semanticHash = event.data.semanticHash;
           const persistenceRevision = ++acceptedPersistenceRevision;
-          const persistence = acceptedPersistence.then(() => storage!.recordAccepted((acceptedDocument as { id: string }).id, transaction, acceptedDocument, semanticHash));
+          const persistence = acceptedPersistence.then(() => persistAcceptedOffMainThread(documentJson, semanticHash, { transaction }));
           acceptedPersistence = persistence;
           await persistence;
           recordPersistedOperationHash(event.data.semanticHash);
-          if (committedOperationType === "pad") notifyOnboardingAction("commit-extrude");
-          if (state.operation.status === "preview" && (state.operation.type === "rectangle" || state.operation.type === "pad")) setOperation("committed");
-          document.querySelector<HTMLButtonElement>("#extrude-manipulator")!.hidden = true;
+          if (committedPadTransaction) notifyOnboardingAction("commit-extrude");
+          if (state.operation.status === "preview" && (state.operation.type === "rectangle" || committedPadTransaction)) setOperation("committed");
+          if (committedPadTransaction) {
+            activeSketchExtrudeSource = undefined;
+            acceptedExtrudeResultMode = "new_body";
+            syncExtrudeResultControls("new_body");
+          }
+          if (committedPadTransaction || committedOperationType === "rectangle") document.querySelector<HTMLButtonElement>("#extrude-manipulator")!.hidden = true;
           if (persistenceRevision === acceptedPersistenceRevision) document.querySelector("#storage-status")!.textContent = lastExplicitSaveChecksum === adapter.checksum() ? "saved" : "autosaved";
         }
       } catch (error) { storageFailure(error); }
+    }
+    if (event.data.type === "offset-construction-plane-completed") {
+      const edit = activeOffsetConstructionPlane;
+      if (!edit || event.data.requestId !== edit.requestId || event.data.semanticHash !== adapter.checksum()) return;
+      selectedConstructionPlaneId = event.data.plane.id;
+      if (event.data.plane.suppressed) {
+        if (selectedSketchSupport?.kind === "construction_plane_reference" && selectedSketchSupport.plane === event.data.plane.id) {
+          selectedSketchSupport = undefined;
+        }
+        if (selectedSketchProfile) {
+          const selectedProfileSketch = hydrateSketchFromDocument(adapter.durableDocument(), selectedSketchProfile.sketchId);
+          if (selectedProfileSketch?.support.kind === "construction_plane_reference" && selectedProfileSketch.support.plane === event.data.plane.id) {
+            selectedSketchProfile = undefined;
+          }
+        }
+      } else {
+        selectedSketchSupport = { kind: "construction_plane_reference", plane: event.data.plane.id };
+      }
+      activeOffsetConstructionPlane = undefined;
+      setOperation("committed", "construction-plane");
+      renderDocument();
     }
     if (event.data.type === "error") handleRuntimeFault(event.data.message);
     if (event.data.type === "operation-error") {
       if (event.data.operationId && event.data.requestId !== undefined && event.data.requestId !== advancedFeaturePreviewRequest) return;
       const detail = `${event.data.field ? `${event.data.field}: ` : ""}${event.data.message}${event.data.recovery ? ` — ${event.data.recovery}` : ""}`;
-      if (event.data.code.startsWith("extrude_")) {
+      if (event.data.code === "topology_rebind_preview_refused" || event.data.code === "topology_rebind_commit_refused") {
+        if (typeof event.data.requestId === "string" && topologyRebindPreview?.requestId !== event.data.requestId) return;
+        topologyRebindPreview = undefined;
+        historyActionMessage = `Repair stopped: ${detail}`;
+        worker?.postMessage({ type: "restore-accepted-packet" });
+        renderInspector();
+      } else if (isConstructionPlaneRuntimeErrorCode(event.data.code) && event.data.field?.startsWith("construction_plane.")) {
+        const edit = activeOffsetConstructionPlane;
+        if (!edit || event.data.requestId !== edit.requestId) return;
+        edit.previewReady = false;
+        edit.previewFrame = undefined;
+        edit.error = detail;
+        syncConstructionPlaneDisplay();
+        const status = document.querySelector<HTMLElement>("#construction-plane-status");
+        if (status) {
+          status.textContent = detail;
+          status.dataset.errorField = event.data.field ?? "";
+          status.dataset.errorReferences = JSON.stringify(event.data.referencedEntityIds ?? []);
+        }
+        const apply = document.querySelector<HTMLButtonElement>("#apply-construction-plane");
+        if (apply) apply.disabled = true;
+      } else if (event.data.field?.startsWith("planar_face.") && state.operation.type === "sketch") {
+        activeSketchPlane = undefined;
+        sketchChoosingSupport = false;
+        renderer?.setSketchSupportSelection(false);
+        sketchSolverStatus = detail;
+        renderSketchOverlay();
+        updateSketchToolInspectorState();
+      } else if (event.data.code.startsWith("extrude_") || isExtrudeCutErrorCode(event.data.code) || isConstructionPlaneSupportRuntimeErrorCode(event.data.code)
+        || (event.data.field?.startsWith("planar_face.") && state.operation.type === "pad")) {
         setOperation("cancelled");
+        acceptedCutPreviewBasis = undefined;
         activeSketchExtrudeSource = undefined;
         document.querySelector<HTMLButtonElement>("#extrude-manipulator")!.hidden = true;
-        document.querySelector("#operation-state")!.textContent = `Operation: Extrude stopped — ${detail}`;
-        worker?.postMessage({ type: "restore-accepted-packet" });
+        const operationState = document.querySelector<HTMLElement>("#operation-state")!;
+        operationState.textContent = `Operation: Extrude stopped — ${detail}`;
+        operationState.dataset.errorCode = event.data.code;
+        operationState.dataset.errorCategory = event.data.category ?? "";
+        operationState.dataset.errorField = event.data.field ?? "";
+        operationState.dataset.errorReferences = JSON.stringify(event.data.referencedEntityIds ?? []);
+        // Support preflight fails before a candidate packet exists. Keep the
+        // last accepted display rather than replacing it with the currently
+        // unevaluable accepted-history packet for the suppressed dependency.
+        if (!isConstructionPlaneSupportRuntimeErrorCode(event.data.code)) {
+          worker?.postMessage({ type: "restore-accepted-packet" });
+        }
       } else if (event.data.operationId) {
         advancedFeatureApplyAfterPreviewRequest = undefined;
         advancedFeaturePreviewReady = false;
@@ -3400,7 +4013,31 @@ function startRuntime(): void {
       // user has already opened in the shared inspector.
       if (!selectedCatalogOperationId) renderDocument();
     }
+    if (event.data.type === "topology-rebind-preview") {
+      const preview = topologyRebindPreview;
+      if (!preview || preview.requestId !== event.data.requestId || preview.selected !== event.data.selected
+        || event.data.semanticHash !== adapter.checksum() || event.data.baseDocumentHash !== event.data.semanticHash) return;
+      topologyRebindPreview = {
+        ...preview,
+        phase: "ready",
+        baseDocumentHash: event.data.baseDocumentHash,
+        baseRevision: event.data.baseRevision,
+        candidateFrame: event.data.candidateFrame,
+      };
+      transferredBytes = event.data.transferredBytes;
+      performanceEvidence.setTransferBytes(transferredBytes);
+      currentBounds = Array.from(event.data.packet.bounds);
+      viewportState ??= renderer?.sharedViewportState();
+      renderer = installOrReplaceWorkspacePacket(event.data.packet, { id: event.data.bodyId, visible: true, selectable: false });
+      syncCommittedSketches();
+      renderInspector();
+    }
+    if (event.data.type === "topology-rebind-preview-cancelled") {
+      if (topologyRebindPreview?.requestId === event.data.requestId) topologyRebindPreview = undefined;
+      renderInspector();
+    }
     if (event.data.type === "recompute-from-here") {
+      lastRecomputeOutcome = structuredClone(event.data);
       lastRecompute = { dirtyRoots: [event.data.plan.requested_from], evaluationOrder: [...event.data.plan.evaluation_order] };
       historyActionMessage = event.data.accepted
         ? `Recomputed ${event.data.plan.evaluation_order.join(" → ") || "cached result"}`
@@ -3409,6 +4046,7 @@ function startRuntime(): void {
       renderInspector();
     }
     if (event.data.type === "repair-committed") {
+      topologyRebindPreview = undefined;
       historyActionMessage = `Rebound explicitly to ${event.data.selected}; undo is available.`;
       document.querySelector("#timeline-status")!.textContent = historyActionMessage;
       requestFeatureServices();
@@ -3447,15 +4085,16 @@ function startRuntime(): void {
     type: "initialize",
     fail: startupFailurePending,
     qualificationReferencePart,
+    initialDocumentId: qualificationReferencePart ? undefined : readActiveDocumentId(),
   });
   startupFailurePending = false;
 }
 
-function setOperation(status: typeof state.operation.status, type: "rectangle" | "sketch" | "pad" | "step-import" | "advanced" | "parameter" | null = state.operation.type): void {
+function setOperation(status: typeof state.operation.status, type: "rectangle" | "sketch" | "pad" | "step-import" | "advanced" | "parameter" | "construction-plane" | null = state.operation.type): void {
   if (status === "preview" || status === "idle" || status === "cancelled" || status === "failed") pendingOperationCompletion = undefined;
   state.operation.status = status;
   state.operation.type = status === "idle" || status === "cancelled" || status === "failed" ? null : type;
-  const operationName = type === "rectangle" ? rectangleOperation.label : type === "sketch" ? activeSketchOperationLabel : type === "step-import" ? "STEP import" : type === "pad" ? extrudeOperation.label : type === "advanced" ? activeAdvancedOperationLabel : type === "parameter" ? activeParameterLabel : "Document change";
+  const operationName = type === "rectangle" ? rectangleOperation.label : type === "sketch" ? activeSketchOperationLabel : type === "step-import" ? "STEP import" : type === "pad" ? extrudeOperation.label : type === "advanced" ? activeAdvancedOperationLabel : type === "parameter" ? activeParameterLabel : type === "construction-plane" ? "Offset plane" : "Document change";
   const labels = { idle: "Operation: idle", preview: type === "step-import" ? "Operation: STEP import running — Cancel import stops the worker" : type === "sketch" ? `Operation: ${operationName} active — Escape backs out one level` : `Operation: ${operationName} preview — Enter commits, Escape cancels`, committed: `Operation: ${operationName} committed`, cancelled: "Operation: cancelled", failed: `Operation: ${operationName} failed` };
   document.querySelector("#operation-state")!.textContent = labels[status];
   document.querySelector("#operation-state")!.setAttribute("data-status", status);
@@ -3470,46 +4109,76 @@ function setOperation(status: typeof state.operation.status, type: "rectangle" |
   else if (status === "preview" && type !== "advanced" && activeInspectorTab === "tool" && activeToolContext) renderInspector();
 }
 
-function setExtrudeManipulatorValue(valueNanometers: number): void {
+function selectedExtrudeDirection(): ExtrudeDirection {
+  const value = document.querySelector<HTMLSelectElement>("#extrude-direction-mode")!.value;
+  return value === "negative" || value === "symmetric" ? value : "positive";
+}
+
+function setExtrudeDirectionUi(direction: ExtrudeDirection): void {
+  const selector = document.querySelector<HTMLSelectElement>("#extrude-direction-mode")!;
+  selector.value = direction;
+  const symmetric = direction === "symmetric";
+  const input = document.querySelector<HTMLInputElement>("#pad-length")!;
+  input.min = symmetric ? "0.002" : "0.001";
+  input.setAttribute("aria-label", symmetric ? "Extrude total length in millimeters" : "Extrude distance in millimeters");
+  document.querySelector("#extrude-distance-label")!.textContent = symmetric ? "Total length" : "Distance";
+  const handle = document.querySelector<HTMLButtonElement>("#extrude-manipulator")!;
+  handle.dataset.direction = direction;
+  handle.setAttribute("aria-label", symmetric ? "Extrude symmetric total length" : direction === "negative" ? "Extrude reverse distance" : "Extrude forward distance");
+}
+
+function normalizedExtrudeField(): ReturnType<typeof normalizeExtrudeDistance> {
+  const input = document.querySelector<HTMLInputElement>("#pad-length")!;
+  if (!Number.isFinite(input.valueAsNumber)) return undefined;
+  const requestedVisibleNanometers = Math.round(input.valueAsNumber * 1_000_000);
+  const normalized = normalizeExtrudeDistance(requestedVisibleNanometers, selectedExtrudeDirection());
+  const status = document.querySelector<HTMLElement>("#extrude-normalization-status")!;
+  if (!normalized) {
+    status.textContent = "";
+    return undefined;
+  }
+  if (normalized.normalized) {
+    input.value = String(normalized.visibleNanometers / 1_000_000);
+    status.textContent = `Symmetric total normalized to ${normalized.visibleNanometers / 1_000_000} mm so both sides remain exact.`;
+  } else {
+    status.textContent = "";
+  }
+  return normalized;
+}
+
+function setExtrudeManipulatorValue(valueNanometers: number, direction = selectedExtrudeDirection()): void {
   const millimeters = valueNanometers / 1_000_000;
   const handle = document.querySelector<HTMLButtonElement>("#extrude-manipulator")!;
   handle.setAttribute("aria-valuenow", String(millimeters));
-  handle.querySelector("output")!.textContent = `${Number(millimeters.toFixed(3))} mm`;
+  const mode = direction === "symmetric" ? "total · Symmetric" : direction === "negative" ? "· Reverse" : "· Forward";
+  handle.setAttribute("aria-valuetext", `${Number(millimeters.toFixed(6))} millimeters ${direction}`);
+  handle.querySelector("output")!.textContent = `${Number(millimeters.toFixed(6))} mm ${mode}`;
 }
 
-function sketchClosedProfileCount(sketch: Sketch): number {
-  const entities = Object.values(sketch.geometry).filter((entity) => !entity.construction);
-  let profiles = entities.filter((entity) => ["rectangle", "circle", "ellipse"].includes(entity.geometry.kind)).length;
-  const edges = entities.filter((entity) => !["rectangle", "circle", "ellipse", "sketch_point"].includes(entity.geometry.kind));
-  const endpointKey = (point: Point2) => `${point.x_nm}:${point.y_nm}`;
-  const endpoints = new Map<string, string[]>();
-  const edgeEndpoints = new Map<string, [string, string]>();
-  for (const entity of edges) {
-    const start = endpointKey(evaluateGeometryCurve(entity.geometry, 0));
-    const end = endpointKey(evaluateGeometryCurve(entity.geometry, 1));
-    edgeEndpoints.set(entity.id, [start, end]);
-    for (const key of [start, end]) endpoints.set(key, [...(endpoints.get(key) ?? []), entity.id]);
+function resolveRetainedSketchProfile(sketch: Sketch): string[] | undefined {
+  if (!selectedSketchProfile || selectedSketchProfile.sketchId !== sketch.id) return undefined;
+  const match = closedProfileGeometryIds(sketch).find((geometryIds) => sketchProfileId(sketch.id, geometryIds) === selectedSketchProfile!.profileId);
+  if (!match) {
+    sketchProfileRepairMessage = "The selected profile is no longer closed. Edit the sketch and select a closed region again.";
+    return undefined;
   }
-  const unseen = new Set(edgeEndpoints.keys());
-  while (unseen.size) {
-    const seed = unseen.values().next().value as string;
-    const component: string[] = [];
-    const queue = [seed];
-    while (queue.length) {
-      const id = queue.pop()!;
-      if (!unseen.delete(id)) continue;
-      component.push(id);
-      for (const endpoint of edgeEndpoints.get(id) ?? []) {
-        for (const neighbor of endpoints.get(endpoint) ?? []) if (unseen.has(neighbor)) queue.push(neighbor);
-      }
-    }
-    if (component.length && component.every((id) => (edgeEndpoints.get(id) ?? []).every((endpoint) => endpoints.get(endpoint)?.length === 2))) profiles += 1;
-  }
-  return profiles;
+  selectedSketchProfile = { ...selectedSketchProfile, geometryIds: [...match] };
+  sketchProfileRepairMessage = undefined;
+  return match;
 }
 
-function selectedSketchExtrudeProfile(): { sketch: Sketch; support: SketchSupport; featureId: string } | undefined {
+function selectedSketchExtrudeProfile(): { sketch: Sketch; support: SketchSupport; profileGeometryIds?: readonly string[]; featureId: string } | undefined {
   const sketches = adapter.getSnapshot().components.flatMap((component) => component.sketches);
+  if (selectedSketchProfile) {
+    const summary = sketches.find((candidate) => candidate.id === selectedSketchProfile!.sketchId);
+    const hydrated = summary ? hydrateSketchFromDocument(adapter.durableDocument(), summary.id) : undefined;
+    if (!hydrated || !summary?.featureId) {
+      sketchProfileRepairMessage = "The selected profile's sketch is unavailable. Select a closed region again.";
+      return undefined;
+    }
+    const profileGeometryIds = resolveRetainedSketchProfile(hydrated.sketch);
+    return profileGeometryIds ? { sketch: hydrated.sketch, support: hydrated.support, profileGeometryIds, featureId: summary.featureId } : undefined;
+  }
   const ordered = [
     ...sketches.filter((sketch) => sketch.id === selectedSketchId),
     ...sketches.filter((sketch) => sketch.featureId === state.selectedFeatureId),
@@ -3520,8 +4189,10 @@ function selectedSketchExtrudeProfile(): { sketch: Sketch; support: SketchSuppor
     if (seen.has(summary.id)) return [];
     seen.add(summary.id);
     const hydrated = hydrateSketchFromDocument(adapter.durableDocument(), summary.id);
-    return hydrated && summary.featureId && sketchClosedProfileCount(hydrated.sketch) === 1
-      ? [{ sketch: hydrated.sketch, support: hydrated.support, featureId: summary.featureId }]
+    if (!hydrated || !summary.featureId) return [];
+    const profiles = closedProfileGeometryIds(hydrated.sketch);
+    return profiles.length === 1
+      ? [{ sketch: hydrated.sketch, support: hydrated.support, profileGeometryIds: profiles[0], featureId: summary.featureId }]
       : [];
   });
   const selected = matches.find((candidate) => candidate.sketch.id === selectedSketchId || candidate.featureId === state.selectedFeatureId);
@@ -3533,14 +4204,17 @@ interface AcceptedSketchFeatureSource {
   support: SketchSupport;
   featureId: string;
   name: string;
+  profileGeometryIds?: readonly string[];
 }
 
 function acceptedSketchFeatureSources(profileOnly = false): AcceptedSketchFeatureSource[] {
   return adapter.getSnapshot().components.flatMap((component) => component.sketches).flatMap((summary) => {
     const hydrated = hydrateSketchFromDocument(adapter.durableDocument(), summary.id);
     if (!hydrated || !summary.featureId) return [];
-    if (profileOnly && sketchClosedProfileCount(hydrated.sketch) !== 1) return [];
-    return [{ sketch: hydrated.sketch, support: hydrated.support, featureId: summary.featureId, name: summary.name }];
+    const retainedIds = resolveRetainedSketchProfile(hydrated.sketch);
+    if (profileOnly && selectedSketchProfile?.sketchId === summary.id && !retainedIds) return [];
+    if (profileOnly && !retainedIds && closedProfileGeometryIds(hydrated.sketch).length !== 1) return [];
+    return [{ sketch: hydrated.sketch, support: hydrated.support, featureId: summary.featureId, name: summary.name, ...(retainedIds ? { profileGeometryIds: retainedIds } : {}) }];
   });
 }
 
@@ -3550,21 +4224,39 @@ function sketchSourceOptions(sources: readonly AcceptedSketchFeatureSource[], mu
 
 function updateBaseOperationAvailability(): void {
   const ready = modelingRuntimeReady();
-  let canExtrude = hasBaseDimensions;
+  let canExtrude = hasBaseDimensions || Boolean(activeSketchExtrudeSource);
   if (!canExtrude) {
     try { canExtrude = Boolean(selectedSketchExtrudeProfile()); } catch { canExtrude = false; }
   }
   for (const selector of ["#start-rectangle", "#part-width", "#part-height"]) document.querySelector<HTMLButtonElement | HTMLInputElement>(selector)!.disabled = !ready || !hasBaseDimensions;
   for (const selector of ["#start-pad", "#pad-length"]) document.querySelector<HTMLButtonElement | HTMLInputElement>(selector)!.disabled = !ready || !canExtrude;
+  const plane = document.querySelector<HTMLButtonElement>("#create-offset-plane");
+  if (plane) plane.disabled = !ready;
+  const direction = document.querySelector<HTMLSelectElement>("#extrude-direction-mode")!;
+  const baseDimensionExtrude = hasBaseDimensions && !activeSketchExtrudeSource;
+  direction.disabled = !ready || !canExtrude || baseDimensionExtrude;
+  if (baseDimensionExtrude) setExtrudeDirectionUi("positive");
+  syncExtrudeResultControls(activeSketchExtrudeSource?.resultMode ?? acceptedExtrudeResultMode);
+  const extrude = document.querySelector<HTMLButtonElement>("#start-pad");
+  if (extrude) extrude.title = sketchProfileRepairMessage ?? (canExtrude ? "Extrude the selected closed profile" : "Select one closed sketch profile");
 }
 
 function requestExtrudePreview(valueNanometers: number): void {
   if (!worker || state.operation.status !== "preview" || state.operation.type !== "pad" || !Number.isSafeInteger(valueNanometers) || valueNanometers <= 0) return;
+  if (!applyExtrudeResultSelection()) return;
+  const direction = selectedExtrudeDirection();
+  const normalized = normalizeExtrudeDistance(valueNanometers, direction);
+  if (!normalized) return;
+  if (normalized.normalized) {
+    document.querySelector<HTMLInputElement>("#pad-length")!.value = String(normalized.visibleNanometers / 1_000_000);
+    document.querySelector<HTMLElement>("#extrude-normalization-status")!.textContent = `Symmetric total normalized to ${normalized.visibleNanometers / 1_000_000} mm so both sides remain exact.`;
+  }
   const requestId = ++extrudePreviewRequest;
   latestExtrudePreviewRequest = requestId;
+  acceptedCutPreviewBasis = undefined;
   extrudePreviewStarted.set(requestId, performance.now());
-  setExtrudeManipulatorValue(valueNanometers);
-  worker.postMessage({ type: "preview-extrude", requestId, valueNanometers, ...(activeSketchExtrudeSource ? { source: activeSketchExtrudeSource } : {}) });
+  setExtrudeManipulatorValue(normalized.visibleNanometers, direction);
+  worker.postMessage({ type: "preview-extrude", requestId, valueNanometers: normalized.durableNanometers, direction, ...(activeSketchExtrudeSource ? { source: activeSketchExtrudeSource } : {}) });
 }
 
 async function sha256Hex(bytes: Uint8Array): Promise<string> {
@@ -3598,25 +4290,136 @@ async function restoreImportedStepSources(documentValue: unknown): Promise<void>
 }
 
 function updateExtrudePreviewFromField(): void {
-  const input = document.querySelector<HTMLInputElement>("#pad-length")!;
-  if (Number.isFinite(input.valueAsNumber) && input.valueAsNumber > 0) {
-    requestExtrudePreview(Math.round(input.valueAsNumber * 1_000_000));
-  }
+  const normalized = normalizedExtrudeField();
+  if (normalized) requestExtrudePreview(normalized.visibleNanometers);
 }
 
-function beginExtrudePreview(): void {
+function beginExtrudeFeatureEdit(featureId: string): void {
+  type DurableExtrudeDefinition = {
+    operation?: { kind?: string; profile?: { kind?: string; sketch?: string; region?: string }; extent?: { kind?: string; distance?: string; direction?: string } };
+    result?: { mode?: string; body?: string };
+    participant_bodies?: readonly { role?: string; body?: string }[];
+  };
+  type DurableRegion = { sketch?: string; outer_geometry_ids?: readonly string[] };
+  type DurableParameter = { value?: { kind?: string; value?: number } };
+  const durable = adapter.durableDocument() as {
+    feature_definitions_v2?: Record<string, DurableExtrudeDefinition>;
+    region_definitions_v2?: Record<string, DurableRegion>;
+    parameters?: Record<string, DurableParameter>;
+  };
+  const definition = durable.feature_definitions_v2?.[featureId];
+  const profile = definition?.operation?.profile;
+  const extent = definition?.operation?.extent;
+  let retained: { mode: ExtrudeResultMode; bodyId: string };
+  try { retained = retainedExtrudeBody(definition ?? {}); }
+  catch {
+    showActionError("Edit Extrude", "This feature does not retain one exact Extrude result body.");
+    return;
+  }
+  if (definition?.operation?.kind !== "extrude" || profile?.kind !== "sketch_region" || !profile.sketch || !profile.region || extent?.kind !== "blind" || !extent.distance) {
+    showActionError("Edit Extrude", "This feature does not contain a complete Extrude V2 definition.");
+    return;
+  }
+  const hydrated = hydrateSketchFromDocument(adapter.durableDocument(), profile.sketch);
+  const region = durable.region_definitions_v2?.[profile.region];
+  const retainedProfileGeometryIds = [...(region?.outer_geometry_ids ?? [])];
+  const selectedReplacement = selectedSketchProfile ? selectedSketchExtrudeProfile() : undefined;
+  const sketchPlaneDocument = adapter.durableDocument() as SketchPlaneDocument;
+  const storedSupportResolution = hydrated
+    ? resolveSketchPlane(hydrated.support, sketchPlaneDocument, acceptedPlanarFaceEvidence, nativePlanarFaceAuthorities)
+    : undefined;
+  const selectedSupportResolution = selectedReplacement
+    ? resolveSketchPlane(selectedReplacement.support, sketchPlaneDocument, acceptedPlanarFaceEvidence, nativePlanarFaceAuthorities)
+    : undefined;
+  const explicitlySelectedReplacement = selectedReplacement
+    && hydrated
+    && selectedReplacement.sketch.id === profile.sketch
+    && storedSupportResolution?.status === "ready"
+    && selectedSupportResolution?.status === "ready"
+    && resolvedSketchPlanesEqual(storedSupportResolution.plane, selectedSupportResolution.plane)
+    ? selectedReplacement
+    : undefined;
+  if (selectedSketchProfile && !explicitlySelectedReplacement) {
+    showActionError("Edit Extrude", "The selected replacement profile must belong to this Extrude's source sketch and resolved support.");
+    return;
+  }
+  const value = durable.parameters?.[extent.distance]?.value;
+  if ((!hydrated || !retainedProfileGeometryIds.length) && !explicitlySelectedReplacement) {
+    showActionError("Edit Extrude", "The stored profile region cannot be resolved. Select a replacement closed region, then edit the feature again.");
+    return;
+  }
+  if (value?.kind !== "length_nanometers" || typeof value.value !== "number" || value.value <= 0) {
+    showActionError("Edit Extrude", "The stored profile region or distance cannot be resolved. Repair the feature references first.");
+    return;
+  }
+  const direction: ExtrudeDirection = extent.direction === "negative" || extent.direction === "symmetric" ? extent.direction : "positive";
+  acceptedExtrudeDirection = direction;
+  acceptedExtrudeResultMode = retained.mode;
+  acceptedExtrudeDistanceNanometers = visibleExtrudeDistance(value.value, direction);
+  const input = document.querySelector<HTMLInputElement>("#pad-length")!;
+  input.value = String(acceptedExtrudeDistanceNanometers / 1_000_000);
+  setExtrudeDirectionUi(direction);
+  const source = explicitlySelectedReplacement ?? {
+    sketch: hydrated!.sketch,
+    support: hydrated!.support,
+    profileGeometryIds: retainedProfileGeometryIds,
+  };
+  activeSketchExtrudeSource = {
+    sketch: source.sketch,
+    support: source.support,
+    profileGeometryIds: source.profileGeometryIds,
+    featureId,
+    bodyId: retained.bodyId,
+    newBodyId: retained.bodyId,
+    resultMode: retained.mode,
+    ...(retained.mode === "cut" ? { targetBodyId: retained.bodyId } : {}),
+    transactionId: `transaction:${crypto.randomUUID()}:edit-extrude`,
+    editing: true,
+  };
+  if (activeWorkbench !== "Part Design") setActiveWorkbench("Part Design");
+  setOperation("preview", "pad");
+  syncExtrudeResultControls(retained.mode);
+  updateBaseOperationAvailability();
+  const handle = document.querySelector<HTMLButtonElement>("#extrude-manipulator")!;
+  handle.hidden = false;
+  // A valid stored extent can reuse the accepted packet, but an unresolved
+  // support must still cross the real runtime preview boundary so the editor
+  // receives the stable, field-addressed repair diagnostic immediately.
+  if (storedSupportResolution?.status !== "ready" || retained.mode === "cut") {
+    requestExtrudePreview(acceptedExtrudeDistanceNanometers);
+  }
+  // For a resolved support, the accepted packet already represents the stored
+  // extent. Defer kernel work until the user changes the distance so the first
+  // measured edit is never queued behind a redundant preview.
+  input.focus();
+  input.select();
+}
+
+function beginExtrudePreview(initialResultMode: ExtrudeResultMode = "new_body"): void {
   const fieldNanometers = Math.round(document.querySelector<HTMLInputElement>("#pad-length")!.valueAsNumber * 1_000_000);
-  acceptedExtrudeDistanceNanometers = hasBaseDimensions ? currentDimensions.distanceNanometers : fieldNanometers;
-  const selectedProfile = hasBaseDimensions ? undefined : selectedSketchExtrudeProfile();
+  acceptedExtrudeDirection = "positive";
+  acceptedExtrudeResultMode = initialResultMode;
+  acceptedCutPreviewBasis = undefined;
+  setExtrudeDirectionUi("positive");
+  // An explicitly selected closed sketch profile wins over the legacy
+  // reference-part dimensions. Otherwise a face-supported sketch on an
+  // existing body could only edit the seed Extrude and could never create its
+  // own V2 feature.
+  const selectedProfile = selectedSketchExtrudeProfile();
+  acceptedExtrudeDistanceNanometers = selectedProfile ? fieldNanometers : hasBaseDimensions ? currentDimensions.distanceNanometers : fieldNanometers;
+  const newBodyId = `body:extrude:${crypto.randomUUID()}`;
   activeSketchExtrudeSource = selectedProfile ? {
     ...selectedProfile,
     featureId: `feature:extrude:${crypto.randomUUID()}`,
-    bodyId: `body:extrude:${crypto.randomUUID()}`,
+    bodyId: newBodyId,
+    newBodyId,
+    resultMode: initialResultMode,
     transactionId: `transaction:${crypto.randomUUID()}:extrude`,
   } : undefined;
   if (!hasBaseDimensions && !activeSketchExtrudeSource) return;
   if (activeWorkbench !== "Part Design") setActiveWorkbench("Part Design");
   setOperation("preview", "pad");
+  syncExtrudeResultControls(initialResultMode);
   notifyOnboardingAction("start-extrude");
   const handle = document.querySelector<HTMLButtonElement>("#extrude-manipulator")!;
   handle.hidden = false;
@@ -3624,12 +4427,25 @@ function beginExtrudePreview(): void {
 }
 
 function commitExtrudePreview(): void {
-  const millimeters = document.querySelector<HTMLInputElement>("#pad-length")!.valueAsNumber;
-  if (!Number.isFinite(millimeters) || millimeters <= 0) return;
+  const normalized = normalizedExtrudeField();
+  if (!normalized) return;
+  if (!applyExtrudeResultSelection()) return;
+  const direction = selectedExtrudeDirection();
+  const cutBasis = activeSketchExtrudeSource?.resultMode === "cut" ? acceptedCutPreviewBasis : undefined;
+  if (activeSketchExtrudeSource?.resultMode === "cut" && !cutBasis) {
+    document.querySelector<HTMLElement>("#extrude-normalization-status")!.textContent = "Wait for the Cut preview to finish before applying.";
+    return;
+  }
   document.querySelector<HTMLButtonElement>("#extrude-manipulator")!.hidden = true;
   latestExtrudePreviewRequest = ++extrudePreviewRequest;
   performanceEvidence.beginRecompute();
-  worker?.postMessage({ type: "commit-pad", valueNanometers: Math.round(millimeters * 1_000_000), ...(activeSketchExtrudeSource ? { source: activeSketchExtrudeSource } : {}) });
+  worker?.postMessage({
+    type: "commit-pad",
+    valueNanometers: normalized.durableNanometers,
+    direction,
+    ...(activeSketchExtrudeSource ? { source: activeSketchExtrudeSource } : {}),
+    ...(cutBasis ? { baseDocumentHash: cutBasis.semanticHash, baseRevision: cutBasis.baseRevision } : {}),
+  });
 }
 
 function cancelExtrudePreview(): void {
@@ -3637,8 +4453,13 @@ function cancelExtrudePreview(): void {
   extrudePreviewStarted.clear();
   const input = document.querySelector<HTMLInputElement>("#pad-length")!;
   input.value = String(acceptedExtrudeDistanceNanometers / 1_000_000);
-  document.querySelector<HTMLButtonElement>("#extrude-manipulator")!.hidden = true;
+  setExtrudeDirectionUi(acceptedExtrudeDirection);
+  acceptedExtrudeResultMode = "new_body";
+  acceptedCutPreviewBasis = undefined;
   activeSketchExtrudeSource = undefined;
+  syncExtrudeResultControls(acceptedExtrudeResultMode);
+  document.querySelector<HTMLElement>("#extrude-normalization-status")!.textContent = "";
+  document.querySelector<HTMLButtonElement>("#extrude-manipulator")!.hidden = true;
   setOperation("cancelled");
   worker?.postMessage({ type: "restore-accepted-packet" });
   document.querySelector<HTMLButtonElement>("#start-pad")!.focus();
@@ -3672,6 +4493,11 @@ function startSketchEdit(tool?: SketchTool, operationLabel?: string): void {
   const selectedSketch = allSketches.find((sketch) => sketch.id === selectedSketchId)
     ?? allSketches.find((sketch) => sketch.featureId === state.selectedFeatureId);
   const hydrated = selectedSketch ? hydrateSketchFromDocument(adapter.durableDocument(), selectedSketch.id) : undefined;
+  if (!hydrated || selectedSketchProfile?.sketchId !== hydrated.sketch.id) {
+    selectedSketchProfile = undefined;
+    selectedSketchConstructionAxis = undefined;
+    sketchProfileRepairMessage = undefined;
+  }
   if (hydrated) {
     hiddenCommittedSketchIds.delete(hydrated.sketch.id);
     persistCommittedSketchVisibility();
@@ -3739,6 +4565,18 @@ function startSketchEdit(tool?: SketchTool, operationLabel?: string): void {
   setOperation("preview", "sketch");
   setSketchToolPhase(hasExplicitTool ? "collecting" : "idle");
   updateSketchStatus();
+  if (hydrated) {
+    const openingSession = sketchSession;
+    void openingSession.initialize().then(() => {
+      if (sketchSession !== openingSession) return;
+      updateSketchStatus();
+      if (activeInspectorTab === "tool") renderActiveToolInspector();
+    }).catch((error) => {
+      if (sketchSession !== openingSession) return;
+      sketchSolverStatus = `Sketch state could not be initialized: ${error instanceof Error ? error.message : String(error)}`;
+      updateSketchToolInspectorState();
+    });
+  }
   if (hasExplicitTool) document.querySelector<HTMLButtonElement>(`[data-sketch-tool="${CSS.escape(requestedTool)}"]`)?.focus();
   else if (support) document.querySelector<HTMLButtonElement>("#sketch-select-tool")?.focus();
   else document.querySelector<HTMLCanvasElement>("#viewport")?.focus();
@@ -3748,18 +4586,18 @@ function topologySupportFromSelection(selection: Selection | null = state.select
   if (selection?.kind !== "face") return undefined;
   const documentValue = adapter.durableDocument() as SketchPlaneDocument;
   const reference = Object.entries(documentValue.topology_references ?? {})
-    .find(([, candidate]) => candidate.kind === "face" && (
-      String(candidate.stable_kernel_id) === selection.stableId
-      || (candidate.fallback_signature?.centroid_nanometers && candidate.fallback_signature.normal_millionths
-        && renderer?.faceMatchesReferencePlane(selection, candidate.fallback_signature.centroid_nanometers, candidate.fallback_signature.normal_millionths, candidate.fallback_signature.area_square_nanometers))
-    ));
+    .find(([, candidate]) => candidate.kind === "face"
+      && candidate.body === selection.bodyId
+      && String(candidate.stable_kernel_id) === selection.stableId);
   if (reference) return { support: { kind: "topology", reference: reference[1].id ?? reference[0] } };
   const evidence = renderer?.planarFaceEvidence(selection);
   const body = documentValue.bodies?.[selection.bodyId];
-  if (!evidence || !body?.generated_by) return undefined;
+  if (!evidence || !body?.generated_by || !body.component) return undefined;
   const id = `topology:sketch-face:${selection.bodyId}:${selection.stableId}`;
   const created: SketchTopologyReference = {
+    schema_version: 1,
     id,
+    component: body.component,
     body: body.id ?? selection.bodyId,
     producer: body.generated_by,
     kind: "face",
@@ -3772,13 +4610,21 @@ function topologySupportFromSelection(selection: Selection | null = state.select
 
 function handleSketchSupportPick(pick: SketchSupportPick): void {
   if (!sketchSession || !sketchChoosingSupport) return;
-  const resolved = pick.kind === "origin_plane" ? { support: originPlaneSupport(pick.plane) } : topologySupportFromSelection(pick.selection);
+  const resolved = pick.kind === "origin_plane"
+    ? { support: originPlaneSupport(pick.plane) }
+    : pick.kind === "construction_plane"
+      ? { support: { kind: "construction_plane_reference", plane: pick.plane } as SketchSupport }
+      : topologySupportFromSelection(pick.selection);
   if (!resolved) {
     sketchSolverStatus = "That face has no stable planar reference";
     updateSketchToolInspectorState();
     return;
   }
   if (pick.kind === "face") applySelection(pick.selection);
+  if (pick.kind === "construction_plane") {
+    selectedConstructionPlaneId = pick.plane;
+    selectedSketchSupport = { kind: "construction_plane_reference", plane: pick.plane };
+  }
   sketchSession.support = resolved.support;
   sketchSession.supportReference = resolved.reference;
   sketchPoints = [];
@@ -3806,7 +4652,7 @@ function beginSketchSupportSelection(restoreView = true): void {
   sketchHoverSnap = undefined;
   sketchOriginSelected = false;
   sketchHoverPoint = undefined;
-  sketchSolverStatus = "Choose an origin plane or verified planar face";
+  sketchSolverStatus = "Choose an origin plane, construction plane, or verified planar face";
   renderer?.setSketchSupportSelection(true, handleSketchSupportPick);
   renderSketchOverlay();
   if (activeInspectorTab === "tool") renderActiveToolInspector();
@@ -3820,10 +4666,25 @@ function resolveAndAlignSketchPlane(refreshingAcceptedTopology = false): boolean
   const planeDocument: SketchPlaneDocument = sketchSession.supportReference
     ? { ...documentValue, topology_references: { ...documentValue.topology_references, [sketchSession.supportReference.id]: sketchSession.supportReference } }
     : documentValue;
+  if (sketchSession.support.kind === "topology"
+    && !requestNativePlanarFaceFrame(sketchSession.support, sketchSession.supportReference)) {
+    activeSketchPlane = undefined;
+    sketchChoosingSupport = false;
+    renderer?.setSketchSupportSelection(false);
+    const topologyReferenceId = sketchSession.support.reference;
+    const pending = [...pendingPlanarFaceFrameRequests.values()].some((request) => request.topologyReferenceId === topologyReferenceId);
+    sketchSolverStatus = pending
+      ? "Validating planar face with the native model runtime…"
+      : "Planar face reference is missing, stale, nonplanar, or crosses a body/component boundary";
+    renderSketchOverlay();
+    updateSketchToolInspectorState();
+    return false;
+  }
   const result = resolveSketchPlane(
     sketchSession.support,
     planeDocument,
     acceptedPlanarFaceEvidence,
+    nativePlanarFaceAuthorities,
   );
   if (result.status !== "ready") {
     activeSketchPlane = undefined;
@@ -3849,9 +4710,6 @@ function resolveAndAlignSketchPlane(refreshingAcceptedTopology = false): boolean
   if (!refreshingAcceptedTopology || !sameFrame) renderer?.alignToSketchPlane(activeSketchPlane);
   renderSketchOverlay();
   void refreshAssociativeSketchGeometry();
-  if (!refreshingAcceptedTopology && result.plane.source === "planar_face" && state.selection?.kind === "face" && Object.keys(sketchSession.draft.geometry).length === 0) {
-    void projectSelectedSketchEdge();
-  }
   return true;
 }
 
@@ -3874,7 +4732,7 @@ async function refreshAssociativeSketchGeometry(): Promise<void> {
         const source = JSON.parse(reference.stable_kernel_id) as { sketch: string; geometry: string; segment: number };
         const documentValue = adapter.durableDocument() as SketchPlaneDocument;
         const hydrated = hydrateSketchFromDocument(documentValue, source.sketch);
-        const resolution = hydrated ? resolveSketchPlane(hydrated.support, documentValue, acceptedPlanarFaceEvidence) : undefined;
+        const resolution = hydrated ? resolveSketchPlane(hydrated.support, documentValue, acceptedPlanarFaceEvidence, nativePlanarFaceAuthorities) : undefined;
         const entity = hydrated?.sketch.geometry[source.geometry]; const path = entity ? sketchGeometrySelectionPath(entity.geometry) : [];
         if (resolution?.status === "ready" && source.segment === -1 && path[0]) world = [[...planeLocalToWorldMillimeters(path[0], resolution.plane)]] as [number, number, number][];
         else if (resolution?.status === "ready" && path[source.segment] && path[source.segment + 1]) world = [[...planeLocalToWorldMillimeters(path[source.segment], resolution.plane)], [...planeLocalToWorldMillimeters(path[source.segment + 1], resolution.plane)]] as [number, number, number][];
@@ -3969,12 +4827,22 @@ function updateSketchStatus(): void {
     ? `${sketchSession.solve.state.replaceAll("_", " ")} · ${sketchSession.solve.degrees_of_freedom} degrees of freedom · ${sketchSession.solve.solve_components?.length ?? 0} solve component(s)${sketchSession.solve.redundant_constraints.length ? ` · redundant ${sketchSession.solve.redundant_constraints.join(", ")}` : ""}${sketchSession.solve.conflicts.length ? ` · conflicting ${sketchSession.solve.conflicts.flatMap((conflict) => conflict.constraints).join(", ")} · suppress, delete, or convert a dimension to reference` : ""}`
     : "Under-constrained · click the plane to draw";
   const report = sketchSession.profile;
+  if (selectedSketchProfile?.sketchId === sketchSession.draft.id && report) {
+    const match = report.closed_profiles.find((geometryIds) => sketchProfileId(sketchSession!.draft.id, geometryIds) === selectedSketchProfile!.profileId);
+    if (match) {
+      selectedSketchProfile = { ...selectedSketchProfile, geometryIds: [...match] };
+      sketchProfileRepairMessage = undefined;
+    } else {
+      sketchProfileRepairMessage = "The selected profile is no longer closed. Close it or select another region before creating a feature.";
+    }
+  }
   if (report?.closed_profiles.length && Object.values(sketchSession.draftView.geometry).filter((entity) => entity.geometry.kind === "line").length >= 4) {
     notifyOnboardingAction("draw-rectangle");
   }
   sketchProfileStatus = report
     ? `Profiles: ${report.closed_profiles.length} closed · ${report.diagnostics.length ? report.diagnostics.map((diagnostic) => diagnostic.kind.replaceAll("_", " ")).join(", ") : "no gaps"}`
     : "Profile: empty";
+  if (sketchProfileRepairMessage) sketchProfileStatus = `Profile repair: ${sketchProfileRepairMessage}`;
   renderSketchOverlay();
   syncSketchBrowserConstraintStatus();
   updateSketchToolInspectorState();
@@ -5087,6 +5955,8 @@ function stableSketchRenderParts(): readonly unknown[] {
     bounds.height,
     [...sketchVisibility].sort().join("\u0000"),
     sketchConflictIsolation,
+    selectedSketchProfile?.profileId,
+    sketchHoverTarget?.kind === "profile" ? `${sketchHoverTarget.id}:${sketchHoverTarget.valid}` : undefined,
   ];
 }
 
@@ -5190,10 +6060,16 @@ function renderSketchOverlay(): void {
     for (const parameter of parameters) handle(geometryId, `parameter:${Math.round(parameter * 1_000_000)}`, evaluateGeometryCurve(value, parameter));
   };
   const profileFills = generateStableGeometry ? (() => {
-    const profilePath = closedProfilePolylines(sketch, sketchSession.profile?.closed_profiles ?? [])
-      .flatMap((profile) => path(profile, true) ?? [])
-      .join(" ");
-    return profilePath && sketchVisibility.has("profiles") ? [`<path class="sketch-profile-fill" fill-rule="evenodd" d="${profilePath}" />`] : [];
+    if (!sketchVisibility.has("profiles")) return [];
+    return (sketchSession.profile?.closed_profiles ?? []).flatMap((geometryIds) => {
+      const profilePath = closedProfilePolylines(sketch, [geometryIds]).flatMap((profile) => path(profile, true) ?? []).join(" ");
+      if (!profilePath) return [];
+      const profileId = sketchProfileId(sketch.id, geometryIds);
+      const selected = selectedSketchProfile?.sketchId === sketch.id && selectedSketchProfile.profileId === profileId;
+      const preselected = sketchHoverTarget?.kind === "profile" && sketchHoverTarget.id === profileId;
+      const stateClass = selected ? " selected" : preselected ? (sketchHoverTarget?.valid ? " preselected" : " invalid-preselection") : "";
+      return [`<path class="sketch-profile-fill${stateClass}" fill-rule="evenodd" d="${profilePath}" data-sketch-profile-id="${escapeHtml(profileId)}" data-profile-geometry-ids="${escapeHtml(JSON.stringify(geometryIds))}" tabindex="0" role="button" aria-pressed="${selected}" aria-label="Select closed profile ${escapeHtml(profileId)}" />`];
+    });
   })() : [...sketchStableGeometryCache!.profileFills];
   const inference = sketchInferenceGeometryIds();
   const orphanedProjection = revisionIndexes.orphanedProjectionGeometry;
@@ -5302,7 +6178,7 @@ function renderSketchOverlay(): void {
   const originReference = origin
     ? `<g class="sketch-origin-reference${sketchOriginSelected ? " selected" : ""}" data-sketch-origin tabindex="0" role="button" aria-pressed="${sketchOriginSelected}" aria-label="Absolute origin reference"><circle cx="${origin.x}" cy="${origin.y}" r="7"/><path d="M ${origin.x - 13} ${origin.y} H ${origin.x + 13} M ${origin.x} ${origin.y - 13} V ${origin.y + 13}"/></g>`
     : "";
-  const focusedAnnotationIds = selectedConstraintIds(sketch, selectedSketchGeometry, selectedSketchPoints, selectedSketchConstraint);
+  const focusedAnnotationIds = visibleConstraintIds(sketch, selectedSketchGeometry, selectedSketchPoints, selectedSketchConstraint);
   const glyphPlacements = sketchConstraintGlyphPlacements(sketch, focusedAnnotationIds, point);
   const redundantConstraintIds = new Set(sketchSession.solve?.redundant_constraints ?? []);
   overlay.dataset.annotationDensity = "selection";
@@ -5505,7 +6381,7 @@ async function projectSelectedSketchEdge(): Promise<void> {
   if (sketchSession && activeSketchPlane && selectedSketchId && selectedSketchId !== sketchSession.draft.id) {
     const documentValue = adapter.durableDocument() as SketchPlaneDocument;
     const hydrated = hydrateSketchFromDocument(documentValue, selectedSketchId);
-    const resolution = hydrated ? resolveSketchPlane(hydrated.support, documentValue, acceptedPlanarFaceEvidence) : undefined;
+    const resolution = hydrated ? resolveSketchPlane(hydrated.support, documentValue, acceptedPlanarFaceEvidence, nativePlanarFaceAuthorities) : undefined;
     if (hydrated && resolution?.status === "ready") {
       const commands: SketchCommand[] = []; const results: string[] = []; const sourceIds: string[] = [];
       for (const entity of Object.values(hydrated.sketch.geometry)) {
@@ -6551,6 +7427,11 @@ async function finishSketch(): Promise<void> {
     return;
   }
   const committedSketchId = sketchSession.draft.id;
+  const retainedProfile = selectedSketchProfile?.sketchId === committedSketchId ? structuredClone(selectedSketchProfile) : undefined;
+  const retainedConstructionAxis = selectedSketchGeometry.find((id) => {
+    const entity = sketchSession?.draft.geometry[id];
+    return Boolean(entity?.construction && entity.geometry.kind === "line");
+  });
   if (!(await sketchSession.commit())) {
     updateSketchStatus();
     return;
@@ -6575,6 +7456,8 @@ async function finishSketch(): Promise<void> {
   selectedSketchPoints = [];
   sketchOriginSelected = false;
   selectedSketchSegments = [];
+  selectedSketchProfile = retainedProfile;
+  selectedSketchConstructionAxis = retainedConstructionAxis ? { sketchId: committedSketchId, geometryId: retainedConstructionAxis } : undefined;
   pendingSketchConstraint = undefined;
   sketchSmartDimensionActive = false;
   pendingDimensionPlacement = undefined;
@@ -6588,7 +7471,6 @@ async function finishSketch(): Promise<void> {
   sketchSelectionMode = "replace";
   hiddenCommittedSketchIds.delete(committedSketchId);
   persistCommittedSketchVisibility();
-  selectedSketchId = undefined;
   syncCommittedSketches();
   renderBrowser();
   document.querySelector<HTMLElement>(".workspace")!.classList.remove("sketch-active");
@@ -6599,6 +7481,8 @@ async function finishSketch(): Promise<void> {
   setSketchToolPhase("idle");
   deactivateToolContext(false);
   syncSketchToolUi();
+  syncSketchSelectionAssistUi();
+  updateBaseOperationAvailability();
   const returnFocus = sketchReturnFocus;
   sketchReturnFocus = null;
   returnFocus?.focus();
@@ -6647,6 +7531,7 @@ function cancelSketch(): void {
   setSketchToolPhase("idle");
   deactivateToolContext(false);
   syncSketchToolUi();
+  syncSketchSelectionAssistUi();
   const returnFocus = sketchReturnFocus;
   sketchReturnFocus = null;
   returnFocus?.focus();
@@ -6753,6 +7638,9 @@ async function backOutOfSketch(): Promise<void> {
     selectedSketchSegments = [];
     sketchOriginSelected = false;
     selectedSketchConstraint = undefined;
+    selectedSketchProfile = undefined;
+    selectedSketchConstructionAxis = undefined;
+    sketchProfileRepairMessage = undefined;
     sketchSelectionMode = "replace";
     sketchSolverStatus = "Selection cleared · no active tool";
     renderSketchOverlay();
@@ -6958,8 +7846,10 @@ function openCatalogOperation(operation: AlphaOperation): void {
     return;
   }
   activateToolContext({ key: operation.id, label: operation.label, source: "catalog" });
-  if (operation.id === extrudeOperation.id) {
-    document.querySelector<HTMLButtonElement>("#start-pad")!.click();
+  if (operation.id === extrudeOperation.id || operation.id === extrudeCutOperation.id) {
+    beginExtrudePreview(operation.id === extrudeCutOperation.id ? "cut" : "new_body");
+    document.querySelector<HTMLInputElement>("#pad-length")!.focus();
+    document.querySelector<HTMLInputElement>("#pad-length")!.select();
     return;
   }
   editingAdvancedFeatureId = null;
@@ -7735,6 +8625,24 @@ document.querySelector<HTMLInputElement>("#pad-length")!.addEventListener("input
   performanceEvidence.record("input", performance.now() - event.timeStamp);
   updateExtrudePreviewFromField();
 });
+document.querySelector<HTMLSelectElement>("#extrude-direction-mode")!.addEventListener("change", (event) => {
+  if (state.operation.status !== "preview" || state.operation.type !== "pad") return;
+  performanceEvidence.record("input", performance.now() - event.timeStamp);
+  setExtrudeDirectionUi(selectedExtrudeDirection());
+  updateExtrudePreviewFromField();
+});
+document.querySelector<HTMLSelectElement>("#extrude-result-mode")!.addEventListener("change", (event) => {
+  if (state.operation.status !== "preview" || state.operation.type !== "pad" || !activeSketchExtrudeSource?.sketch) return;
+  performanceEvidence.record("input", performance.now() - event.timeStamp);
+  syncExtrudeResultControls(selectedExtrudeResultMode());
+  updateExtrudePreviewFromField();
+});
+document.querySelector<HTMLSelectElement>("#extrude-target-body")!.addEventListener("change", (event) => {
+  if (state.operation.status !== "preview" || state.operation.type !== "pad" || selectedExtrudeResultMode() !== "cut") return;
+  performanceEvidence.record("input", performance.now() - event.timeStamp);
+  if (activeSketchExtrudeSource) activeSketchExtrudeSource.targetBodyId = (event.currentTarget as HTMLSelectElement).value || undefined;
+  updateExtrudePreviewFromField();
+});
 document.querySelector<HTMLInputElement>("#pad-length")!.addEventListener("keydown", (event) => {
   if (event.key !== "Enter" || state.operation.status !== "preview" || state.operation.type !== "pad") return;
   event.preventDefault();
@@ -7754,7 +8662,8 @@ extrudeManipulator.addEventListener("pointermove", (event) => {
   const drag = extrudeManipulatorDrag;
   if (!drag || drag.pointerId !== event.pointerId) return;
   event.preventDefault(); event.stopPropagation();
-  const valueNanometers = Math.max(1_000, drag.startNanometers + Math.round((drag.startY - event.clientY) * 100_000));
+  const minimumVisibleNanometers = selectedExtrudeDirection() === "symmetric" ? 2_000 : 1_000;
+  const valueNanometers = Math.max(minimumVisibleNanometers, drag.startNanometers + Math.round((drag.startY - event.clientY) * 100_000));
   const input = document.querySelector<HTMLInputElement>("#pad-length")!;
   input.value = String(valueNanometers / 1_000_000);
   performanceEvidence.record("input", performance.now() - event.timeStamp);
@@ -7774,7 +8683,8 @@ extrudeManipulator.addEventListener("keydown", (event) => {
   event.preventDefault(); event.stopPropagation();
   const input = document.querySelector<HTMLInputElement>("#pad-length")!;
   const stepMillimeters = event.shiftKey ? 0.1 : 1;
-  input.value = String(Math.max(0.001, input.valueAsNumber + (event.key === "ArrowUp" ? stepMillimeters : -stepMillimeters)));
+  const minimumMillimeters = selectedExtrudeDirection() === "symmetric" ? 0.002 : 0.001;
+  input.value = String(Math.max(minimumMillimeters, input.valueAsNumber + (event.key === "ArrowUp" ? stepMillimeters : -stepMillimeters)));
   requestExtrudePreview(Math.round(input.valueAsNumber * 1_000_000));
 });
 document.querySelector("#start-rectangle")!.addEventListener("click", (event) => {
@@ -7800,6 +8710,7 @@ for (const selector of ["#part-width", "#part-height"]) {
   });
 }
 document.querySelector("#edit-sketch")!.addEventListener("click", () => { if (!safeMode) startSketchEdit(); });
+document.querySelector("#create-offset-plane")!.addEventListener("click", () => { if (!safeMode) startOffsetConstructionPlaneEdit(); });
 const sketchViewport = document.querySelector<HTMLCanvasElement>("#viewport")!;
 const sketchViewportRegion = document.querySelector<HTMLElement>(".viewport-region")!;
 
@@ -8015,7 +8926,7 @@ function cancelSketchPlacementGesture(event: PointerEvent): boolean {
 
 sketchViewport.addEventListener("pointermove", (event) => {
   if (!sketchSession) return;
-  if ((event.target as Element | null)?.closest("#sketch-overlay [data-sketch-geometry], #sketch-overlay [data-sketch-hit-geometry], #sketch-overlay [data-sketch-handle], #sketch-overlay [data-sketch-origin], #sketch-overlay [data-sketch-constraint-id]")) return;
+  if ((event.target as Element | null)?.closest("#sketch-overlay [data-sketch-profile-id], #sketch-overlay [data-sketch-geometry], #sketch-overlay [data-sketch-hit-geometry], #sketch-overlay [data-sketch-handle], #sketch-overlay [data-sketch-origin], #sketch-overlay [data-sketch-constraint-id]")) return;
   if (sketchBoxSelection?.pointerId === event.pointerId) {
     const bounds = sketchViewport.getBoundingClientRect();
     sketchBoxSelection.current = { x: event.clientX - bounds.left, y: event.clientY - bounds.top };
@@ -8240,6 +9151,7 @@ sketchOverlay.addEventListener("pointerdown", (event) => {
     return;
   }
   const constraintTarget = target.closest<SVGGElement>("[data-sketch-constraint-id]");
+  const profileTarget = target.closest<SVGPathElement>("[data-sketch-profile-id]");
   const originReference = target.closest<SVGGElement>("[data-sketch-origin]");
   const radiusHandle = target.closest<SVGCircleElement>("[data-sketch-radius]");
   const handle = target.closest<SVGCircleElement>("[data-sketch-handle]");
@@ -8247,6 +9159,34 @@ sketchOverlay.addEventListener("pointerdown", (event) => {
   const requestedSelectionMode = sketchSelectionModeForEvent(event);
   const collectingOperands = sketchOperandCollectionActive();
   const selectionMode: SketchSelectionMode = collectingOperands ? "add" : requestedSelectionMode;
+  if (profileTarget?.dataset.sketchProfileId) {
+    event.preventDefault(); event.stopPropagation();
+    const profileId = profileTarget.dataset.sketchProfileId;
+    let geometryIds: string[];
+    try {
+      const parsed = JSON.parse(profileTarget.dataset.profileGeometryIds ?? "[]");
+      geometryIds = Array.isArray(parsed) && parsed.every((value) => typeof value === "string") ? parsed : [];
+    } catch { geometryIds = []; }
+    if (!geometryIds.length) return;
+    const alreadySelected = selectedSketchProfile?.sketchId === sketchSession.draft.id && selectedSketchProfile.profileId === profileId;
+    const remove = selectionMode === "remove" || (selectionMode === "toggle" && alreadySelected);
+    if (selectionMode === "replace") {
+      selectedSketchGeometry = [];
+      selectedSketchPoints = [];
+      selectedSketchSegments = [];
+      selectedSketchConstraint = undefined;
+      sketchOriginSelected = false;
+    }
+    selectedSketchProfile = remove ? undefined : { sketchId: sketchSession.draft.id, profileId, geometryIds: [...geometryIds].sort() };
+    sketchProfileRepairMessage = undefined;
+    sketchSolverStatus = selectedSketchProfile ? "Closed profile selected · Shift-click a construction line to pair an axis" : "Closed profile selection cleared";
+    renderSketchSelectionChanged();
+    setSketchSelectionPhase(hasSketchSelection() ? "ready" : "collecting");
+    updateSketchToolInspectorState();
+    if (activeInspectorTab === "tool") renderSketchSelectionInspectorChanged();
+    return;
+  }
+  if (selectionMode === "replace") selectedSketchProfile = undefined;
   if (constraintTarget?.dataset.sketchConstraintId) {
     event.preventDefault(); event.stopPropagation();
     const referencedId = constraintTarget.dataset.sketchConstraintId;
@@ -8453,14 +9393,22 @@ sketchOverlay.addEventListener("pointerdown", (event) => {
         }
         const draggableGeometry = [...connectedGeometry].filter((id) => {
           if (sketchSession!.draftView.external_references?.[id]) return false;
-          return !(revisionIndexes.constraintIdsByGeometry.get(id) ?? []).some((constraintId) => {
-            const constraint = sketchSession!.draftView.constraints[constraintId];
-            return (constraint.kind === "fixed" && constraint.point.geometry === id)
-              || (constraint.kind === "fixed_geometry" && constraint.geometry === id);
-          });
+          return (solveIndexes.componentByGeometry.get(id)?.structural_degrees_of_freedom ?? 1) > 0;
         });
         if (!draggableGeometry.length) {
-          sketchSolverStatus = "The selected reference geometry is fixed";
+          sketchSolverStatus = "The selected geometry is fully constrained";
+          updateSketchToolInspectorState();
+          renderSketchOverlay();
+          return;
+        }
+        const drivePoint = geometryPointRefs(sketchSession.draftView as Sketch, geometry)
+          .filter((ref) => !ref.anchor.startsWith("knot:") && !ref.anchor.startsWith("parameter:"))
+          .map((ref) => ({ ref, value: pointForRef(sketchSession!.draftView as Sketch, ref) }))
+          .filter((candidate): candidate is { ref: PointRef; value: Point2 } => Boolean(candidate.value))
+          .sort((a, b) => Number(sketchPointMobility(sketchSession!.draftView as Sketch, a.ref) === "none") - Number(sketchPointMobility(sketchSession!.draftView as Sketch, b.ref) === "none")
+            || Math.hypot(a.value.x_nm - point!.x_nm, a.value.y_nm - point!.y_nm) - Math.hypot(b.value.x_nm - point!.x_nm, b.value.y_nm - point!.y_nm))[0];
+        if (!drivePoint) {
+          sketchSolverStatus = "The selected geometry has no draggable point";
           updateSketchToolInspectorState();
           renderSketchOverlay();
           return;
@@ -8469,6 +9417,8 @@ sketchOverlay.addEventListener("pointerdown", (event) => {
           kind: "entity",
           pointerId: event.pointerId,
           geometry: draggableGeometry,
+          point: drivePoint.ref,
+          pointStart: drivePoint.value,
           startPlane: point,
           currentPlane: point,
           startClient: { x: event.clientX, y: event.clientY },
@@ -8553,16 +9503,10 @@ sketchOverlay.addEventListener("pointerup", async (event) => {
   if (active.kind === "entity") {
     const dx = active.currentPlane.x_nm - active.startPlane.x_nm;
     const dy = active.currentPlane.y_nm - active.startPlane.y_nm;
-    const commands = active.geometry.flatMap((geometry) => geometryPointRefs(sketchSession!.draft, geometry).flatMap((point) => {
-      const value = pointForRef(sketchSession!.draft, point);
-      return value ? [{ kind: "move_point", point, to: { x_nm: value.x_nm + dx, y_nm: value.y_nm + dy } } as SketchCommand] : [];
-    }));
-    try {
-      await sketchSession.applyAll(commands);
-      accepted = true;
-    } catch {
-      accepted = false;
-    }
+    accepted = await sketchSession.drag(active.point, {
+      x_nm: active.pointStart.x_nm + dx,
+      y_nm: active.pointStart.y_nm + dy,
+    });
   } else if (active.kind === "radius") {
     const target = sketchPoint(event);
     if (!target) { renderSketchOverlay(); return; }
@@ -8627,6 +9571,27 @@ sketchOverlay.addEventListener("keydown", (event) => {
     if (operation) selectedSketchGeometry = retainedOperationGeometry(operation).slice(0, 1);
     renderActiveToolInspector();
     document.querySelector<HTMLInputElement>(operation?.kind === "linear_pattern" ? '[data-operation-field="spacing_x"]' : '[data-operation-field="angle_microdegrees"]')?.focus();
+    return;
+  }
+  const profileTarget = target.closest<SVGPathElement>("[data-sketch-profile-id]");
+  if (profileTarget?.dataset.sketchProfileId && sketchSession) {
+    event.preventDefault();
+    let geometryIds: string[] = [];
+    try {
+      const parsed = JSON.parse(profileTarget.dataset.profileGeometryIds ?? "[]");
+      if (Array.isArray(parsed) && parsed.every((value) => typeof value === "string")) geometryIds = parsed;
+    } catch { /* malformed markup cannot create a semantic selection */ }
+    if (!geometryIds.length) return;
+    const mode = sketchSelectionModeForEvent(event);
+    const alreadySelected = selectedSketchProfile?.profileId === profileTarget.dataset.sketchProfileId;
+    if (mode === "replace") clearSketchSelection(false);
+    selectedSketchProfile = mode === "remove" || (mode === "toggle" && alreadySelected)
+      ? undefined
+      : { sketchId: sketchSession.draft.id, profileId: profileTarget.dataset.sketchProfileId, geometryIds: [...geometryIds].sort() };
+    sketchProfileRepairMessage = undefined;
+    renderSketchSelectionChanged();
+    setSketchToolPhase(hasSketchSelection() ? "ready" : "collecting");
+    if (activeInspectorTab === "tool") renderSketchSelectionInspectorChanged();
     return;
   }
   if (target.closest("[data-sketch-origin]")) {
@@ -9366,6 +10331,9 @@ window.addEventListener("keydown", (event) => {
     selectedSketchSegments = [];
     sketchOriginSelected = false;
     selectedSketchConstraint = undefined;
+    selectedSketchProfile = undefined;
+    selectedSketchConstructionAxis = undefined;
+    sketchProfileRepairMessage = undefined;
     sketchSolverStatus = "Selection cleared · no active tool";
     renderSketchOverlay();
     setSketchToolPhase("idle");
@@ -9407,11 +10375,14 @@ window.addEventListener("keydown", (event) => {
       commitRectanglePreview();
     } else if (state.operation.type === "pad") {
       commitExtrudePreview();
+    } else if (state.operation.type === "construction-plane") {
+      commitOffsetConstructionPlane();
     } else if (state.operation.type === "advanced" && selectedCatalogOperationId && isAdvancedFeatureOperation(selectedCatalogOperationId)) executeCatalogOperation(operationById(selectedCatalogOperationId));
   }
   if (event.key === "Escape" && state.operation.status === "preview") {
     if (state.operation.type === "sketch") { event.preventDefault(); void backOutOfSketch(); return; }
     if (state.operation.type === "pad") { event.preventDefault(); cancelExtrudePreview(); return; }
+    if (state.operation.type === "construction-plane") { event.preventDefault(); cancelOffsetConstructionPlane(); return; }
     if (state.operation.type === "advanced") {
       event.preventDefault();
       cancelAdvancedFeaturePreview();
@@ -9445,18 +10416,43 @@ const api = {
   originalDurableChecksum: durableChecksum,
   transferredBytes: () => transferredBytes,
   dimensions: () => ({ ...currentDimensions }),
+  durableDocument: () => structuredClone(adapter.durableDocument()),
+  hydrateDocument: (document: unknown) => worker?.postMessage({ type: "hydrate-document", documentJson: JSON.stringify(document) }),
   geometryBounds: () => [...currentBounds],
   recompute: () => structuredClone(lastRecompute),
+  recomputeOutcome: () => lastRecomputeOutcome ? structuredClone(lastRecomputeOutcome) : undefined,
   selectFirst: (kind: TopologyKind, additive = false) => renderer?.selectFirst(kind, additive) ?? null,
+  selectTopology: (kind: TopologyKind, stableId: string) => {
+    const selection = renderer?.topologySelectionByStableId(kind, stableId) ?? null;
+    applySelection(selection);
+    return selection;
+  },
   cameraPosition: () => renderer?.cameraPosition() ?? [],
   projectionMode: () => renderer?.projectionMode() ?? "perspective",
   viewportSnapshot: () => renderer?.viewportSnapshot(),
+  rendererPacketResources: () => renderer?.packetResourceState(),
+  rendererTopologyFingerprint: () => renderer?.packetTopologyFingerprint() ?? "",
+  cutRemovalPreviewState: () => renderer?.cutRemovalPreviewState(),
+  constructionPlaneRendererState: () => renderer?.constructionPlaneState() ?? [],
+  constructionPlanes: () => adapter.getSnapshot().components.flatMap((component) => component.constructionPlanes).map((plane) => ({ ...plane })),
+  constructionPlaneEditState: () => activeOffsetConstructionPlane ? structuredClone(activeOffsetConstructionPlane) : undefined,
   viewportProbeAt: (clientX: number, clientY: number) => renderer?.viewportProbeAt(clientX, clientY) ?? {},
   committedSketchCount: () => renderer?.committedSketchCount() ?? 0,
   committedSketchState: () => renderer?.committedSketchState() ?? [],
   sketchPlane: () => activeSketchPlane ? structuredClone(activeSketchPlane) : undefined,
   sketchSupportSelection: () => ({ active: sketchChoosingSupport, surfacesVisible: renderer?.isSketchSupportSelectionActive() ?? false }),
+  selectedSketchSupport: () => selectedSketchSupport ? structuredClone(selectedSketchSupport) : undefined,
+  extrudeSelectionContext: () => ({
+    selectedFeatureId: state.selectedFeatureId,
+    ...(selectedSketchId ? { selectedSketchId } : {}),
+    ...(selectedSketchProfile ? { selectedProfile: structuredClone(selectedSketchProfile) } : {}),
+  }),
   chooseOriginSketchSupport: (plane: "xy" | "xz" | "yz") => handleSketchSupportPick({ kind: "origin_plane", plane }),
+  chooseConstructionSketchSupport: (plane: string) => handleSketchSupportPick({ kind: "construction_plane", plane }),
+  choosePlanarFaceSketchSupport: (selection?: Selection) => {
+    const face = selection?.kind === "face" ? selection : renderer?.selectFirst("face") ?? undefined;
+    if (face?.kind === "face") handleSketchSupportPick({ kind: "face", selection: face });
+  },
   sketchSolverContract: () => sketchBridge?.solverContract(),
   sketchDecomposition: () => {
     const sketch = sketchSession?.draft ?? hydrateSketchFromDocument(adapter.durableDocument(), selectedSketchId)?.sketch;
@@ -9528,6 +10524,8 @@ const api = {
   recoveryChoices: () => structuredClone(recoveryChoices),
   parameters: () => structuredClone(currentParameters),
   historyServices: () => ({ services: structuredClone(featureServices), repair: structuredClone(repairInspection), message: historyActionMessage }),
+  observedTopology: () => structuredClone(currentObservedTopology()),
+  topologyRebindPreview: () => structuredClone(topologyRebindPreview),
   inspectRepair: (observedTopology: readonly TopologyReferenceView[]) => requestFeatureServices(observedTopology),
   commitDocumentChanges: (changes: readonly Record<string, unknown>[]) => worker?.postMessage({ type: "commit-document-changes", transactionId: `transaction:${crypto.randomUUID()}:integration`, changes }),
   performanceEvidence: () => performanceEvidence.snapshot(),

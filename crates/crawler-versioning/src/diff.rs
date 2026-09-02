@@ -1,6 +1,7 @@
 use crate::VersionedDocument;
 use crawler_document::{
-    BodyId, ComponentId, FeatureId, OriginPlaneId, ParameterId, SketchId, TopologyReferenceId,
+    BodyId, ComponentId, ConstructionPlaneId, FeatureId, OriginPlaneId, ParameterId,
+    RegionReferenceId, SketchId, TopologyReferenceId,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -131,6 +132,24 @@ pub fn structural_diff(base: &VersionedDocument, target: &VersionedDocument) -> 
         },
     );
     diff_map(
+        "construction_plane",
+        &base.document.construction_planes,
+        &target.document.construction_planes,
+        &mut changes,
+        |id, before, after, changes| {
+            if before != after {
+                changes.push(change(
+                    "construction_plane",
+                    id,
+                    ChangeKind::ReferenceChanged,
+                    None,
+                    before,
+                    after,
+                ));
+            }
+        },
+    );
+    diff_map(
         "component",
         &base.document.components,
         &target.document.components,
@@ -158,11 +177,47 @@ pub fn structural_diff(base: &VersionedDocument, target: &VersionedDocument) -> 
         },
     );
     diff_map(
+        "region_definition_v2",
+        &base.document.region_definitions_v2,
+        &target.document.region_definitions_v2,
+        &mut changes,
+        |id, before, after, changes| {
+            if before != after {
+                changes.push(change(
+                    "region_definition_v2",
+                    id,
+                    ChangeKind::ReferenceChanged,
+                    None,
+                    before,
+                    after,
+                ));
+            }
+        },
+    );
+    diff_map(
         "feature",
         &base.document.features,
         &target.document.features,
         &mut changes,
         diff_feature,
+    );
+    diff_map(
+        "feature_definition_v2",
+        &base.document.feature_definitions_v2,
+        &target.document.feature_definitions_v2,
+        &mut changes,
+        |id, before, after, changes| {
+            if before != after {
+                changes.push(change(
+                    "feature_definition_v2",
+                    id,
+                    ChangeKind::FeatureEdited,
+                    None,
+                    before,
+                    after,
+                ));
+            }
+        },
     );
     diff_map(
         "parameter",
@@ -434,11 +489,13 @@ macro_rules! stable_key {
 
 stable_key!(
     OriginPlaneId,
+    ConstructionPlaneId,
     ComponentId,
     BodyId,
     SketchId,
     FeatureId,
     ParameterId,
+    RegionReferenceId,
     TopologyReferenceId,
 );
 

@@ -70,7 +70,7 @@ test("worker-ranked topology churn requires an explicit durable rebind and remai
         body: string;
         producer: string;
         kind: "face";
-        stable_kernel_id: number;
+        stable_kernel_id: string;
         stable_token: string;
         fallback_signature: Record<string, unknown>;
       }>;
@@ -80,7 +80,6 @@ test("worker-ranked topology churn requires an explicit durable rebind and remai
     const replacement = {
       ...expected,
       id: "topology:repair-candidate",
-      stable_kernel_id: expected.stable_kernel_id + 10_000,
       stable_token: `${expected.stable_token}:regenerated`,
     };
     return [

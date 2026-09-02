@@ -167,27 +167,7 @@ pub fn alpha_operation_catalog() -> OperationCatalog {
             )],
             vec![boolean("construction", "Construction", true)],
         ),
-        operation(
-            &capabilities,
-            "crawler.part.extrude",
-            "Extrude",
-            OperationGroup::PartDesign,
-            OutputKind::Body,
-            "part.extrude",
-            vec![slot(
-                "profile",
-                "Profile",
-                &[SelectionKind::SketchProfile],
-                1,
-                Some(1),
-            )],
-            vec![length(
-                "distance",
-                "Distance",
-                10_000_000,
-                Some((1_000, 1_000_000_000_000)),
-            )],
-        ),
+        extrude_operation(&capabilities),
         operation(
             &capabilities,
             "crawler.part.revolve",
@@ -444,6 +424,7 @@ fn operation(
         output_kind,
         input_slots,
         parameters,
+        invocation_constraints: Vec::new(),
         preview: PreviewSchema {
             strategy: PreviewStrategy::Debounced,
             debounce_milliseconds: 75,
@@ -459,6 +440,70 @@ fn operation(
             reason: capability.reason.clone(),
         },
     }
+}
+
+fn extrude_operation(capabilities: &[CapabilitySchema]) -> OperationSchema {
+    let mut schema = operation(
+        capabilities,
+        "crawler.part.extrude",
+        "Extrude",
+        OperationGroup::PartDesign,
+        OutputKind::Body,
+        "part.extrude",
+        vec![
+            slot(
+                "profile",
+                "Profile",
+                &[SelectionKind::SketchProfile],
+                1,
+                Some(1),
+            ),
+            slot(
+                "target_body",
+                "Target body",
+                &[SelectionKind::Body],
+                0,
+                Some(1),
+            ),
+        ],
+        vec![
+            length(
+                "distance",
+                "Distance",
+                10_000_000,
+                Some((1_000, 1_000_000_000_000)),
+            ),
+            text_choice(
+                "direction",
+                "Direction",
+                "positive",
+                &["positive", "negative", "symmetric"],
+            ),
+            text_choice(
+                "result_mode",
+                "Result mode",
+                "new_body",
+                &["new_body", "cut"],
+            ),
+        ],
+    );
+    schema.invocation_constraints = vec![
+        InvocationConstraint::InputCountWhenTextParameter {
+            parameter: "result_mode".into(),
+            equals: "new_body".into(),
+            input: "target_body".into(),
+            minimum_count: 0,
+            maximum_count: Some(0),
+        },
+        InvocationConstraint::InputCountWhenTextParameter {
+            parameter: "result_mode".into(),
+            equals: "cut".into(),
+            input: "target_body".into(),
+            minimum_count: 1,
+            maximum_count: Some(1),
+        },
+    ];
+    schema
 }
 
 fn boolean_operation(
@@ -657,4 +702,16 @@ fn boolean(key: &str, label: &str, default: bool) -> ParameterSchema {
         ParameterValue::Boolean(default),
         None,
     )
+}
+
+fn text_choice(key: &str, label: &str, default: &str, choices: &[&str]) -> ParameterSchema {
+    let mut schema = parameter(
+        key,
+        label,
+        ParameterValueKind::Text,
+        ParameterValue::Text(default.to_owned()),
+        None,
+    );
+    schema.choices = choices.iter().map(|choice| (*choice).to_owned()).collect();
+    schema
 }

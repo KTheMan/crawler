@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "candidate_id": "solid-feature-sprint-2",
+  "revision": 1,
+  "scope_frozen": true,
+  "manifest_state": "qualification_ready",
+  "scope_frozen_at": "2026-08-27T00:00:00Z",
+  "source_spec": "docs/specs/solid-feature-modernization-sprint-2.md",
+  "stories": [
+    {
+      "id": "E3D-S2-01",
+      "title": "Define durable blind Extrude direction modes",
+      "capability": "document.extrude.blind_direction_v2",
+      "disposition": "required",
+      "evidence_policy": "required",
+      "fixture_ids": ["extrude-origin-blind-negative", "extrude-origin-blind-symmetric"],
+      "test_ids": ["direction-contracts"],
+      "artifact_ids": ["candidate-fixtures"]
+    },
+    {
+      "id": "E3D-S2-02",
+      "title": "Execute exact reverse and symmetric New Body Extrude",
+      "capability": "part.extrude.blind_direction_exact",
+      "disposition": "required",
+      "evidence_policy": "required",
+      "fixture_ids": ["extrude-origin-blind-negative", "extrude-origin-blind-symmetric"],
+      "test_ids": ["native-direction-extrude", "wasm-direction-extrude", "direction-native-wasm-parity"],
+      "artifact_ids": ["release-runtime-wasm", "parity-json", "parity-junit"]
+    },
+    {
+      "id": "E3D-S2-03",
+      "title": "Unify Forward, Reverse, and Symmetric create/edit UX",
+      "capability": "ui.extrude.blind_direction_create_edit",
+      "disposition": "required",
+      "evidence_policy": "required",
+      "fixture_ids": ["extrude-origin-blind-negative", "extrude-origin-blind-symmetric"],
+      "test_ids": ["direction-command-state", "production-direction-lifecycle", "direction-performance-regression"],
+      "artifact_ids": ["browser-junit", "browser-screenshots", "performance-json"]
+    },
+    {
+      "id": "E3D-S2-04",
+      "title": "Qualify the Sprint 2 direction slice without waivers",
+      "capability": "qualification.sprint_2_direction_gate",
+      "disposition": "required",
+      "evidence_policy": "required",
+      "fixture_ids": ["extrude-origin-blind-negative", "extrude-origin-blind-symmetric"],
+      "test_ids": ["candidate-manifest-validation", "candidate-evidence-completeness"],
+      "artifact_ids": ["qualification-report", "evidence-checksums"]
+    }
+  ],
+  "fixtures": [
+    { "id": "extrude-origin-blind-negative", "path": "contracts/solid-feature-candidate/fixtures/extrude-origin-blind-negative.json", "parity_required": true },
+    { "id": "extrude-origin-blind-symmetric", "path": "contracts/solid-feature-candidate/fixtures/extrude-origin-blind-symmetric.json", "parity_required": true }
+  ],
+  "tests": [
+    { "id": "candidate-manifest-validation", "kind": "schema", "command": "pwsh -File contracts/solid-feature-candidate/test/manifest-validation.tests.ps1", "story_ids": ["E3D-S2-04"], "expected_artifact_ids": ["qualification-report"] },
+    { "id": "direction-contracts", "kind": "native", "command": "cargo test --workspace --locked direction", "story_ids": ["E3D-S2-01"], "expected_artifact_ids": ["candidate-fixtures"] },
+    { "id": "native-direction-extrude", "kind": "native", "command": "cargo test --workspace --locked direction", "story_ids": ["E3D-S2-02"], "expected_artifact_ids": ["candidate-fixtures"] },
+    { "id": "wasm-direction-extrude", "kind": "wasm", "command": "node --test web/worker-spike/worker-spike.test.mjs", "story_ids": ["E3D-S2-02"], "expected_artifact_ids": ["release-runtime-wasm"] },
+    { "id": "direction-command-state", "kind": "unit", "command": "pnpm --dir web/crawler-app test:unit", "story_ids": ["E3D-S2-03"], "expected_artifact_ids": ["browser-junit"] },
+    { "id": "direction-native-wasm-parity", "kind": "parity", "command": "node scripts/compare-solid-feature-parity.mjs --manifest contracts/solid-feature-candidate/sprint-2.json", "story_ids": ["E3D-S2-02"], "expected_artifact_ids": ["parity-json", "parity-junit"] },
+    { "id": "production-direction-lifecycle", "kind": "browser", "command": "pnpm --dir web/crawler-app exec playwright test tests/solid-feature-direction-qualification.spec.ts --config playwright.solid-feature-qualification.config.ts", "story_ids": ["E3D-S2-03"], "expected_artifact_ids": ["browser-junit", "browser-screenshots"] },
+    { "id": "direction-performance-regression", "kind": "performance", "command": "pnpm --dir web/crawler-app exec playwright test tests/solid-feature-performance.spec.ts --config playwright.solid-feature-qualification.config.ts", "story_ids": ["E3D-S2-03"], "expected_artifact_ids": ["performance-json"] },
+    { "id": "candidate-evidence-completeness", "kind": "schema", "command": "pwsh -File scripts/test-solid-feature-candidate.ps1 -Manifest contracts/solid-feature-candidate/sprint-2.json -QualificationReady -EvidenceRoot artifacts/solid-feature-qualification/current", "story_ids": ["E3D-S2-04"], "expected_artifact_ids": ["qualification-report", "evidence-checksums"] }
+  ],
+  "artifacts": [
+    { "id": "candidate-fixtures", "path": "contracts/solid-feature-candidate/fixtures", "required": true, "lock_required": false, "expected_sha256": null },
+    { "id": "release-runtime-wasm", "path": "web/crawler-app/src/generated/runtime/crawler_part_runtime_bg.wasm", "required": true, "lock_required": true, "expected_sha256": "47db4148fd18b2a08467bdc8058b7815dedb30fd49171195364a34f5acef46f7" },
+    { "id": "production-index", "path": "web/crawler-app/dist/index.html", "required": true, "lock_required": false, "expected_sha256": null },
+    { "id": "parity-json", "path": "artifacts/solid-feature-qualification/current/parity/parity.json", "required": true, "lock_required": false, "expected_sha256": null },
+    { "id": "parity-junit", "path": "artifacts/solid-feature-qualification/current/parity/parity.junit.xml", "required": true, "lock_required": false, "expected_sha256": null },
+    { "id": "browser-junit", "path": "artifacts/solid-feature-qualification/current/browser/junit.xml", "required": true, "lock_required": false, "expected_sha256": null },
+    { "id": "browser-screenshots", "path": "artifacts/solid-feature-qualification/current/browser/screenshots", "required": true, "lock_required": false, "expected_sha256": null },
+    { "id": "performance-json", "path": "artifacts/solid-feature-qualification/current/performance/results.json", "required": true, "lock_required": false, "expected_sha256": null },
+    { "id": "qualification-report", "path": "artifacts/solid-feature-qualification/current/qualification-report.json", "required": true, "lock_required": false, "expected_sha256": null },
+    { "id": "evidence-checksums", "path": "artifacts/solid-feature-qualification/current/SHA256SUMS.json", "required": true, "lock_required": false, "expected_sha256": null }
+  ],
+  "runtime_lock": { "build_id": "solid-feature-sprint-2-r1-20260827", "wasm_artifact_id": "release-runtime-wasm", "wasm_sha256": "47db4148fd18b2a08467bdc8058b7815dedb30fd49171195364a34f5acef46f7" },
+  "non_candidate_observation_policy": {
+    "candidate_waivers_permitted": false,
+    "required_fields": ["owner", "rationale", "expires_at", "affected_evidence", "follow_up"]
+  }
+}

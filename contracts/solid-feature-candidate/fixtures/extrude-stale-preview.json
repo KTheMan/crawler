@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "fixture_id": "extrude-stale-preview",
+  "story_ids": [
+    "E3D-S1-08"
+  ],
+  "description": "A late preview cannot overwrite a newer revision or accepted geometry.",
+  "units": {
+    "length": "nanometer",
+    "angle": "radian"
+  },
+  "input": {
+    "schema_version": 2,
+    "kind": "extrude_preview_race",
+    "payload": {
+      "completion_order": [
+        "second",
+        "first"
+      ],
+      "first_distance_nm": 4000000,
+      "second_distance_nm": 9000000
+    }
+  },
+  "expected": {
+    "kind": "success",
+    "result": {
+      "stale_result_ignored": true,
+      "accepted_distance_nm": 9000000
+    }
+  },
+  "tolerances": {
+    "relative": 1e-9,
+    "aabb_nm": 1,
+    "signed_volume_nm3": 1000000,
+    "surface_area_nm2": 1000,
+    "centroid_nm": 1
+  },
+  "identity_sets": {
+    "retained": [],
+    "replaced": []
+  },
+  "lifecycle_steps": [
+    "preview",
+    "cancel",
+    "commit",
+    "edit",
+    "recompute"
+  ],
+  "legacy_provenance": null,
+  "evidence_test_ids": [
+    "production-extrude-lifecycle"
+  ]
+}

@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "fixture_id": "parity-deliberate-divergence",
+  "story_ids": [
+    "E3D-S1-14"
+  ],
+  "description": "Parity self-test proves a deliberate native/WASM difference fails.",
+  "units": {
+    "length": "nanometer",
+    "angle": "radian"
+  },
+  "input": {
+    "schema_version": 2,
+    "kind": "parity_self_test",
+    "payload": {
+      "native": 240000000000000000000,
+      "release_wasm": 241000000000000000000,
+      "field": "signed_volume_nm3"
+    }
+  },
+  "expected": {
+    "kind": "structured_error",
+    "error": {
+      "category": "qualification",
+      "code": "parity_difference",
+      "field_path": "result.signed_volume_nm3",
+      "referenced_entity_ids": []
+    }
+  },
+  "tolerances": {
+    "relative": 1e-9,
+    "aabb_nm": 1,
+    "signed_volume_nm3": 1000000,
+    "surface_area_nm2": 1000,
+    "centroid_nm": 1
+  },
+  "identity_sets": {
+    "retained": [],
+    "replaced": []
+  },
+  "lifecycle_steps": [
+    "recompute"
+  ],
+  "legacy_provenance": null,
+  "evidence_test_ids": [
+    "parity-deliberate-divergence"
+  ]
+}

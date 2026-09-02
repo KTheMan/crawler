@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "fixture_id": "region-two-hole-plate",
+  "story_ids": [
+    "E3D-S1-07"
+  ],
+  "description": "One outer rectangle and two circular holes classify independently of ordering.",
+  "units": {
+    "length": "nanometer",
+    "angle": "radian"
+  },
+  "input": {
+    "schema_version": 2,
+    "kind": "region_v2",
+    "payload": {
+      "holes": [
+        "circle-a-r2mm",
+        "circle-b-r2mm"
+      ],
+      "outer": "rectangle-30x20mm",
+      "support": "origin.xy"
+    }
+  },
+  "expected": {
+    "kind": "success",
+    "result": {
+      "region_count": 1,
+      "hole_count": 2
+    }
+  },
+  "tolerances": {
+    "relative": 1e-9,
+    "aabb_nm": 1,
+    "signed_volume_nm3": 1000000,
+    "surface_area_nm2": 1000,
+    "centroid_nm": 1
+  },
+  "identity_sets": {
+    "retained": [],
+    "replaced": []
+  },
+  "lifecycle_steps": [
+    "preview",
+    "commit",
+    "edit",
+    "recompute"
+  ],
+  "legacy_provenance": null,
+  "evidence_test_ids": [
+    "region-contracts",
+    "native-wasm-parity"
+  ]
+}

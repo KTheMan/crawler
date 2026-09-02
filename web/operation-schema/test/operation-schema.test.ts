@@ -43,7 +43,7 @@ test("the Extrude fixture generates both inspector fields and worker parameters"
   );
   assert.deepEqual(Object.keys(command.parameters), schema.parameters.map(({ key }) => key));
   assert.equal(form.parameter_fields.find(({ key }) => key === "distance")?.unit, "length");
-  assert.equal(form.parameter_fields.find(({ key }) => key === "extent")?.control, "select");
+  assert.equal(form.parameter_fields.find(({ key }) => key === "distance")?.control, "number");
   assert.equal(command.cancellation, "replace_older_preview");
 });
 
@@ -85,6 +85,11 @@ test("the generated alpha catalog mirrors every typed sketch and feature operati
       "crawler.sketch.construction",
       "crawler.part.extrude",
       "crawler.part.revolve",
+      "crawler.part.loft",
+      "crawler.part.sweep",
+      "crawler.part.extrude.cut",
+      "crawler.part.revolve.cut",
+      "crawler.part.draft",
       "crawler.part.boolean.union",
       "crawler.part.boolean.cut",
       "crawler.part.boolean.intersect",

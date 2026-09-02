@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "fixture_id": "extrude-planar-face-save-reopen-edit",
+  "story_ids": ["E3D-S4-01", "E3D-S4-03", "E3D-S4-04"],
+  "description": "A committed face-supported Extrude survives save/reopen and retains support, profile, direction, distance, feature, and output-body identity through edit, suppression, undo, redo, and recompute.",
+  "units": { "length": "nanometer", "angle": "radian" },
+  "input": { "schema_version": 4, "kind": "extrude_planar_face_save_reopen_edit_v4", "payload": { "support_body": "body:part", "support_face": "cap_positive_z", "profile": "line-arc-capsule", "initial_distance_nm": 2000000, "edited_distance_nm": 3500000, "initial_direction": "positive", "edited_direction": "symmetric" } },
+  "expected": { "kind": "success", "result": { "durable_support_kind": "topology_face", "profile_binding_stable": true, "feature_identity_stable": true, "body_identity_stable": true, "save_reopen_equal": true, "suppressed_body_absent": true, "unsuppressed_recompute_equal": true, "undo_redo_equal": true } },
+  "tolerances": { "relative": 1e-9, "aabb_nm": 1, "signed_volume_nm3": 1000000, "surface_area_nm2": 1000, "centroid_nm": 1 },
+  "identity_sets": { "retained": ["topology:face-support", "sketch:face-profile", "region:curve:arc-left+curve:arc-right+curve:line-bottom+curve:line-top", "feature:extrude:face-supported", "body:extrude:face-supported"], "replaced": [] },
+  "lifecycle_steps": ["preview", "cancel", "commit", "save", "reopen", "edit", "suppress", "unsuppress", "undo", "redo", "recompute"],
+  "evidence_test_ids": ["planar-face-document-authority-contracts", "native-planar-face-extrude", "wasm-planar-face-extrude", "planar-face-native-wasm-parity", "production-planar-face-lifecycle"],
+  "legacy_provenance": null
+}

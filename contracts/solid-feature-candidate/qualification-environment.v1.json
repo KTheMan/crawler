@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "profile_id": "solid-feature-windows-chrome-headless-v1",
+  "operating_system": { "platform": "win32", "architectures": ["x64"] },
+  "host": { "minimum_logical_processors": 4, "minimum_memory_bytes": 8589934592 },
+  "browser": { "channel": "chrome", "minimum_major_version": 120, "maximum_major_version": 200, "headless": true },
+  "viewport": { "width": 1440, "height": 900, "device_scale_factor": 1 },
+  "execution": { "workers": 1, "production_port": 4186, "host": "127.0.0.1", "strict_port": true, "reuse_existing_server": false },
+  "production_server": { "command": "pnpm exec vite preview --host 127.0.0.1 --port 4186 --strictPort", "build_directory": "web/crawler-app/dist" }
+}

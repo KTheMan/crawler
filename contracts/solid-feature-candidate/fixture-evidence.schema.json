@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://crawler.local/contracts/solid-feature-candidate/fixture-evidence.schema.json",
+  "title": "Crawler non-parity fixture evidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "candidate_id", "candidate_revision", "manifest_sha256", "fixture_id", "descriptor_sha256", "status", "source_kind", "source_id", "input", "result", "assertions"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "candidate_id": { "type": "string", "minLength": 1 },
+    "candidate_revision": { "type": "integer", "minimum": 1 },
+    "manifest_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "fixture_id": { "type": "string", "minLength": 1 },
+    "descriptor_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "status": { "const": "passed" },
+    "source_kind": { "enum": ["self_test", "browser_suite"] },
+    "source_id": { "type": "string", "minLength": 1 },
+    "input": { "type": "object" },
+    "result": { "type": "object" },
+    "assertions": { "type": "object", "minProperties": 1 }
+  }
+}

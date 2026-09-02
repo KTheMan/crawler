@@ -12,7 +12,7 @@ export interface AppState {
   preselection: Selection | null;
   selectionFilters: Record<TopologyKind, boolean>;
   panels: Record<"browser" | "inspector" | "timeline", boolean>;
-  operation: { status: OperationStatus; type: "rectangle" | "sketch" | "pad" | "step-import" | "advanced" | "parameter" | null };
+  operation: { status: OperationStatus; type: "rectangle" | "sketch" | "pad" | "step-import" | "advanced" | "parameter" | "construction-plane" | null };
 }
 
 export function initialState(): AppState {

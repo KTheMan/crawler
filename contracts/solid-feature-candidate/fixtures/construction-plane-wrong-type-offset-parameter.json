@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "fixture_id": "construction-plane-wrong-type-offset-parameter",
+  "story_ids": ["E3D-S3-01", "E3D-S3-02", "E3D-S3-04"],
+  "description": "An attempt to bind a construction plane to a non-length parameter is refused in preview and commit, retains the accepted body, and recovers through a real exact-length rebind.",
+  "units": { "length": "nanometer", "angle": "radian" },
+  "input": {
+    "schema_version": 3,
+    "kind": "construction_plane_wrong_type_parameter_v3",
+    "payload": {
+      "plane": "construction-plane:wrong-type-offset",
+      "base_plane": "origin.xy",
+      "offset_parameter": "parameter:wrong-type-offset",
+      "parameter_value": { "kind": "boolean", "value": true },
+      "request_offset_nanometers": 0,
+      "attempted_offset_nanometers": 0,
+      "repair_offset_nanometers": 0,
+      "repair_offset_parameter": "parameter:wrong-type-offset:repair",
+      "distance_nm": 4000000,
+      "direction": "positive",
+      "profile": "rectangle-10x6mm"
+    }
+  },
+  "expected": { "kind": "structured_error", "error": { "category": "reference", "code": "wrong_type_construction_plane_offset_parameter", "field_path": "construction_plane.offset_parameter", "referenced_entity_ids": ["parameter:wrong-type-offset"] } },
+  "tolerances": { "relative": 1e-9, "aabb_nm": 1, "signed_volume_nm3": 1000000, "surface_area_nm2": 1000, "centroid_nm": 1 },
+  "identity_sets": { "retained": ["body:accepted-before-construction-plane-error"], "replaced": [] },
+  "lifecycle_steps": ["preview", "commit", "save", "reopen", "repair"],
+  "evidence_test_ids": ["construction-plane-document-contracts", "native-construction-plane-offset-extrude", "wasm-construction-plane-offset-extrude", "construction-plane-offset-native-wasm-parity"],
+  "legacy_provenance": null
+}

@@ -19,7 +19,7 @@ fn remap_offset_result_ids(
     previous_spans: Option<&[OffsetResultSpan]>,
     pieces: &[crate::curve::OffsetCurvePiece],
 ) -> Vec<GeometryId> {
-    let mut available = previous_ids.iter().cloned().collect::<Vec<_>>();
+    let mut available = previous_ids.to_vec();
     let old_intervals = previous_spans
         .map(|spans| {
             spans
@@ -1686,6 +1686,7 @@ fn recipe_constraint_prefix(recipe_id: &str) -> String {
     format!("recipe:{recipe_id}:")
 }
 
+#[allow(clippy::too_many_arguments)]
 fn text_recipe_geometry(
     sketch: &Sketch,
     text: &str,

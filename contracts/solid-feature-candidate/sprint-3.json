@@ -1,0 +1,383 @@
+{
+  "schema_version": 1,
+  "candidate_id": "solid-feature-sprint-3",
+  "revision": 2,
+  "scope_frozen": true,
+  "manifest_state": "qualification_ready",
+  "scope_frozen_at": "2026-08-28T00:00:00Z",
+  "source_spec": "docs/specs/solid-feature-modernization-sprint-3.md",
+  "performance_workload_ids": [
+    "extrude-offset-plane-rectangle"
+  ],
+  "stories": [
+    {
+      "id": "E3D-S3-01",
+      "title": "Define a durable evaluated offset construction plane",
+      "capability": "document.construction_plane.offset_v1",
+      "disposition": "required",
+      "evidence_policy": "required",
+      "fixture_ids": [
+        "extrude-offset-plane-signed-edit",
+        "construction-plane-missing-offset-parameter",
+        "construction-plane-wrong-type-offset-parameter",
+        "construction-plane-unsafe-offset-parameter"
+      ],
+      "test_ids": [
+        "construction-plane-document-contracts"
+      ],
+      "artifact_ids": [
+        "candidate-fixtures"
+      ]
+    },
+    {
+      "id": "E3D-S3-02",
+      "title": "Resolve signed origin-relative offset plane frames fail closed",
+      "capability": "part.construction_plane.offset_frame_exact",
+      "disposition": "required",
+      "evidence_policy": "required",
+      "fixture_ids": [
+        "extrude-offset-plane-direction-matrix",
+        "extrude-offset-plane-signed-edit",
+        "construction-plane-missing-reference",
+        "construction-plane-missing-offset-parameter",
+        "construction-plane-wrong-type-offset-parameter",
+        "construction-plane-unsafe-offset-parameter",
+        "extrude-missing-construction-plane-support",
+        "extrude-suppressed-construction-plane-support",
+        "extrude-invalid-construction-plane-dependency"
+      ],
+      "test_ids": [
+        "construction-plane-document-contracts",
+        "native-construction-plane-offset-extrude",
+        "wasm-construction-plane-offset-extrude",
+        "construction-plane-offset-native-wasm-parity"
+      ],
+      "artifact_ids": [
+        "candidate-fixtures",
+        "release-runtime-wasm",
+        "parity-json",
+        "parity-junit"
+      ]
+    },
+    {
+      "id": "E3D-S3-03",
+      "title": "Execute exact blind New Body Extrude from offset planes",
+      "capability": "part.extrude.offset_plane_blind_new_body_exact",
+      "disposition": "required",
+      "evidence_policy": "required",
+      "fixture_ids": [
+        "extrude-offset-plane-direction-matrix",
+        "extrude-offset-plane-signed-edit",
+        "extrude-missing-construction-plane-support",
+        "extrude-suppressed-construction-plane-support",
+        "extrude-invalid-construction-plane-dependency"
+      ],
+      "test_ids": [
+        "native-construction-plane-offset-extrude",
+        "wasm-construction-plane-offset-extrude",
+        "construction-plane-offset-native-wasm-parity"
+      ],
+      "artifact_ids": [
+        "candidate-fixtures",
+        "release-runtime-wasm",
+        "parity-json",
+        "parity-junit"
+      ]
+    },
+    {
+      "id": "E3D-S3-04",
+      "title": "Unify offset-plane Extrude create edit persistence and repair",
+      "capability": "ui.extrude.offset_plane_create_edit_repair",
+      "disposition": "required",
+      "evidence_policy": "required",
+      "fixture_ids": [
+        "extrude-offset-plane-signed-edit",
+        "construction-plane-missing-reference",
+        "construction-plane-missing-offset-parameter",
+        "construction-plane-wrong-type-offset-parameter",
+        "construction-plane-unsafe-offset-parameter",
+        "extrude-missing-construction-plane-support",
+        "extrude-suppressed-construction-plane-support",
+        "extrude-invalid-construction-plane-dependency"
+      ],
+      "test_ids": [
+        "construction-plane-offset-command-state",
+        "production-construction-plane-offset-lifecycle",
+        "construction-plane-offset-performance-regression"
+      ],
+      "artifact_ids": [
+        "browser-junit",
+        "browser-screenshots",
+        "performance-json"
+      ]
+    },
+    {
+      "id": "E3D-S3-05",
+      "title": "Qualify the Sprint 3 offset-plane slice without waivers",
+      "capability": "qualification.sprint_3_offset_plane_gate",
+      "disposition": "required",
+      "evidence_policy": "required",
+      "fixture_ids": [
+        "extrude-offset-plane-direction-matrix",
+        "extrude-offset-plane-signed-edit",
+        "construction-plane-missing-reference",
+        "construction-plane-missing-offset-parameter",
+        "construction-plane-wrong-type-offset-parameter",
+        "construction-plane-unsafe-offset-parameter",
+        "extrude-missing-construction-plane-support",
+        "extrude-suppressed-construction-plane-support",
+        "extrude-invalid-construction-plane-dependency"
+      ],
+      "test_ids": [
+        "candidate-manifest-validation",
+        "candidate-evidence-completeness"
+      ],
+      "artifact_ids": [
+        "qualification-report",
+        "evidence-checksums"
+      ]
+    }
+  ],
+  "fixtures": [
+    {
+      "id": "extrude-offset-plane-direction-matrix",
+      "path": "contracts/solid-feature-candidate/fixtures/extrude-offset-plane-direction-matrix.json",
+      "parity_required": true
+    },
+    {
+      "id": "extrude-offset-plane-signed-edit",
+      "path": "contracts/solid-feature-candidate/fixtures/extrude-offset-plane-signed-edit.json",
+      "parity_required": true
+    },
+    {
+      "id": "construction-plane-missing-reference",
+      "path": "contracts/solid-feature-candidate/fixtures/construction-plane-missing-reference.json",
+      "parity_required": true
+    },
+    {
+      "id": "construction-plane-missing-offset-parameter",
+      "path": "contracts/solid-feature-candidate/fixtures/construction-plane-missing-offset-parameter.json",
+      "parity_required": true
+    },
+    {
+      "id": "construction-plane-wrong-type-offset-parameter",
+      "path": "contracts/solid-feature-candidate/fixtures/construction-plane-wrong-type-offset-parameter.json",
+      "parity_required": true
+    },
+    {
+      "id": "construction-plane-unsafe-offset-parameter",
+      "path": "contracts/solid-feature-candidate/fixtures/construction-plane-unsafe-offset-parameter.json",
+      "parity_required": true
+    },
+    {
+      "id": "extrude-missing-construction-plane-support",
+      "path": "contracts/solid-feature-candidate/fixtures/extrude-missing-construction-plane-support.json",
+      "parity_required": true
+    },
+    {
+      "id": "extrude-suppressed-construction-plane-support",
+      "path": "contracts/solid-feature-candidate/fixtures/extrude-suppressed-construction-plane-support.json",
+      "parity_required": true
+    },
+    {
+      "id": "extrude-invalid-construction-plane-dependency",
+      "path": "contracts/solid-feature-candidate/fixtures/extrude-invalid-construction-plane-dependency.json",
+      "parity_required": true
+    }
+  ],
+  "tests": [
+    {
+      "id": "candidate-manifest-validation",
+      "kind": "schema",
+      "command": "pwsh -File contracts/solid-feature-candidate/test/manifest-validation.tests.ps1",
+      "story_ids": [
+        "E3D-S3-05"
+      ],
+      "expected_artifact_ids": [
+        "qualification-report"
+      ]
+    },
+    {
+      "id": "construction-plane-document-contracts",
+      "kind": "native",
+      "command": "cargo test --workspace --locked construction_plane",
+      "story_ids": [
+        "E3D-S3-01",
+        "E3D-S3-02"
+      ],
+      "expected_artifact_ids": [
+        "candidate-fixtures"
+      ]
+    },
+    {
+      "id": "native-construction-plane-offset-extrude",
+      "kind": "native",
+      "command": "cargo test --workspace --locked construction_plane",
+      "story_ids": [
+        "E3D-S3-02",
+        "E3D-S3-03"
+      ],
+      "expected_artifact_ids": [
+        "candidate-fixtures"
+      ]
+    },
+    {
+      "id": "wasm-construction-plane-offset-extrude",
+      "kind": "wasm",
+      "command": "node --test web/worker-spike/worker-spike.test.mjs",
+      "story_ids": [
+        "E3D-S3-02",
+        "E3D-S3-03"
+      ],
+      "expected_artifact_ids": [
+        "release-runtime-wasm"
+      ]
+    },
+    {
+      "id": "construction-plane-offset-command-state",
+      "kind": "unit",
+      "command": "pnpm --dir web/crawler-app test:unit",
+      "story_ids": [
+        "E3D-S3-04"
+      ],
+      "expected_artifact_ids": [
+        "browser-junit"
+      ]
+    },
+    {
+      "id": "construction-plane-offset-native-wasm-parity",
+      "kind": "parity",
+      "command": "node scripts/compare-solid-feature-parity.mjs --manifest contracts/solid-feature-candidate/sprint-3.json",
+      "story_ids": [
+        "E3D-S3-02",
+        "E3D-S3-03"
+      ],
+      "expected_artifact_ids": [
+        "parity-json",
+        "parity-junit"
+      ]
+    },
+    {
+      "id": "production-construction-plane-offset-lifecycle",
+      "kind": "browser",
+      "command": "pnpm --dir web/crawler-app exec playwright test tests/solid-feature-construction-plane-qualification.spec.ts --config playwright.solid-feature-qualification.config.ts",
+      "story_ids": [
+        "E3D-S3-04"
+      ],
+      "expected_artifact_ids": [
+        "browser-junit",
+        "browser-screenshots"
+      ]
+    },
+    {
+      "id": "construction-plane-offset-performance-regression",
+      "kind": "performance",
+      "command": "pnpm --dir web/crawler-app exec playwright test tests/solid-feature-performance.spec.ts --config playwright.solid-feature-qualification.config.ts",
+      "story_ids": [
+        "E3D-S3-04"
+      ],
+      "expected_artifact_ids": [
+        "performance-json"
+      ]
+    },
+    {
+      "id": "candidate-evidence-completeness",
+      "kind": "schema",
+      "command": "pwsh -File scripts/test-solid-feature-candidate.ps1 -Manifest contracts/solid-feature-candidate/sprint-3.json -QualificationReady -EvidenceRoot artifacts/solid-feature-qualification/current",
+      "story_ids": [
+        "E3D-S3-05"
+      ],
+      "expected_artifact_ids": [
+        "qualification-report",
+        "evidence-checksums"
+      ]
+    }
+  ],
+  "artifacts": [
+    {
+      "id": "candidate-fixtures",
+      "path": "contracts/solid-feature-candidate/fixtures",
+      "required": true,
+      "lock_required": false,
+      "expected_sha256": null
+    },
+    {
+      "id": "release-runtime-wasm",
+      "path": "web/crawler-app/src/generated/runtime/crawler_part_runtime_bg.wasm",
+      "required": true,
+      "lock_required": true,
+      "expected_sha256": "865834b5265f23d7ba2348549a93b5d44613a0fd52a34778b3b274ba609a4499"
+    },
+    {
+      "id": "production-index",
+      "path": "web/crawler-app/dist/index.html",
+      "required": true,
+      "lock_required": false,
+      "expected_sha256": null
+    },
+    {
+      "id": "parity-json",
+      "path": "artifacts/solid-feature-qualification/current/parity/parity.json",
+      "required": true,
+      "lock_required": false,
+      "expected_sha256": null
+    },
+    {
+      "id": "parity-junit",
+      "path": "artifacts/solid-feature-qualification/current/parity/parity.junit.xml",
+      "required": true,
+      "lock_required": false,
+      "expected_sha256": null
+    },
+    {
+      "id": "browser-junit",
+      "path": "artifacts/solid-feature-qualification/current/browser/junit.xml",
+      "required": true,
+      "lock_required": false,
+      "expected_sha256": null
+    },
+    {
+      "id": "browser-screenshots",
+      "path": "artifacts/solid-feature-qualification/current/browser/screenshots",
+      "required": true,
+      "lock_required": false,
+      "expected_sha256": null
+    },
+    {
+      "id": "performance-json",
+      "path": "artifacts/solid-feature-qualification/current/performance/results.json",
+      "required": true,
+      "lock_required": false,
+      "expected_sha256": null
+    },
+    {
+      "id": "qualification-report",
+      "path": "artifacts/solid-feature-qualification/current/qualification-report.json",
+      "required": true,
+      "lock_required": false,
+      "expected_sha256": null
+    },
+    {
+      "id": "evidence-checksums",
+      "path": "artifacts/solid-feature-qualification/current/SHA256SUMS.json",
+      "required": true,
+      "lock_required": false,
+      "expected_sha256": null
+    }
+  ],
+  "runtime_lock": {
+    "build_id": "solid-feature-sprint-3-r2-20260828",
+    "wasm_artifact_id": "release-runtime-wasm",
+    "wasm_sha256": "865834b5265f23d7ba2348549a93b5d44613a0fd52a34778b3b274ba609a4499"
+  },
+  "non_candidate_observation_policy": {
+    "candidate_waivers_permitted": false,
+    "required_fields": [
+      "owner",
+      "rationale",
+      "expires_at",
+      "affected_evidence",
+      "follow_up"
+    ]
+  }
+}

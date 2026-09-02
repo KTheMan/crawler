@@ -1,0 +1,8 @@
+packages:
+  - .
+
+patchedDependencies:
+  three-viewport-gizmo@2.2.0: patches/three-viewport-gizmo@2.2.0.patch
+
+trustLockfile: true
+verifyDepsBeforeRun: false

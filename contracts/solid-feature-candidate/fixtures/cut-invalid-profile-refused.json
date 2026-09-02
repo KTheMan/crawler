@@ -1,0 +1,87 @@
+{
+  "schema_version": 1,
+  "units": {
+    "length": "nanometer",
+    "angle": "radian"
+  },
+  "tolerances": {
+    "relative": 1e-09,
+    "aabb_nm": 1,
+    "signed_volume_nm3": 1000000,
+    "surface_area_nm2": 1000,
+    "centroid_nm": 1
+  },
+  "legacy_provenance": null,
+  "fixture_id": "cut-invalid-profile-refused",
+  "story_ids": [
+    "E3D-S5-04"
+  ],
+  "description": "An open Cut profile is refused with a profile-field diagnostic and the stable sketch ID while preserving accepted state.",
+  "input": {
+    "schema_version": 5,
+    "kind": "single_target_cut",
+    "payload": {
+      "result_mode": "cut",
+      "target_body_ids": [
+        "body:part"
+      ],
+      "target_component_id": "component:root",
+      "target_seed": {
+        "body_id": "body:part",
+        "component_id": "component:root",
+        "width_nm": 10000000,
+        "height_nm": 6000000,
+        "distance_nm": 4000000
+      },
+      "support": {
+        "kind": "origin_plane",
+        "plane": "xy"
+      },
+      "profile": {
+        "kind": "rectangle",
+        "min_nm": [
+          2000000,
+          1000000
+        ],
+        "max_nm": [
+          8000000,
+          5000000
+        ]
+      },
+      "distance_nm": 2000000,
+      "direction": "positive",
+      "invalid_profile": "open_loop"
+    }
+  },
+  "expected": {
+    "kind": "structured_error",
+    "error": {
+      "category": "profile",
+      "code": "invalid_cut_profile",
+      "field_path": "operation.profile",
+      "referenced_entity_ids": [
+        "sketch:cut-invalid-profile-refused"
+      ]
+    },
+    "oracle_assertions": {
+      "explicit_target_required": true,
+      "implicit_target_used": false,
+      "accepted_state_unchanged": true,
+      "target_body_hash_unchanged": true
+    }
+  },
+  "identity_sets": {
+    "retained": [],
+    "replaced": []
+  },
+  "lifecycle_steps": [
+    "preview",
+    "commit"
+  ],
+  "evidence_test_ids": [
+    "single-target-cut-contracts",
+    "native-single-target-cut",
+    "wasm-single-target-cut",
+    "single-target-cut-native-wasm-parity"
+  ]
+}

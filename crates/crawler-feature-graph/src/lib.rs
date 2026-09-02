@@ -5,8 +5,9 @@
 //! shared document schema are additionally mirrored into `DocumentChange`.
 
 use crawler_document::{
-    ComponentId, Document, DocumentChange, DocumentTransaction, EntityId, Feature, FeatureId,
-    FeatureInput, FeatureRecomputeState, TransactionId,
+    BodyId, ComponentId, Document, DocumentChange, DocumentTransaction, EntityId, Feature,
+    FeatureId, FeatureInput, FeatureOperationV2, FeatureRecomputeState, FeatureResultV2,
+    PlanarSupportReferenceV2, TopologyKind, TransactionId,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -1016,6 +1017,65 @@ fn validate_state(state: &FeatureGraphDocument) -> Result<(), FeatureGraphError>
             }
         }
     }
+    for (feature_id, definition) in &state.document.feature_definitions_v2 {
+        let feature = state
+            .document
+            .features
+            .get(feature_id)
+            .ok_or_else(|| FeatureGraphError::MissingFeature(feature_id.clone()))?;
+        definition
+            .validate_contract()
+            .map_err(|_| FeatureGraphError::InvalidFeatureDefinition(feature_id.clone()))?;
+        match &definition.result {
+            FeatureResultV2::NewBody { body } => {
+                if let Some(output) = state.document.bodies.get(body)
+                    && output.component != feature.component
+                {
+                    return Err(FeatureGraphError::CrossComponentBodyInput {
+                        feature: feature_id.clone(),
+                        body: body.clone(),
+                    });
+                }
+            }
+            FeatureResultV2::Cut => {
+                let body = &definition.participant_bodies[0].body;
+                let target = state
+                    .document
+                    .bodies
+                    .get(body)
+                    .ok_or_else(|| FeatureGraphError::MissingBody(body.clone()))?;
+                if target.component != feature.component {
+                    return Err(FeatureGraphError::CrossComponentBodyInput {
+                        feature: feature_id.clone(),
+                        body: body.clone(),
+                    });
+                }
+                let FeatureOperationV2::Extrude { support, .. } = &definition.operation;
+                if let PlanarSupportReferenceV2::TopologyFace { reference } = support {
+                    let Some(topology) = state.document.topology_references.get(reference) else {
+                        return Err(FeatureGraphError::InvalidFeatureDefinition(
+                            feature_id.clone(),
+                        ));
+                    };
+                    let Some(producer) = state.document.features.get(&topology.producer) else {
+                        return Err(FeatureGraphError::InvalidFeatureDefinition(
+                            feature_id.clone(),
+                        ));
+                    };
+                    if topology.kind != TopologyKind::Face
+                        || topology.body != *body
+                        || topology.component != feature.component
+                        || producer.component != feature.component
+                        || !target.accepts_producer(&topology.producer)
+                    {
+                        return Err(FeatureGraphError::InvalidFeatureDefinition(
+                            feature_id.clone(),
+                        ));
+                    }
+                }
+            }
+        }
+    }
     let mut grouped = BTreeSet::new();
     for (id, group) in &state.groups {
         if id != &group.id || id.0.is_empty() || group.features.is_empty() {
@@ -1033,6 +1093,7 @@ fn validate_state(state: &FeatureGraphDocument) -> Result<(), FeatureGraphError>
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum FeatureGraphError {
     MissingFeature(FeatureId),
+    MissingBody(BodyId),
     MissingComponent(ComponentId),
     FeatureIdentityMismatch(FeatureId),
     InvalidFeatureOrder,
@@ -1069,6 +1130,11 @@ pub enum FeatureGraphError {
     UndoStateChanged,
     InvalidUndoRecord,
     InvalidFeatureCreate(FeatureId),
+    InvalidFeatureDefinition(FeatureId),
+    CrossComponentBodyInput {
+        feature: FeatureId,
+        body: BodyId,
+    },
     CrossComponentEdit,
 }
 

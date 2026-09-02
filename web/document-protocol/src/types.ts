@@ -7,6 +7,7 @@ export type ComponentId = StableId<"component">;
 export type BodyId = StableId<"body">;
 export type SketchId = StableId<"sketch">;
 export type FeatureId = StableId<"feature">;
+export type RegionReferenceId = StableId<"region_reference">;
 export type ParameterId = StableId<"parameter">;
 export type TopologyReferenceId = StableId<"topology_reference">;
 export type TransactionId = StableId<"transaction">;
@@ -24,7 +25,9 @@ export interface Document {
   components: Record<string, Component>;
   bodies: Record<string, Body>;
   sketches: Record<string, Sketch>;
+  region_definitions_v2?: Record<string, RegionDefinitionV2>;
   features: Record<string, Feature>;
+  feature_definitions_v2?: Record<string, FeatureDefinitionV2>;
   parameters: Record<string, Parameter>;
   topology_references: Record<string, TopologyReference>;
   transactions: DocumentTransaction[];
@@ -55,6 +58,7 @@ export interface Body {
   display_name: string;
   component: ComponentId;
   generated_by: FeatureId;
+  producer_lineage?: FeatureId[];
   visibility: "visible" | "hidden";
 }
 
@@ -82,6 +86,15 @@ export type SketchElement =
       id: string;
       start_element: string;
       end_element: string;
+    }
+  | {
+      kind: "external_line";
+      id: string;
+      start_nanometers: [JsonInteger, JsonInteger];
+      end_nanometers: [JsonInteger, JsonInteger];
+      body: BodyId;
+      /** Decimal u64; JSON numbers cannot represent every kernel identity. */
+      stable_kernel_id: string;
     }
   | {
       kind: "control_point_spline";
@@ -141,6 +154,49 @@ export interface Feature {
   suppressed: boolean;
 }
 
+export interface RegionDefinitionV2 {
+  id: RegionReferenceId;
+  sketch: SketchId;
+  outer_geometry_ids: string[];
+  hole_geometry_ids?: string[][];
+}
+
+export interface FeatureDefinitionV2 {
+  schema_version: 2;
+  operation: FeatureOperationV2;
+  result: FeatureResultV2;
+  participant_bodies?: ParticipantBodyReferenceV2[];
+  required_capabilities: RequiredFeatureCapabilityV2[];
+}
+
+export type FeatureOperationV2 = {
+  kind: "extrude";
+  profile: { kind: "sketch_region"; sketch: SketchId; region: RegionReferenceId };
+  support:
+    | { kind: "origin_plane"; plane: string }
+    | { kind: "construction_plane"; plane: string }
+    | { kind: "topology_face"; reference: TopologyReferenceId };
+  extent: {
+    kind: "blind";
+    distance: ParameterId;
+    direction: "positive" | "negative" | "symmetric";
+  };
+  modifiers: "none";
+};
+
+export type FeatureResultV2 =
+  | { mode: "new_body"; body: BodyId }
+  | { mode: "cut" };
+
+export interface ParticipantBodyReferenceV2 {
+  role: "target";
+  body: BodyId;
+}
+
+export type RequiredFeatureCapabilityV2 =
+  | "exact_blind_new_body_extrude"
+  | "exact_blind_cut_extrude";
+
 export interface OperationReference {
   schema_id: string;
   schema_version: JsonInteger;
@@ -167,7 +223,9 @@ export type ParameterValue =
   | { kind: "text"; value: string };
 
 export interface TopologyReference {
+  schema_version: 1;
   id: TopologyReferenceId;
+  component: ComponentId;
   body: BodyId;
   producer: FeatureId;
   kind: TopologyKind;

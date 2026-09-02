@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "fixture_id": "extrude-offset-plane-direction-matrix",
+  "story_ids": ["E3D-S3-03"],
+  "description": "A ten by six millimeter rectangle on construction planes offset twelve millimeters from XY, XZ, and YZ executes Forward, Reverse, and Symmetric blind New Body Extrude with origin-aware bounds.",
+  "units": { "length": "nanometer", "angle": "radian" },
+  "input": {
+    "schema_version": 3,
+    "kind": "extrude_offset_plane_matrix_v3",
+    "payload": {
+      "result_mode": "new_body",
+      "offset_parameter": "parameter:construction-plane-offset",
+      "offset_nanometers": 12000000,
+      "distance_nm": 4000000,
+      "profile": "rectangle-10x6mm",
+      "base_planes": ["origin.xy", "origin.xz", "origin.yz"],
+      "directions": ["positive", "negative", "symmetric"]
+    }
+  },
+  "expected": {
+    "kind": "success",
+    "result": {
+      "case_count": 9,
+      "body_count_each": 1,
+      "manifold_each": true,
+      "orientation_each": "outward",
+      "construction_plane_definition_kind": "offset",
+      "durable_offset_parameter": "parameter:construction-plane-offset",
+      "one_side_signed_volume_nm3": 240000000000000000000,
+      "symmetric_signed_volume_nm3": 480000000000000000000,
+      "durable_offset_nm": 12000000,
+      "durable_distance_nm": 4000000,
+      "supports_qualified": ["origin.xy", "origin.xz", "origin.yz"],
+      "directions_qualified": ["positive", "negative", "symmetric"],
+      "cases": [
+        { "support": "origin.xy", "direction": "positive", "frame_origin_nm": [0, 0, 12000000], "expected_bounds_nm": [-5000000, -3000000, 12000000, 5000000, 3000000, 16000000], "expected_centroid_nm": [0, 0, 14000000] },
+        { "support": "origin.xy", "direction": "negative", "frame_origin_nm": [0, 0, 12000000], "expected_bounds_nm": [-5000000, -3000000, 8000000, 5000000, 3000000, 12000000], "expected_centroid_nm": [0, 0, 10000000] },
+        { "support": "origin.xy", "direction": "symmetric", "frame_origin_nm": [0, 0, 12000000], "expected_bounds_nm": [-5000000, -3000000, 8000000, 5000000, 3000000, 16000000], "expected_centroid_nm": [0, 0, 12000000] },
+        { "support": "origin.xz", "direction": "positive", "frame_origin_nm": [0, -12000000, 0], "expected_bounds_nm": [-5000000, -16000000, -3000000, 5000000, -12000000, 3000000], "expected_centroid_nm": [0, -14000000, 0] },
+        { "support": "origin.xz", "direction": "negative", "frame_origin_nm": [0, -12000000, 0], "expected_bounds_nm": [-5000000, -12000000, -3000000, 5000000, -8000000, 3000000], "expected_centroid_nm": [0, -10000000, 0] },
+        { "support": "origin.xz", "direction": "symmetric", "frame_origin_nm": [0, -12000000, 0], "expected_bounds_nm": [-5000000, -16000000, -3000000, 5000000, -8000000, 3000000], "expected_centroid_nm": [0, -12000000, 0] },
+        { "support": "origin.yz", "direction": "positive", "frame_origin_nm": [12000000, 0, 0], "expected_bounds_nm": [12000000, -5000000, -3000000, 16000000, 5000000, 3000000], "expected_centroid_nm": [14000000, 0, 0] },
+        { "support": "origin.yz", "direction": "negative", "frame_origin_nm": [12000000, 0, 0], "expected_bounds_nm": [8000000, -5000000, -3000000, 12000000, 5000000, 3000000], "expected_centroid_nm": [10000000, 0, 0] },
+        { "support": "origin.yz", "direction": "symmetric", "frame_origin_nm": [12000000, 0, 0], "expected_bounds_nm": [8000000, -5000000, -3000000, 16000000, 5000000, 3000000], "expected_centroid_nm": [12000000, 0, 0] }
+      ]
+    }
+  },
+  "tolerances": { "relative": 1e-9, "aabb_nm": 1, "signed_volume_nm3": 1000000, "surface_area_nm2": 1000, "centroid_nm": 1 },
+  "identity_sets": { "retained": [], "replaced": [] },
+  "lifecycle_steps": ["preview", "cancel", "commit", "edit", "save", "reload", "recompute"],
+  "evidence_test_ids": ["native-construction-plane-offset-extrude", "wasm-construction-plane-offset-extrude", "construction-plane-offset-native-wasm-parity"],
+  "legacy_provenance": null
+}

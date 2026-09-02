@@ -1,0 +1,95 @@
+{
+  "schema_version": 1,
+  "fixture_id": "cut-target-cardinality-refused",
+  "story_ids": [
+    "E3D-S5-01",
+    "E3D-S5-04"
+  ],
+  "description": "Zero, duplicate, and multiple explicit target collections are refused without target inference or accepted-state mutation.",
+  "units": {
+    "length": "nanometer",
+    "angle": "radian"
+  },
+  "input": {
+    "schema_version": 5,
+    "kind": "single_target_cut",
+    "payload": {
+      "result_mode": "cut",
+      "target_body_ids": [],
+      "target_component_id": "component:root",
+      "target_seed": {
+        "body_id": "body:part",
+        "component_id": "component:root",
+        "width_nm": 10000000,
+        "height_nm": 6000000,
+        "distance_nm": 4000000
+      },
+      "support": {
+        "kind": "origin_plane",
+        "plane": "xy"
+      },
+      "profile": {
+        "kind": "rectangle",
+        "min_nm": [
+          2000000,
+          1000000
+        ],
+        "max_nm": [
+          8000000,
+          5000000
+        ]
+      },
+      "distance_nm": 2000000,
+      "direction": "positive",
+      "target_cardinality_variants": [
+        [],
+        [
+          "body:part",
+          "body:part"
+        ],
+        [
+          "body:part",
+          "body:other"
+        ]
+      ]
+    }
+  },
+  "expected": {
+    "kind": "structured_error",
+    "error": {
+      "category": "target",
+      "code": "explicit_target_required",
+      "field_path": "participant_bodies",
+      "referenced_entity_ids": []
+    },
+    "oracle_assertions": {
+      "explicit_target_required": true,
+      "implicit_target_used": false,
+      "accepted_state_unchanged": true,
+      "zero_refused": true,
+      "duplicate_refused": true,
+      "multiple_refused": true
+    }
+  },
+  "tolerances": {
+    "relative": 1e-9,
+    "aabb_nm": 1,
+    "signed_volume_nm3": 1000000,
+    "surface_area_nm2": 1000,
+    "centroid_nm": 1
+  },
+  "identity_sets": {
+    "retained": [],
+    "replaced": []
+  },
+  "lifecycle_steps": [
+    "authority_validate"
+  ],
+  "evidence_test_ids": [
+    "single-target-cut-contracts",
+    "native-single-target-cut",
+    "wasm-single-target-cut",
+    "single-target-cut-native-wasm-parity"
+  ],
+  "legacy_provenance": null
+}

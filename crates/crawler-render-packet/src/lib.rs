@@ -8,6 +8,8 @@ use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
 use monstertruck_meshing::prelude::*;
+#[cfg(any(test, target_arch = "wasm32"))]
+use monstertruck_modeling::Face;
 use monstertruck_modeling::{Point3, Solid, Vector3, builder};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -441,10 +443,11 @@ fn crawler_sampled_packet(solid: &Solid) -> Result<RenderPacket, RenderPacketErr
         );
         let first_index = as_u32(packet.triangle_indices.len(), "triangle indices")?;
         for index in 0..points.len() {
-            let mut triangle = [centroid, points[index], points[(index + 1) % points.len()]];
-            if !face.orientation() {
-                triangle.swap(1, 2);
-            }
+            // `Face::boundaries` already yields the oriented boundary wire.
+            // Applying `Face::orientation` again reverses the tessellated
+            // normal relative to `oriented_surface`, which is the native frame
+            // authority used by topology-supported tools.
+            let triangle = [centroid, points[index], points[(index + 1) % points.len()]];
             let normal = triangle_normal(triangle[0], triangle[1], triangle[2]);
             let vertex_offset = as_u32(packet.positions.len() / 3, "triangle vertices")?;
             for point in triangle {
@@ -543,7 +546,7 @@ pub fn reference_cube_packet(tolerance: f64) -> Result<RenderPacket, RenderPacke
     crawler_cube_packet(&solid)
 }
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(any(test, target_arch = "wasm32"))]
 fn crawler_cube_packet(solid: &Solid) -> Result<RenderPacket, RenderPacketError> {
     let faces = [
         (
@@ -622,9 +625,35 @@ fn crawler_cube_packet(solid: &Solid) -> Result<RenderPacket, RenderPacketError>
         pick_table: Vec::with_capacity(26),
         bounds: Bounds3::default(),
     };
-    for (face_index, (source, (positions, normal))) in
-        source_faces.into_iter().zip(faces).enumerate()
-    {
+    // Kernel face iteration order is not the display order above. Match each
+    // qualified cube face by geometry before attaching the kernel-owned stable
+    // ID; zipping the two orders silently assigned valid IDs to the wrong
+    // planes in WASM render packets.
+    let mut unmatched_faces = faces.into_iter().map(Some).collect::<Vec<_>>();
+    for (face_index, source) in source_faces.into_iter().enumerate() {
+        let source_centroid = face_centroid(source).ok_or(RenderPacketError::MissingFaceMesh {
+            stable_id: source.stable_id().raw(),
+        })?;
+        let Some(matched_index) = unmatched_faces.iter().position(|candidate| {
+            candidate.as_ref().is_some_and(|(positions, _)| {
+                let candidate_centroid = positions.iter().fold([0.0; 3], |mut sum, point| {
+                    for axis in 0..3 {
+                        sum[axis] += point[axis] / positions.len() as f64;
+                    }
+                    sum
+                });
+                (0..3).all(|axis| {
+                    (candidate_centroid[axis] - source_centroid[axis]).abs() <= f64::EPSILON
+                })
+            })
+        }) else {
+            return Err(RenderPacketError::MissingFaceMesh {
+                stable_id: source.stable_id().raw(),
+            });
+        };
+        let (positions, normal) = unmatched_faces[matched_index]
+            .take()
+            .expect("matched cube face is present");
         let first_vertex = (packet.positions.len() / 3) as u32;
         for position in positions {
             packet.positions.extend(position.map(|value| value as f32));
@@ -691,6 +720,20 @@ fn crawler_cube_packet(solid: &Solid) -> Result<RenderPacket, RenderPacketError>
         )?);
     }
     Ok(packet)
+}
+
+#[cfg(any(test, target_arch = "wasm32"))]
+fn face_centroid(face: &Face) -> Option<[f64; 3]> {
+    let mut sum = [0.0; 3];
+    let mut count = 0usize;
+    for edge in face.edge_iter() {
+        let point = edge.front().point();
+        for axis in 0..3 {
+            sum[axis] += point[axis];
+        }
+        count += 1;
+    }
+    (count > 0).then(|| sum.map(|value| value / count as f64))
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -925,6 +968,51 @@ mod tests {
         assert!(first.pick_table.iter().all(|record| record.stable_id != 0));
         assert!(first.positions.iter().all(|value| value.is_finite()));
         assert!(first.normals.iter().all(|value| value.is_finite()));
+    }
+
+    #[test]
+    fn qualified_cube_packet_matches_every_face_pick_id_to_source_geometry() {
+        let vertex = builder::vertex(Point3::origin());
+        let edge = builder::extrude(&vertex, Vector3::unit_x());
+        let face = builder::extrude(&edge, Vector3::unit_y());
+        let mut solid = builder::extrude(&face, Vector3::unit_z());
+        solid.ensure_topology_stable_ids();
+        let source_centroids = solid
+            .face_iter()
+            .map(|face| {
+                (
+                    face.stable_id().raw(),
+                    face_centroid(face).expect("cube faces have boundaries"),
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
+
+        let packet = crawler_cube_packet(&solid).expect("qualified cube packet must succeed");
+        assert_eq!(packet.face_ranges.len(), source_centroids.len());
+        for range in &packet.face_ranges {
+            let stable_id = packet
+                .pick_record(range.pick_token)
+                .filter(|record| record.kind == PickKind::Face)
+                .expect("face range has face provenance")
+                .stable_id;
+            let mut min = [f32::INFINITY; 3];
+            let mut max = [f32::NEG_INFINITY; 3];
+            for index in &packet.triangle_indices
+                [range.first_index as usize..(range.first_index + range.index_count) as usize]
+            {
+                for axis in 0..3 {
+                    let value = packet.positions[*index as usize * 3 + axis];
+                    min[axis] = min[axis].min(value);
+                    max[axis] = max[axis].max(value);
+                }
+            }
+            let packet_centroid =
+                std::array::from_fn(|axis| f64::from(min[axis] + max[axis]) / 2.0);
+            let expected = source_centroids
+                .get(&stable_id)
+                .expect("packet face ID belongs to the source solid");
+            assert_eq!(packet_centroid, *expected, "face stable ID {stable_id}");
+        }
     }
 
     #[test]

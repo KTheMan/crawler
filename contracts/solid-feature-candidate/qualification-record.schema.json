@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://crawler.local/contracts/solid-feature-candidate/qualification-record.schema.json",
+  "title": "Crawler solid-feature candidate evidence index record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "candidate_id", "candidate_revision", "manifest_sha256", "subject_kind", "subject_id", "status", "recorded_at", "evidence_paths"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "candidate_id": { "type": "string", "minLength": 1 },
+    "candidate_revision": { "type": "integer", "minimum": 1 },
+    "manifest_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "subject_kind": { "enum": ["story", "fixture", "test", "artifact"] },
+    "subject_id": { "type": "string", "minLength": 1 },
+    "status": { "enum": ["passed", "failed", "skipped", "blocked", "waived"] },
+    "recorded_at": { "type": "string", "format": "date-time" },
+    "evidence_paths": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+    "details": { "type": "object" }
+  }
+}

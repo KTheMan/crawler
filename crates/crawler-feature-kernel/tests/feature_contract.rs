@@ -43,6 +43,8 @@ fn box_snapshot(body_id: &str, origin: [f64; 3], size: f64) -> BodySnapshot {
                 max: origin.map(|value| ((value + size) * 1_000_000.0).round() as i64),
             },
             volume_model_units3: volume,
+            surface_area_nm2: None,
+            centroid_nm: None,
             deterministic_digest: "test-seed".to_owned(),
         },
     }

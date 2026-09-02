@@ -1,6 +1,7 @@
 use crawler_document::{
     ComponentId, Document, Feature, FeatureId, FeatureInput, FeatureRecomputeState,
-    OperationReference, TopologyKind, TopologyReference, TopologyReferenceId, TopologySignature,
+    OperationReference, TopologyKind, TopologyReference, TopologyReferenceId,
+    TopologyReferenceVersion, TopologySignature,
 };
 use crawler_topology_repair::{
     CandidateSelection, RepairErrorKind, RepairInspection, UnresolvedCause, apply_rebind,
@@ -71,7 +72,9 @@ fn repair_document() -> Document {
 
 fn face(id: &str, centroid_x: i64, token: &str, kernel_id: u64) -> TopologyReference {
     TopologyReference {
+        schema_version: TopologyReferenceVersion::V1,
         id: id.into(),
+        component: "component:root".into(),
         body: "body:block".into(),
         producer: "feature:extrude".into(),
         kind: TopologyKind::Face,
@@ -226,6 +229,24 @@ fn stale_or_tampered_commit_fails_closed_and_preserves_prior_hash() {
 }
 
 #[test]
+fn tampered_replacement_component_fails_closed_and_preserves_prior_hash() {
+    let document = repair_document();
+    let replacement = face("topology:replacement", 20_000_002, "new:top", 200);
+    let preview = preview_first_unresolved(&document, std::slice::from_ref(&replacement))
+        .unwrap()
+        .unwrap();
+    let mut transaction = preview
+        .explicit_rebind("repair:wrong-component", &replacement.id)
+        .unwrap();
+    transaction.changes[0].replacement.component = ComponentId::from("component:other");
+    let before = canonical_document_hash(&document);
+    let error = apply_rebind(&document, &transaction).unwrap_err();
+    assert_eq!(error.kind, RepairErrorKind::ReplacementOwnershipMismatch);
+    assert_eq!(error.preserved_document_hash, before);
+    assert_eq!(canonical_document_hash(&document), before);
+}
+
+#[test]
 fn undo_and_repair_envelope_survive_save_reload() {
     let document = repair_document();
     let replacement = face("topology:replacement", 20_000_002, "new:top", 200);
@@ -258,13 +279,114 @@ fn exact_stable_identity_allows_downstream_evaluation_to_continue() {
         "topology:new-runtime-id",
         20_000_000,
         "extrude:end-positive",
-        999,
+        6,
     );
     assert!(
         preview_first_unresolved(&document, &[still_resolved])
             .unwrap()
             .is_none()
     );
+}
+
+#[test]
+fn retained_token_with_changed_kernel_id_is_unresolved() {
+    let document = repair_document();
+    let changed_kernel_entity = face(
+        "topology:new-runtime-id",
+        20_000_000,
+        "extrude:end-positive",
+        999,
+    );
+    let preview = preview_first_unresolved(&document, &[changed_kernel_entity])
+        .unwrap()
+        .expect("execution consumes the changed kernel ID, so explicit repair is required");
+    assert_eq!(
+        preview.unresolved.cause,
+        UnresolvedCause::StableIdentityMissing
+    );
+    assert_eq!(
+        preview.unresolved.reference,
+        TopologyReferenceId::from("topology:top-face")
+    );
+}
+
+#[test]
+fn component_ownership_is_part_of_identity_and_candidate_scope() {
+    let document = repair_document();
+    let mut wrong_component = face(
+        "topology:wrong-component",
+        20_000_000,
+        "extrude:end-positive",
+        6,
+    );
+    wrong_component.component = ComponentId::from("component:other");
+    let preview = preview_first_unresolved(&document, &[wrong_component])
+        .unwrap()
+        .expect("a cross-component observation must never resolve durable identity");
+    assert_eq!(
+        preview.unresolved.cause,
+        UnresolvedCause::StableIdentityMissing
+    );
+    assert!(preview.candidates.is_empty());
+    assert_eq!(preview.selection, CandidateSelection::NoCandidates);
+}
+
+#[test]
+fn generic_edge_and_vertex_candidates_retain_deterministic_ranking() {
+    for (kind, expected_signature, near_signature, far_signature) in [
+        (
+            TopologyKind::Edge,
+            TopologySignature::Edge {
+                midpoint_nanometers: [10, 20, 30],
+                length_nanometers: 100,
+            },
+            TopologySignature::Edge {
+                midpoint_nanometers: [11, 20, 30],
+                length_nanometers: 100,
+            },
+            TopologySignature::Edge {
+                midpoint_nanometers: [50, 20, 30],
+                length_nanometers: 200,
+            },
+        ),
+        (
+            TopologyKind::Vertex,
+            TopologySignature::Vertex {
+                position_nanometers: [10, 20, 30],
+            },
+            TopologySignature::Vertex {
+                position_nanometers: [11, 20, 30],
+            },
+            TopologySignature::Vertex {
+                position_nanometers: [50, 20, 30],
+            },
+        ),
+    ] {
+        let mut document = repair_document();
+        let reference_id = TopologyReferenceId::from("topology:top-face");
+        let expected = document.topology_references.get_mut(&reference_id).unwrap();
+        expected.kind = kind;
+        expected.fallback_signature = expected_signature;
+        let candidate = |id: &str, kernel_id, signature| TopologyReference {
+            schema_version: TopologyReferenceVersion::V1,
+            id: id.into(),
+            component: expected.component.clone(),
+            body: expected.body.clone(),
+            producer: expected.producer.clone(),
+            kind,
+            stable_kernel_id: kernel_id,
+            stable_token: format!("replacement:{id}"),
+            fallback_signature: signature,
+        };
+        let near = candidate("topology:near", 41, near_signature);
+        let far = candidate("topology:far", 42, far_signature);
+        let preview = preview_first_unresolved(&document, &[far.clone(), near.clone()])
+            .unwrap()
+            .unwrap();
+        assert_eq!(preview.candidates.len(), 2);
+        assert_eq!(preview.candidates[0].candidate.id, near.id);
+        assert_eq!(preview.candidates[1].candidate.id, far.id);
+    }
 }
 
 #[test]

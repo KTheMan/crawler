@@ -1,11 +1,15 @@
 /// <reference lib="webworker" />
 
-import type { AcceptedTransaction, AdvancedFeatureCommand, AdvancedFeatureError, FeatureServicesView, NamedParameterView, ParameterDiagnostic, RecomputeReport, RenderPacket, RepairInspectionView, TopologyReferenceView, WorkerResponse } from "./protocol";
+import type { AcceptedTransaction, AdvancedFeatureCommand, AdvancedFeatureError, FeatureServicesView, NamedParameterView, OffsetConstructionPlaneDefinition, OffsetConstructionPlaneFrame, OffsetConstructionPlaneRequest, ParameterDiagnostic, PlanarFaceFrameDiagnostic, PlanarFaceFrameRequest, RecomputeReport, RenderPacket, RepairInspectionView, TopologyReferenceView, WorkerResponse } from "./protocol";
 import { AdvancedFeatureBuildError, buildAdvancedFeatureEditEnvelope, buildAdvancedFeatureEnvelope, serializeAdvancedFeatureEnvelope } from "./advanced-feature-builder";
 import initRuntime, { WasmPartRuntime } from "./generated/runtime/crawler_part_runtime.js";
 import type { Sketch, SketchCommand, SketchSupport } from "./sketch-editor";
+import type { ExtrudeDirection } from "./extrude-direction";
+import { normalizeExtrudeCutFailure } from "./extrude-result-mode";
 import { StepImportController, type StepImportMeasurements, type StepImportPayload as ControllerStepImportPayload } from "./step-import-controller";
 import { resolveSketchReferences, type ParameterReferenceDocument } from "./parameter-references";
+import { constructionPlaneRecomputeReport, constructionPlaneRuntimeErrorMapping, constructionPlaneSupportRuntimeErrorMapping } from "./offset-construction-plane";
+import { bodyAcceptsFeatureProducer, normalizePlanarFaceFrameResult } from "./planar-face-authority";
 
 const scope = self as DedicatedWorkerGlobalScope;
 let runtime: WasmPartRuntime | undefined;
@@ -122,7 +126,7 @@ function prepareSketchFeatureEnvelope(runtimeView: WasmPartRuntime, command: Adv
     feature_id: command.featureId,
     body_id: command.outputBodyId,
     operation_id: operationId,
-    profile_sources: (selection.profileSources ?? []).map(({ sketch, support }) => ({ sketch, support })),
+    profile_sources: (selection.profileSources ?? []).map(({ sketch, support, profileGeometryIds }) => ({ sketch, support, ...(profileGeometryIds ? { profile_geometry_ids: profileGeometryIds } : {}) })),
     tolerance_nanometers: Number(parameters.tolerance ?? 10_000),
     ...(selection.pathSource ? { path_source: { sketch: selection.pathSource.sketch, support: selection.pathSource.support } } : {}),
     ...(selection.targetBodyId ? { target_body_id: selection.targetBodyId } : {}),
@@ -144,6 +148,78 @@ interface ParameterOutcome {
 interface RuntimeDocumentJournal {
   revision: number;
   transactions: AcceptedTransaction[];
+  bodies?: Record<string, { id?: string; component?: string; generated_by?: string; producer_lineage?: readonly string[]; suppressed?: boolean }>;
+  features?: Record<string, { id?: string; component?: string; suppressed?: boolean }>;
+  topology_references?: Record<string, TopologyReferenceView>;
+}
+
+type ConstructionPlaneRuntime = WasmPartRuntime & {
+  previewOffsetConstructionPlaneJson(requestJson: string): string;
+  commitOffsetConstructionPlaneJson(requestJson: string): string;
+};
+
+type TopologyRebindRuntime = WasmPartRuntime & {
+  previewTopologyRebindJson(requestJson: string): string;
+};
+
+interface PendingTopologyRebind {
+  requestId: string;
+  selected: string;
+  observedTopology: readonly TopologyReferenceView[];
+  baseDocumentHash: string;
+  baseRevision: number;
+}
+
+let pendingTopologyRebind: PendingTopologyRebind | undefined;
+
+class PlanarFaceAuthorityError extends Error {
+  constructor(readonly diagnostic: PlanarFaceFrameDiagnostic) { super(diagnostic.message); }
+}
+
+function planarFaceFrameRequest(
+  support: SketchSupport,
+  supportReference?: TopologyReferenceView,
+): PlanarFaceFrameRequest | undefined {
+  if (!runtime || support.kind !== "topology") return undefined;
+  const document = JSON.parse(runtime.documentJson()) as RuntimeDocumentJournal;
+  const retained = supportReference ?? document.topology_references?.[support.reference];
+  const body = retained?.body ? document.bodies?.[retained.body] : undefined;
+  const producer = retained?.producer ? document.features?.[retained.producer] : undefined;
+  const component = body?.component;
+  const stableId = retained?.stable_kernel_id;
+  if (!retained || retained.kind !== "face" || !retained.body || !retained.producer || !stableId
+    || !/^(0|[1-9][0-9]*)$/.test(stableId) || !body || body.suppressed
+    || !bodyAcceptsFeatureProducer(body, retained.producer)
+    || !producer || producer.suppressed || !component || producer.component !== component) {
+    throw new PlanarFaceAuthorityError({
+      code: "stale_planar_face_reference", category: "stale_reference", field: "planar_face.reference",
+      message: "The planar face reference does not match a current body, producer, and component",
+      reference: { bodyId: retained?.body ?? "", faceStableId: stableId ?? "" },
+      referencedBodyIds: retained?.body ? [retained.body] : [],
+    });
+  }
+  return {
+    type: "resolve-planar-face-frame", requestId: `preflight:${support.reference}`,
+    topologyReferenceId: support.reference, bodyId: retained.body, faceStableId: stableId,
+    expectedAcceptedRevision: document.revision, expectedProducerFeatureId: retained.producer,
+    expectedComponentId: component,
+  };
+}
+
+function requirePlanarFaceAuthority(support: SketchSupport, supportReference?: TopologyReferenceView): void {
+  if (!runtime) throw new Error("part runtime is not initialized");
+  const request = planarFaceFrameRequest(support, supportReference);
+  if (!request) return;
+  const beforeHash = runtime.semanticHash();
+  let raw: unknown;
+  try { raw = JSON.parse(runtime.planarFaceFrameJson(request.bodyId, request.faceStableId)); }
+  catch (error) {
+    if (runtime.semanticHash() !== beforeHash) throw new Error("Planar face frame query mutated the accepted document");
+    throw error;
+  }
+  if (runtime.semanticHash() !== beforeHash) throw new Error("Planar face frame query mutated the accepted document");
+  const normalized = normalizePlanarFaceFrameResult(raw, request);
+  if (!normalized.ok) throw new PlanarFaceAuthorityError(normalized.diagnostic);
 }
 
 function postDocument(options: { transaction?: AcceptedTransaction; recompute?: RecomputeReport; historyAction?: "undo" | "redo" | "hydrate" | "new" | "open" } = {}): void {
@@ -259,44 +335,87 @@ function postPacket(): void {
 interface SketchExtrudeSource {
   sketch: Sketch;
   support: SketchSupport;
+  profileGeometryIds?: readonly string[];
   featureId: string;
   bodyId: string;
+  newBodyId: string;
+  resultMode: "new_body" | "cut";
+  targetBodyId?: string;
   transactionId?: string;
 }
 
-function postExtrudePreview(requestId: number, distanceNanometers: number, source?: SketchExtrudeSource): void {
+function postExtrudePreview(requestId: number, distanceNanometers: number, direction: ExtrudeDirection, source?: SketchExtrudeSource): void {
   if (!runtime) throw new Error("part runtime is not initialized");
   const acceptedHash = runtime.semanticHash();
+  const baseRevision = (JSON.parse(runtime.documentJson()) as RuntimeDocumentJournal).revision;
   if (source) {
-    const preview = JSON.parse(runtime.previewSketchExtrudeJson(JSON.stringify({
+    requirePlanarFaceAuthority(source.support);
+    const commonRequest = {
       sketch: source.sketch,
       support: source.support,
       distance_nanometers: distanceNanometers,
+      direction,
+      tolerance: 0.01,
+      ...(source.profileGeometryIds ? { profile_geometry_ids: source.profileGeometryIds } : {}),
+    };
+    const preview = JSON.parse(runtime.previewSketchExtrudeJson(JSON.stringify({
+      ...commonRequest,
       feature_id: source.featureId,
       body_id: source.bodyId,
-      tolerance: 0.01,
+      result_mode: source.resultMode,
+      ...(source.targetBodyId ? { target_body_id: source.targetBodyId } : {}),
     }))) as {
+      accepted?: boolean;
       accepted_document_hash: string;
+      document_hash?: string;
       distance_nanometers: number;
-      render: RuntimePacketJson;
+      render?: RuntimePacketJson;
+      error?: unknown;
     };
+    if (preview.accepted === false) {
+      if (runtime.semanticHash() !== acceptedHash || preview.document_hash !== acceptedHash) {
+        throw new Error("refused Sketch Extrude preview mutated the accepted document");
+      }
+      throw preview;
+    }
     if (runtime.semanticHash() !== acceptedHash || preview.accepted_document_hash !== acceptedHash) {
       throw new Error("Sketch Extrude preview mutated the accepted document");
     }
+    if (!preview.render) throw new Error("accepted Sketch Extrude preview omitted its render packet");
     const rendered = runtimePacket(preview.render);
     const packet = rendered.packet;
-    const transfer = Object.values(packet).filter((value): value is ArrayBufferView => ArrayBuffer.isView(value)).map((value) => value.buffer);
+    let removalPacket: RenderPacket | undefined;
+    if (source.resultMode === "cut") {
+      const removal = JSON.parse(runtime.previewSketchExtrudeJson(JSON.stringify({
+        ...commonRequest,
+        feature_id: `feature:cut-removal-preview:${requestId}`,
+        body_id: `body:cut-removal-preview:${requestId}`,
+        result_mode: "new_body",
+      }))) as { accepted?: boolean; accepted_document_hash: string; render?: RuntimePacketJson };
+      if (removal.accepted === false || !removal.render || removal.accepted_document_hash !== acceptedHash || runtime.semanticHash() !== acceptedHash) {
+        throw new Error("Cut removal-volume preview was refused or mutated the accepted document");
+      }
+      removalPacket = runtimePacket(removal.render).packet;
+    }
+    const transfer = [packet, ...(removalPacket ? [removalPacket] : [])]
+      .flatMap((candidate) => Object.values(candidate).filter((value): value is ArrayBufferView => ArrayBuffer.isView(value)).map((value) => value.buffer));
     scope.postMessage({
       type: "extrude-preview",
       requestId,
       distanceNanometers: preview.distance_nanometers,
+      direction,
       semanticHash: acceptedHash,
+      baseRevision,
       bodyId: rendered.bodyId,
+      resultMode: source.resultMode,
+      ...(source.targetBodyId ? { targetBodyId: source.targetBodyId } : {}),
       packet,
+      ...(removalPacket ? { removalPacket } : {}),
       transferredBytes: transfer.reduce((total, buffer) => total + buffer.byteLength, 0),
     } satisfies WorkerResponse, transfer);
     return;
   }
+  if (direction !== "positive") throw new Error("Reverse and symmetric modes require a sketch-profile Extrude");
   const acceptedDimensions = JSON.parse(runtime.dimensionsJson()) as { distance_nanometers: number };
   if (distanceNanometers === acceptedDimensions.distance_nanometers) {
     const source = acceptedPacket();
@@ -307,7 +426,9 @@ function postExtrudePreview(requestId: number, distanceNanometers: number, sourc
       type: "extrude-preview",
       requestId,
       distanceNanometers,
+      direction,
       semanticHash: acceptedHash,
+      baseRevision,
       bodyId: source.bodyId,
       packet,
       transferredBytes,
@@ -330,7 +451,9 @@ function postExtrudePreview(requestId: number, distanceNanometers: number, sourc
     type: "extrude-preview",
     requestId,
     distanceNanometers: preview.distance_nanometers,
+    direction,
     semanticHash: acceptedHash,
+    baseRevision,
     bodyId: rendered.bodyId,
     packet,
     transferredBytes,
@@ -367,11 +490,40 @@ scope.addEventListener("message", async (event) => {
     if (event.data?.type === "initialize") {
       if (event.data.fail) throw new Error("diagnostic worker startup failure");
       await initRuntime();
+      const persistedDocumentId = typeof event.data.initialDocumentId === "string"
+        && event.data.initialDocumentId.startsWith("document:")
+        && event.data.initialDocumentId.length <= 512
+        ? event.data.initialDocumentId
+        : undefined;
       runtime = event.data.qualificationReferencePart
         ? WasmPartRuntime.newValidationRectangularPart("document:part-alpha-001", "Bracket", 40_000_000n, 28_000_000n, 12_000_000n)
-        : new WasmPartRuntime(`document:${crypto.randomUUID()}`, "Untitled Part");
+        : new WasmPartRuntime(persistedDocumentId ?? `document:${crypto.randomUUID()}`, "Untitled Part");
       scope.postMessage({ type: "wasm-ready", detail: "crawler-part-runtime ready" } satisfies WorkerResponse);
       postDocument(); postPacket();
+    }
+    if (event.data?.type === "resolve-planar-face-frame") {
+      if (!runtime) throw new Error("part runtime is not initialized");
+      const request = event.data as PlanarFaceFrameRequest;
+      const beforeHash = runtime.semanticHash();
+      let result;
+      try {
+        result = normalizePlanarFaceFrameResult(
+          JSON.parse(runtime.planarFaceFrameJson(request.bodyId, request.faceStableId)),
+          request,
+        );
+      } catch (error) {
+        if (runtime.semanticHash() !== beforeHash) throw new Error("Planar face frame query failure mutated the accepted document");
+        result = { ok: false as const, diagnostic: {
+          code: "planar_face_frame_query_failed", category: "invalid_geometry" as const,
+          field: "planar_face.frame", message: error instanceof Error ? error.message : String(error),
+          reference: { bodyId: request.bodyId, faceStableId: request.faceStableId }, referencedBodyIds: [request.bodyId],
+        } };
+      }
+      if (runtime.semanticHash() !== beforeHash) throw new Error("Planar face frame query mutated the accepted document");
+      scope.postMessage(result.ok
+        ? { type: "planar-face-frame", requestId: request.requestId, topologyReferenceId: request.topologyReferenceId, semanticHash: beforeHash, authority: result.authority }
+        : { type: "planar-face-frame-error", requestId: request.requestId, topologyReferenceId: request.topologyReferenceId, semanticHash: beforeHash, diagnostic: result.diagnostic } satisfies WorkerResponse);
+      return;
     }
     if (event.data?.type === "hydrate-document") {
       resetStepImportController();
@@ -404,17 +556,84 @@ scope.addEventListener("message", async (event) => {
       if (event.data.source) {
         const source = event.data.source as SketchExtrudeSource;
         const before = JSON.parse(runtime.documentJson()) as RuntimeDocumentJournal;
-        const outcome = JSON.parse(runtime.commitSketchExtrudeJson(JSON.stringify({
-          sketch: source.sketch,
-          support: source.support,
-          distance_nanometers: event.data.valueNanometers,
-          feature_id: source.featureId,
-          body_id: source.bodyId,
-          tolerance: 0.01,
-          transaction_id: source.transactionId,
-        }))) as AdvancedFeatureOutcome;
+        const beforeHash = runtime.semanticHash();
+        if (source.resultMode === "cut"
+          && (event.data.baseDocumentHash !== beforeHash || event.data.baseRevision !== before.revision)) {
+          scope.postMessage({
+            type: "operation-error",
+            code: "extrude_stale_preview_basis",
+            category: "stale_reference",
+            field: "extrude.preview_basis",
+            referencedEntityIds: source.targetBodyId ? [source.targetBodyId] : [],
+            message: `Cut preview basis ${String(event.data.baseRevision)}:${String(event.data.baseDocumentHash)} does not match accepted revision ${before.revision}:${beforeHash}`,
+            recovery: "Preview the Cut again against the current accepted document",
+            semanticHash: beforeHash,
+          } satisfies WorkerResponse);
+          return;
+        }
+        let outcome: AdvancedFeatureOutcome;
+        try {
+          requirePlanarFaceAuthority(source.support);
+          outcome = JSON.parse(runtime.commitSketchExtrudeJson(JSON.stringify({
+            sketch: source.sketch,
+            support: source.support,
+            distance_nanometers: event.data.valueNanometers,
+            direction: (event.data.direction ?? "positive") as ExtrudeDirection,
+            feature_id: source.featureId,
+            body_id: source.bodyId,
+            result_mode: source.resultMode,
+            ...(source.targetBodyId ? { target_body_id: source.targetBodyId } : {}),
+            tolerance: 0.01,
+            ...(source.profileGeometryIds ? { profile_geometry_ids: source.profileGeometryIds } : {}),
+            transaction_id: source.transactionId,
+          }))) as AdvancedFeatureOutcome;
+        } catch (error) {
+          if (runtime.semanticHash() !== beforeHash) throw new Error("Extrude support preflight failure mutated the accepted document");
+          if (error instanceof PlanarFaceAuthorityError) {
+            scope.postMessage({
+              type: "operation-error", code: error.diagnostic.code, category: error.diagnostic.category, field: error.diagnostic.field,
+              referencedEntityIds: error.diagnostic.referencedBodyIds, message: error.message,
+              recovery: "Select a current planar face or explicitly repair the retained reference", semanticHash: beforeHash,
+            } satisfies WorkerResponse);
+            return;
+          }
+          const support = constructionPlaneSupportRuntimeErrorMapping(error);
+          if (!support && source.resultMode === "cut") {
+            const diagnostic = normalizeExtrudeCutFailure(error, source.targetBodyId);
+            scope.postMessage({
+              type: "operation-error", code: diagnostic.code, category: diagnostic.category, field: diagnostic.field,
+              referencedEntityIds: diagnostic.referencedEntityIds, message: diagnostic.message,
+              recovery: diagnostic.recovery, semanticHash: beforeHash,
+            } satisfies WorkerResponse);
+            return;
+          }
+          if (!support) throw error;
+          scope.postMessage({
+            type: "operation-error", code: support.code, category: "reference", field: support.field,
+            referencedEntityIds: support.referencedEntityIds,
+            message: error instanceof Error ? error.message : String(error), recovery: support.recovery,
+            semanticHash: beforeHash,
+          } satisfies WorkerResponse);
+          return;
+        }
         if (!outcome.accepted) {
-          scope.postMessage({ type: "operation-error", code: "extrude_refused", message: outcome.error?.message ?? "Extrude was refused", recovery: outcome.error?.recovery, semanticHash: outcome.document_hash } satisfies WorkerResponse);
+          if (source.resultMode === "cut") {
+            if (runtime.semanticHash() !== beforeHash || outcome.document_hash !== beforeHash) {
+              throw new Error("refused Cut commit mutated the accepted document");
+            }
+            const diagnostic = normalizeExtrudeCutFailure(outcome, source.targetBodyId);
+            scope.postMessage({
+              type: "operation-error", code: diagnostic.code, category: diagnostic.category, field: diagnostic.field,
+              referencedEntityIds: diagnostic.referencedEntityIds, message: diagnostic.message,
+              recovery: diagnostic.recovery, semanticHash: beforeHash,
+            } satisfies WorkerResponse);
+            return;
+          }
+          const message = outcome.error?.message ?? "Extrude was refused";
+          const support = constructionPlaneSupportRuntimeErrorMapping(message);
+          scope.postMessage(support
+            ? { type: "operation-error", code: support.code, category: "reference", field: support.field, referencedEntityIds: support.referencedEntityIds, message, recovery: support.recovery, semanticHash: outcome.document_hash }
+            : { type: "operation-error", code: "extrude_refused", message, recovery: outcome.error?.recovery, semanticHash: outcome.document_hash } satisfies WorkerResponse);
           return;
         }
         const transaction = acceptedTransactionAfter(before.revision);
@@ -432,19 +651,80 @@ scope.addEventListener("message", async (event) => {
     }
     if (event.data?.type === "preview-extrude") {
       try {
-        postExtrudePreview(event.data.requestId, event.data.valueNanometers, event.data.source);
+        postExtrudePreview(event.data.requestId, event.data.valueNanometers, (event.data.direction ?? "positive") as ExtrudeDirection, event.data.source);
       } catch (error) {
+        const source = event.data.source as SketchExtrudeSource | undefined;
+        const face = error instanceof PlanarFaceAuthorityError ? error.diagnostic : undefined;
+        const support = constructionPlaneSupportRuntimeErrorMapping(error);
+        const cut = !face && !support && source?.resultMode === "cut" ? normalizeExtrudeCutFailure(error, source.targetBodyId) : undefined;
         scope.postMessage({
           type: "operation-error",
-          code: "extrude_preview_refused",
-          message: error instanceof Error ? error.message : String(error),
-          recovery: "Select one closed profile and retry",
+          code: face?.code ?? support?.code ?? cut?.code ?? "extrude_preview_refused",
+          ...(face ? { category: face.category, field: face.field, referencedEntityIds: face.referencedBodyIds }
+            : support ? { category: "reference" as const, field: support.field, referencedEntityIds: support.referencedEntityIds }
+              : cut ? { category: cut.category, field: cut.field, referencedEntityIds: cut.referencedEntityIds } : {}),
+          message: cut?.message ?? (error instanceof Error ? error.message : String(error)),
+          recovery: face ? "Select a current planar face or explicitly repair the retained reference" : support?.recovery ?? cut?.recovery ?? "Select one closed profile and retry",
           semanticHash: runtime?.semanticHash(),
         } satisfies WorkerResponse);
       }
     }
     if (event.data?.type === "restore-accepted-packet") {
       postPacket();
+    }
+    if (event.data?.type === "preview-offset-construction-plane") {
+      if (!runtime) throw new Error("part runtime is not initialized");
+      const beforeHash = runtime.semanticHash();
+      try {
+        const outcome = JSON.parse((runtime as ConstructionPlaneRuntime).previewOffsetConstructionPlaneJson(JSON.stringify(event.data.request))) as {
+          accepted_document_hash: string;
+          plane: OffsetConstructionPlaneDefinition;
+          frame: OffsetConstructionPlaneFrame | null;
+        };
+        if (outcome.plane.suppressed !== event.data.request.suppressed
+          || (outcome.plane.suppressed ? outcome.frame !== null : outcome.frame === null)) {
+          throw new Error("construction plane preview returned an inconsistent suppression frame");
+        }
+        if (runtime.semanticHash() !== beforeHash || outcome.accepted_document_hash !== beforeHash) throw new Error("construction plane preview mutated the accepted document");
+        scope.postMessage({ type: "offset-construction-plane-preview", requestId: event.data.requestId, semanticHash: beforeHash, plane: outcome.plane, frame: outcome.frame } satisfies WorkerResponse);
+      } catch (error) {
+        if (runtime.semanticHash() !== beforeHash) throw new Error("construction plane preview failure mutated the accepted document");
+        const mapping = constructionPlaneRuntimeErrorMapping(error, "preview");
+        scope.postMessage({ type: "operation-error", code: mapping.code, category: mapping.category, field: mapping.field, referencedEntityIds: mapping.referencedEntityIds, requestId: event.data.requestId, semanticHash: beforeHash, message: error instanceof Error ? error.message : String(error), recovery: mapping.recovery } satisfies WorkerResponse);
+      }
+    }
+    if (event.data?.type === "commit-offset-construction-plane") {
+      if (!runtime) throw new Error("part runtime is not initialized");
+      const beforeHash = runtime.semanticHash();
+      const request = event.data.request as OffsetConstructionPlaneRequest;
+      try {
+        const outcome = JSON.parse((runtime as ConstructionPlaneRuntime).commitOffsetConstructionPlaneJson(JSON.stringify(request))) as {
+          accepted: boolean;
+          document_hash: string;
+          document_json: string;
+          plane: OffsetConstructionPlaneDefinition;
+          frame: OffsetConstructionPlaneFrame | null;
+          transaction: AcceptedTransaction;
+        };
+        if (!outcome.accepted
+          || outcome.transaction.base_revision !== request.base_revision
+          || outcome.document_hash !== runtime.semanticHash()
+          || outcome.document_json !== runtime.documentJson()
+          || outcome.plane.suppressed !== request.suppressed
+          || (outcome.plane.suppressed ? outcome.frame !== null : outcome.frame === null)) {
+          throw new Error("construction plane commit returned inconsistent acceptance evidence");
+        }
+        postDocument({ transaction: outcome.transaction, recompute: constructionPlaneRecomputeReport(request.plane_id, outcome.transaction) });
+        // Suppression intentionally makes descendants unevaluable. No valid
+        // replacement packet exists, so retain the UI's last accepted body
+        // until unsuppression or another valid recompute produces one.
+        if (!outcome.plane.suppressed) postPacket();
+        scope.postMessage({ type: "offset-construction-plane-completed", requestId: event.data.requestId, semanticHash: outcome.document_hash, plane: outcome.plane, frame: outcome.frame, transaction: outcome.transaction } satisfies WorkerResponse);
+      } catch (error) {
+        if (runtime.semanticHash() !== beforeHash) throw error;
+        const mapping = constructionPlaneRuntimeErrorMapping(error, "commit");
+        scope.postMessage({ type: "operation-error", code: mapping.code, category: mapping.category, field: mapping.field, referencedEntityIds: mapping.referencedEntityIds, requestId: event.data.requestId, semanticHash: beforeHash, message: error instanceof Error ? error.message : String(error), recovery: mapping.recovery } satisfies WorkerResponse);
+      }
     }
     if (event.data?.type === "retain-step-source") {
       if (!runtime) throw new Error("part runtime is not initialized");
@@ -583,14 +863,50 @@ scope.addEventListener("message", async (event) => {
       if (!runtime) throw new Error("part runtime is not initialized");
       const beforeHash = runtime.semanticHash();
       const document = JSON.parse(runtime.documentJson()) as RuntimeDocumentJournal;
+      try {
+        requirePlanarFaceAuthority(event.data.support as SketchSupport, event.data.supportReference as TopologyReferenceView | undefined);
+      } catch (error) {
+        if (!(error instanceof PlanarFaceAuthorityError)) throw error;
+        scope.postMessage({
+          type: "operation-error", code: error.diagnostic.code, category: error.diagnostic.category, field: error.diagnostic.field,
+          referencedEntityIds: error.diagnostic.referencedBodyIds, requestId: event.data.requestId,
+          message: error.message, recovery: "Select a current planar face or explicitly repair the retained reference", semanticHash: beforeHash,
+        } satisfies WorkerResponse);
+        return;
+      }
       const outcome = JSON.parse(runtime.solveSketchJson(JSON.stringify({ transaction_id: event.data.transactionId, sketch: event.data.sketch, support: event.data.support, ...(event.data.supportReference ? { support_reference: event.data.supportReference } : {}) })));
       if (!outcome.accepted) {
         if (runtime.semanticHash() !== beforeHash || outcome.document_hash !== beforeHash) throw new Error("refused sketch solve mutated the accepted document");
       } else {
-        const transaction = acceptedTransactionAfter(document.revision);
-        if (!transaction) throw new Error("accepted sketch solve has no durable transaction");
+        const afterSolve = JSON.parse(runtime.documentJson()) as RuntimeDocumentJournal & {
+          feature_definitions_v2?: Record<string, { operation?: { kind?: string; profile?: { kind?: string; sketch?: string } } }>;
+        };
+        const downstreamExtrudes = Object.entries(afterSolve.feature_definitions_v2 ?? {})
+          .filter(([, definition]) => definition.operation?.kind === "extrude"
+            && definition.operation.profile?.kind === "sketch_region"
+            && definition.operation.profile.sketch === (event.data.sketch as Sketch).id)
+          .map(([featureId]) => featureId)
+          .sort();
+        const solveTransaction = acceptedTransactionAfter(document.revision);
+        if (!solveTransaction) throw new Error("accepted sketch solve has no durable transaction");
         const baseSketch = event.data.sketch.id === "sketch:rectangle";
-        postDocument({ transaction, recompute: baseSketch ? { dirtyRoots: ["feature:rectangle-sketch"], evaluationOrder: ["feature:rectangle-sketch", "feature:extrude"] } : { dirtyRoots: [], evaluationOrder: [] } });
+        postDocument({ transaction: solveTransaction, recompute: baseSketch
+          ? { dirtyRoots: ["feature:rectangle-sketch"], evaluationOrder: ["feature:rectangle-sketch", "feature:extrude"] }
+          : { dirtyRoots: downstreamExtrudes, evaluationOrder: [] } });
+        for (const featureId of downstreamExtrudes) {
+          const beforeRecompute = (JSON.parse(runtime.documentJson()) as RuntimeDocumentJournal).revision;
+          const recomputed = JSON.parse(runtime.recomputeFromHereJson(featureId)) as {
+            accepted?: boolean;
+            plan?: { requested_from?: string; evaluation_order?: string[] };
+          };
+          if (recomputed.accepted !== true) throw new Error(`downstream Sketch Extrude recompute refused for ${featureId}`);
+          const recomputeTransaction = acceptedTransactionAfter(beforeRecompute);
+          if (!recomputeTransaction) throw new Error(`accepted downstream Sketch Extrude recompute has no transaction for ${featureId}`);
+          postDocument({ transaction: recomputeTransaction, recompute: {
+            dirtyRoots: [recomputed.plan?.requested_from ?? featureId],
+            evaluationOrder: recomputed.plan?.evaluation_order ?? [featureId],
+          } });
+        }
         postPacket();
       }
       scope.postMessage({ type: "sketch-commit", requestId: event.data.requestId, accepted: outcome.accepted, solve: outcome.solve, semanticHash: runtime.semanticHash() } satisfies WorkerResponse);
@@ -845,19 +1161,122 @@ scope.addEventListener("message", async (event) => {
         postDocument({ transaction: result.transaction, recompute: { dirtyRoots: [result.plan.requested_from], evaluationOrder: result.plan.evaluation_order } });
         postPacket();
       }
-      scope.postMessage({ type: "recompute-from-here", accepted: result.accepted, plan: result.plan, diagnostics: result.diagnostics, error: result.error, semanticHash: result.document_hash } satisfies WorkerResponse);
+      scope.postMessage({
+        type: "recompute-from-here",
+        accepted: result.accepted,
+        plan: result.plan,
+        recomputed: result.recomputed,
+        transaction: result.transaction,
+        diagnostics: result.diagnostics,
+        error: result.error,
+        semanticHash: result.document_hash,
+      } satisfies WorkerResponse);
       const durable = JSON.parse(runtime.documentJson()) as { topology_references?: Record<string, TopologyReferenceView> };
       const observedTopology = Object.values(durable.topology_references ?? {});
       scope.postMessage({ type: "feature-services", selected: event.data.feature, services: JSON.parse(runtime.featureServicesJson(event.data.feature)), repair: JSON.parse(runtime.repairInspectionJson(JSON.stringify(observedTopology))), observedTopology } satisfies WorkerResponse);
     }
+    if (event.data?.type === "preview-topology-rebind") {
+      if (!runtime) throw new Error("part runtime is not initialized");
+      const beforeHash = runtime.semanticHash();
+      const before = JSON.parse(runtime.documentJson()) as RuntimeDocumentJournal;
+      try {
+        const outcome = JSON.parse((runtime as TopologyRebindRuntime).previewTopologyRebindJson(JSON.stringify({
+          selected: event.data.selected,
+          observed: event.data.observedTopology,
+          tolerance: 0.01,
+        }))) as {
+          accepted: boolean;
+          base_document_hash: string;
+          base_revision: number;
+          selected: string;
+          candidate_frame: OffsetConstructionPlaneFrame;
+          body_id: string;
+          render: RuntimePacketJson;
+        };
+        if (!outcome.accepted || outcome.base_document_hash !== beforeHash || outcome.base_revision !== before.revision
+          || outcome.selected !== event.data.selected || runtime.semanticHash() !== beforeHash) {
+          throw new Error("topology repair preview returned inconsistent non-mutating basis evidence");
+        }
+        const rendered = runtimePacket(outcome.render);
+        if (rendered.bodyId !== outcome.body_id) throw new Error("topology repair preview returned inconsistent body evidence");
+        pendingTopologyRebind = {
+          requestId: event.data.requestId,
+          selected: outcome.selected,
+          observedTopology: event.data.observedTopology,
+          baseDocumentHash: outcome.base_document_hash,
+          baseRevision: outcome.base_revision,
+        };
+        const packet = rendered.packet;
+        const transfer = Object.values(packet).filter((value): value is ArrayBufferView => ArrayBuffer.isView(value)).map((value) => value.buffer);
+        scope.postMessage({
+          type: "topology-rebind-preview",
+          requestId: event.data.requestId,
+          selected: outcome.selected,
+          baseDocumentHash: outcome.base_document_hash,
+          baseRevision: outcome.base_revision,
+          candidateFrame: outcome.candidate_frame,
+          semanticHash: beforeHash,
+          bodyId: rendered.bodyId,
+          packet,
+          transferredBytes: transfer.reduce((total, buffer) => total + buffer.byteLength, 0),
+        } satisfies WorkerResponse, transfer);
+      } catch (error) {
+        pendingTopologyRebind = undefined;
+        if (runtime.semanticHash() !== beforeHash) throw new Error("refused topology repair preview mutated the accepted document");
+        scope.postMessage({
+          type: "operation-error",
+          code: "topology_rebind_preview_refused",
+          message: error instanceof Error ? error.message : String(error),
+          recovery: "inspect a current candidate and request a new repair preview",
+          requestId: event.data.requestId,
+          semanticHash: beforeHash,
+        } satisfies WorkerResponse);
+      }
+    }
+    if (event.data?.type === "cancel-topology-rebind-preview") {
+      if (!runtime) throw new Error("part runtime is not initialized");
+      const beforeHash = runtime.semanticHash();
+      if (pendingTopologyRebind?.requestId === event.data.requestId) pendingTopologyRebind = undefined;
+      postPacket();
+      scope.postMessage({ type: "topology-rebind-preview-cancelled", requestId: event.data.requestId, semanticHash: beforeHash } satisfies WorkerResponse);
+    }
     if (event.data?.type === "explicit-rebind") {
       if (!runtime) throw new Error("part runtime is not initialized");
       const before = JSON.parse(runtime.documentJson()) as RuntimeDocumentJournal;
-      const result = JSON.parse(runtime.explicitRebindJson(JSON.stringify({ transaction_id: event.data.transactionId, selected: event.data.selected, observed: event.data.observedTopology }))) as { accepted: boolean; selected: string; transaction: AcceptedTransaction; document_hash: string };
-      if (!result.accepted || !result.transaction || result.transaction.base_revision !== before.revision) throw new Error("explicit topology rebind returned inconsistent acceptance evidence");
-      postDocument({ transaction: result.transaction });
-      scope.postMessage({ type: "repair-committed", selected: result.selected, transaction: result.transaction, semanticHash: result.document_hash } satisfies WorkerResponse);
-      postPacket();
+      const beforeHash = runtime.semanticHash();
+      try {
+        const pending = pendingTopologyRebind;
+        if (!pending || pending.requestId !== event.data.requestId || pending.selected !== event.data.selected
+          || pending.baseDocumentHash !== event.data.baseDocumentHash || pending.baseRevision !== event.data.baseRevision
+          || pending.baseDocumentHash !== beforeHash || pending.baseRevision !== before.revision) {
+          throw new Error("explicit topology rebind does not match the current preview basis");
+        }
+        const result = JSON.parse(runtime.explicitRebindJson(JSON.stringify({
+          transaction_id: event.data.transactionId,
+          selected: event.data.selected,
+          observed: pending.observedTopology,
+          base_document_hash: event.data.baseDocumentHash,
+          base_revision: event.data.baseRevision,
+        }))) as { accepted: boolean; selected: string; transaction: AcceptedTransaction; document_hash: string };
+        if (!result.accepted || !result.transaction || result.transaction.base_revision !== before.revision || result.selected !== pending.selected) {
+          throw new Error("explicit topology rebind returned inconsistent acceptance evidence");
+        }
+        pendingTopologyRebind = undefined;
+        postDocument({ transaction: result.transaction });
+        scope.postMessage({ type: "repair-committed", selected: result.selected, transaction: result.transaction, semanticHash: result.document_hash } satisfies WorkerResponse);
+        postPacket();
+      } catch (error) {
+        pendingTopologyRebind = undefined;
+        if (runtime.semanticHash() !== beforeHash) throw new Error("refused explicit topology rebind mutated the accepted document");
+        scope.postMessage({
+          type: "operation-error",
+          code: "topology_rebind_commit_refused",
+          message: error instanceof Error ? error.message : String(error),
+          recovery: "request a new repair preview from the current accepted document",
+          requestId: event.data.requestId,
+          semanticHash: beforeHash,
+        } satisfies WorkerResponse);
+      }
     }
     if (event.data?.type === "timeline-rollback") {
       if (!runtime) throw new Error("part runtime is not initialized");

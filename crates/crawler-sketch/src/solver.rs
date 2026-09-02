@@ -1065,10 +1065,13 @@ fn reflect_across_line(point: Point2, line: &Line) -> Point2 {
     )
 }
 
+type EndpointHandlePair = (PointRef, PointRef);
+type ClosestEndpointPair = (EndpointHandlePair, EndpointHandlePair);
+
 fn endpoint_handle_refs(
     id: &GeometryId,
     geometry: &Geometry,
-) -> Result<[(PointRef, PointRef); 2], SketchError> {
+) -> Result<[EndpointHandlePair; 2], SketchError> {
     let pair = |endpoint, handle| {
         (
             PointRef::new(id.clone(), endpoint),
@@ -1106,7 +1109,7 @@ fn closest_endpoint_pair(
     sketch: &Sketch,
     first: &GeometryId,
     second: &GeometryId,
-) -> Result<((PointRef, PointRef), (PointRef, PointRef)), SketchError> {
+) -> Result<ClosestEndpointPair, SketchError> {
     let a = endpoint_handle_refs(first, &sketch.geometry[first].geometry)?;
     let b = endpoint_handle_refs(second, &sketch.geometry[second].geometry)?;
     let mut best = (a[0].clone(), b[0].clone());
@@ -1576,8 +1579,8 @@ fn scale_geometry_measure(
     let factor = target / current;
     let pivot = crate::evaluate_curve(&sketch.geometry[id].geometry, 0.0);
     let scale = |point: &mut Point2| {
-        point.x_nm = pivot.x_nm + (((*point).x_nm - pivot.x_nm) as f64 * factor).round() as i64;
-        point.y_nm = pivot.y_nm + (((*point).y_nm - pivot.y_nm) as f64 * factor).round() as i64;
+        point.x_nm = pivot.x_nm + ((point.x_nm - pivot.x_nm) as f64 * factor).round() as i64;
+        point.y_nm = pivot.y_nm + ((point.y_nm - pivot.y_nm) as f64 * factor).round() as i64;
     };
     let entity = sketch
         .geometry
@@ -2288,66 +2291,46 @@ fn offset_distance_satisfied(
     let offset_geometry = &sketch.geometry[offset].geometry;
     let start = start_millionths as f64 / 1_000_000.0;
     let end = end_millionths as f64 / 1_000_000.0;
-    fn interval_ok(
-        source: &Geometry,
-        offset: &Geometry,
+
+    struct OffsetIntervalContext<'a> {
+        source: &'a Geometry,
+        offset: &'a Geometry,
         distance_nm: i64,
         start: f64,
         end: f64,
-        a: f64,
-        b: f64,
-        depth: u8,
-    ) -> bool {
+    }
+
+    fn interval_ok(context: &OffsetIntervalContext<'_>, a: f64, b: f64, depth: u8) -> bool {
         let residual = |u: f64| {
-            let source_parameter = start + (end - start) * u;
+            let source_parameter = context.start + (context.end - context.start) * u;
             (distance(
-                crate::evaluate_curve(source, source_parameter),
-                crate::evaluate_curve(offset, u),
-            ) - distance_nm.abs() as f64)
+                crate::evaluate_curve(context.source, source_parameter),
+                crate::evaluate_curve(context.offset, u),
+            ) - context.distance_nm.abs() as f64)
                 .abs()
         };
         let middle = (a + b) * 0.5;
         let ra = residual(a);
         let rm = residual(middle);
         let rb = residual(b);
-        let tolerance =
-            (LENGTH_TOLERANCE_NM * 2.0).max(crate::curve::geometry_scale_nm(source) * 1.0e-3);
+        let tolerance = (LENGTH_TOLERANCE_NM * 2.0)
+            .max(crate::curve::geometry_scale_nm(context.source) * 1.0e-3);
         if ra > tolerance || rm > tolerance || rb > tolerance {
             return false;
         }
         if depth >= 20 || ((rm - (ra + rb) * 0.5).abs() <= 1.0 && b - a <= 1.0 / 64.0) {
             return true;
         }
-        interval_ok(
-            source,
-            offset,
-            distance_nm,
-            start,
-            end,
-            a,
-            middle,
-            depth + 1,
-        ) && interval_ok(
-            source,
-            offset,
-            distance_nm,
-            start,
-            end,
-            middle,
-            b,
-            depth + 1,
-        )
+        interval_ok(context, a, middle, depth + 1) && interval_ok(context, middle, b, depth + 1)
     }
-    Ok(interval_ok(
-        source_geometry,
-        offset_geometry,
+    let context = OffsetIntervalContext {
+        source: source_geometry,
+        offset: offset_geometry,
         distance_nm,
         start,
         end,
-        0.0,
-        1.0,
-        0,
-    ))
+    };
+    Ok(interval_ok(&context, 0.0, 1.0, 0))
 }
 
 fn tangent_satisfied(

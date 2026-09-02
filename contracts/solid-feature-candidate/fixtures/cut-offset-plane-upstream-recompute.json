@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "fixture_id": "cut-offset-plane-upstream-recompute",
+  "story_ids": ["E3D-S5-02", "E3D-S5-03"],
+  "description": "Editing the signed Cut support offset from 3.0 mm to 2.5 mm recomputes exact target geometry without plane, feature, or target identity churn.",
+  "units": { "length": "nanometer", "angle": "radian" },
+  "input": {
+    "schema_version": 5,
+    "kind": "single_target_cut",
+    "payload": {
+      "result_mode": "cut",
+      "target_body_ids": ["body:part"],
+      "target_component_id": "component:root",
+      "target_seed": { "body_id": "body:part", "component_id": "component:root", "width_nm": 10000000, "height_nm": 6000000, "distance_nm": 4000000 },
+      "support": { "kind": "construction_plane", "plane": "construction-plane:cut-offset-edit", "offset_nm": 3000000 },
+      "support_edit": { "offset_nm": 2500000 },
+      "profile": { "kind": "rectangle", "min_nm": [3000000, 2000000], "max_nm": [7000000, 4000000] },
+      "distance_nm": 1500000,
+      "direction": "negative"
+    }
+  },
+  "expected": {
+    "kind": "success",
+    "result": {
+      "retained_target_body_id": "body:part",
+      "affected_body_ids": ["body:part"],
+      "created_body_count": 0,
+      "body_count": 1,
+      "manifold": true,
+      "orientation": "outward",
+      "aabb_nm": [0, 0, 0, 10000000, 6000000, 4000000],
+      "signed_volume_nm3": 228000000000000000000,
+      "surface_area_nm2": 282000000000000,
+      "centroid_nm": [5000000, 3000000, 2013157.894736842],
+      "analytic_classification": ["plane"],
+      "construction_plane_id_retained": true,
+      "feature_id_retained": true,
+      "target_body_id_retained": true,
+      "support_edit_recomputed": true,
+      "affected_scope_stable": true
+    }
+  },
+  "tolerances": { "relative": 1e-9, "aabb_nm": 1, "signed_volume_nm3": 1000000, "surface_area_nm2": 1000, "centroid_nm": 1 },
+  "identity_sets": { "retained": ["body:part", "construction-plane:cut-offset-edit", "feature:cut-offset-plane-upstream-recompute"], "replaced": [] },
+  "lifecycle_steps": ["preview", "commit", "edit", "recompute"],
+  "evidence_test_ids": ["single-target-cut-contracts", "native-single-target-cut", "wasm-single-target-cut", "single-target-cut-native-wasm-parity"],
+  "legacy_provenance": null
+}

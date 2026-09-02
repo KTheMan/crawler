@@ -62,6 +62,21 @@ test("catalog-backed Extrude retains preview focus behavior", async ({ page }) =
   await expect(page.locator("#operation-state")).toContainText("Extrude preview");
 });
 
+test("Extrude direction control exactly mirrors the text-choice contract", async ({ page }) => {
+  await page.locator("#start-pad").click();
+  const direction = page.getByRole("combobox", { name: "Extrude direction mode" });
+  await expect(direction).toBeVisible();
+  await expect(direction).toHaveAttribute("data-value-kind", "text");
+  expect(await direction.locator("option").evaluateAll((options) => options.map((option) => ({
+    value: (option as HTMLOptionElement).value,
+    label: option.textContent,
+  })))).toEqual([
+    { value: "positive", label: "Forward" },
+    { value: "negative", label: "Reverse" },
+    { value: "symmetric", label: "Symmetric" },
+  ]);
+});
+
 test("rendered transform contracts expose only qualified selection kinds", async ({ page }) => {
   const cases = [
     ["mirror", "crawler.part.mirror", "plane", "plane · 1 required"],

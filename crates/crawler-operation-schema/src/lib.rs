@@ -55,11 +55,26 @@ pub struct OperationSchema {
     pub output_kind: OutputKind,
     pub input_slots: Vec<InputSlotSchema>,
     pub parameters: Vec<ParameterSchema>,
+    /// Declarative cross-field requirements. Empty for legacy schemas.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub invocation_constraints: Vec<InvocationConstraint>,
     pub preview: PreviewSchema,
     #[serde(default)]
     pub lifecycle: LifecycleSchema,
     #[serde(default)]
     pub enablement: EnablementSchema,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum InvocationConstraint {
+    InputCountWhenTextParameter {
+        parameter: String,
+        equals: String,
+        input: String,
+        minimum_count: u32,
+        maximum_count: Option<u32>,
+    },
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -637,6 +652,64 @@ impl OperationSchema {
             }
         }
 
+        for constraint in &self.invocation_constraints {
+            match constraint {
+                InvocationConstraint::InputCountWhenTextParameter {
+                    parameter,
+                    equals,
+                    input,
+                    minimum_count,
+                    maximum_count,
+                } => {
+                    if !matches!(
+                        invocation.parameters.get(parameter),
+                        Some(ParameterValue::Text(value)) if value == equals
+                    ) {
+                        continue;
+                    }
+                    let values = invocation
+                        .inputs
+                        .get(input)
+                        .map(Vec::as_slice)
+                        .unwrap_or(&[]);
+                    let label = self
+                        .input_slots
+                        .iter()
+                        .find(|slot| slot.key == *input)
+                        .map(|slot| slot.label.as_str())
+                        .unwrap_or(input);
+                    if values.len() < *minimum_count as usize {
+                        errors.push(self.error(
+                            invocation,
+                            ErrorCode::MissingInput,
+                            ErrorLocation::Input { key: input.clone() },
+                            Recoverability::ReselectInput,
+                            &format!(
+                                "{label} requires at least {minimum_count} selection(s) when {parameter} is {equals}"
+                            ),
+                            UserActionKind::FocusInput,
+                            &format!("Select {label}"),
+                            input,
+                        ));
+                    } else if maximum_count.is_some_and(|maximum| values.len() > maximum as usize) {
+                        let maximum = maximum_count.expect("maximum was checked");
+                        errors.push(self.error(
+                            invocation,
+                            ErrorCode::InvalidInputCount,
+                            ErrorLocation::Input { key: input.clone() },
+                            Recoverability::ReselectInput,
+                            &format!(
+                                "{label} accepts no more than {maximum} selection(s) when {parameter} is {equals}"
+                            ),
+                            UserActionKind::FocusInput,
+                            &format!("Reselect {label}"),
+                            input,
+                        ));
+                    }
+                }
+            }
+        }
+
         errors
     }
 
@@ -706,6 +779,59 @@ impl OperationSchema {
                     format!("{path}.default"),
                     "default text value must be an allowed choice",
                 ));
+            }
+        }
+
+        for (index, constraint) in self.invocation_constraints.iter().enumerate() {
+            match constraint {
+                InvocationConstraint::InputCountWhenTextParameter {
+                    parameter,
+                    equals,
+                    input,
+                    minimum_count,
+                    maximum_count,
+                } => {
+                    let path = format!("invocation_constraints.{index}");
+                    let Some(parameter_schema) = self
+                        .parameters
+                        .iter()
+                        .find(|candidate| candidate.key == *parameter)
+                    else {
+                        errors.push(definition_error(
+                            format!("{path}.parameter"),
+                            "constraint parameter must name a declared parameter",
+                        ));
+                        continue;
+                    };
+                    if parameter_schema.value_kind != ParameterValueKind::Text
+                        || (!parameter_schema.choices.is_empty()
+                            && !parameter_schema.choices.contains(equals))
+                    {
+                        errors.push(definition_error(
+                            format!("{path}.equals"),
+                            "constraint value must be a declared text choice",
+                        ));
+                    }
+                    let Some(slot) = self.input_slots.iter().find(|slot| slot.key == *input) else {
+                        errors.push(definition_error(
+                            format!("{path}.input"),
+                            "constraint input must name a declared input slot",
+                        ));
+                        continue;
+                    };
+                    if *minimum_count < slot.minimum_count
+                        || maximum_count.is_some_and(|maximum| {
+                            slot.maximum_count
+                                .is_some_and(|slot_maximum| maximum > slot_maximum)
+                        })
+                        || maximum_count.is_some_and(|maximum| maximum < *minimum_count)
+                    {
+                        errors.push(definition_error(
+                            format!("{path}.minimum_count"),
+                            "constraint counts must remain inside the declared input-slot bounds",
+                        ));
+                    }
+                }
             }
         }
 

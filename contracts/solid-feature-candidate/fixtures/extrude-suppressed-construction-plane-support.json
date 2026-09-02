@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "fixture_id": "extrude-suppressed-construction-plane-support",
+  "story_ids": [
+    "E3D-S3-02",
+    "E3D-S3-03",
+    "E3D-S3-04"
+  ],
+  "description": "A suppressed construction-plane Extrude support is refused with a field-addressed repair and recovers without replacing the accepted baseline body.",
+  "units": {
+    "length": "nanometer",
+    "angle": "radian"
+  },
+  "input": {
+    "schema_version": 3,
+    "kind": "extrude_suppressed_construction_plane_support_v3",
+    "payload": {
+      "plane": "construction-plane:suppressed-support",
+      "offset_parameter": "parameter:suppressed-support-offset",
+      "invalid_dependency": "origin-plane:missing-dependency"
+    }
+  },
+  "expected": {
+    "kind": "structured_error",
+    "error": {
+      "category": "reference",
+      "code": "suppressed_construction_plane_support",
+      "field_path": "extrude.support",
+      "referenced_entity_ids": [
+        "construction-plane:suppressed-support"
+      ]
+    }
+  },
+  "tolerances": {
+    "relative": 1E-09,
+    "aabb_nm": 1,
+    "signed_volume_nm3": 1000000,
+    "surface_area_nm2": 1000,
+    "centroid_nm": 1
+  },
+  "identity_sets": {
+    "retained": [
+      "body:accepted-before-construction-plane-error"
+    ],
+    "replaced": []
+  },
+  "lifecycle_steps": [
+    "preview",
+    "save",
+    "reopen",
+    "repair"
+  ],
+  "evidence_test_ids": [
+    "native-construction-plane-offset-extrude",
+    "wasm-construction-plane-offset-extrude",
+    "construction-plane-offset-native-wasm-parity"
+  ],
+  "legacy_provenance": null
+}

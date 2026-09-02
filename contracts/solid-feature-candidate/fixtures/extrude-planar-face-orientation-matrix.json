@@ -1,0 +1,477 @@
+{
+  "schema_version": 1,
+  "fixture_id": "extrude-planar-face-orientation-matrix",
+  "story_ids": [
+    "E3D-S4-01",
+    "E3D-S4-02",
+    "E3D-S4-03"
+  ],
+  "description": "Current top, bottom, and positive-X planar faces of a ten millimeter reference prism authorize exact native frames and Blind New Body Extrudes covering rectangle orientation/direction, line/arc, and circle-with-hole profiles.",
+  "units": {
+    "length": "nanometer",
+    "angle": "radian"
+  },
+  "input": {
+    "schema_version": 4,
+    "kind": "extrude_planar_face_orientation_matrix_v4",
+    "payload": {
+      "support_body": "body:part",
+      "support_producer": "feature:extrude",
+      "support_component": "component:root",
+      "faces": [
+        "cap_positive_z",
+        "cap_negative_z",
+        "side_positive_x"
+      ],
+      "profiles": [
+        "rectangle-4x3mm-contained-on-each-face",
+        "line-arc-capsule",
+        "circle-annulus"
+      ],
+      "distance_nm": 2000000,
+      "directions": [
+        "positive",
+        "negative",
+        "symmetric"
+      ],
+      "result_mode": "new_body"
+    }
+  },
+  "expected": {
+    "kind": "success",
+    "result": {
+      "case_count": 11,
+      "body_count_each": 1,
+      "manifold_each": true,
+      "orientation_each": "outward",
+      "authority_source": "accepted_body_snapshot_solid_json",
+      "analytic_surface": "plane",
+      "handedness": "right",
+      "scale_millionths": 1000000,
+      "directions_qualified": [
+        "positive",
+        "negative",
+        "symmetric"
+      ],
+      "profile_curve_kinds_qualified": [
+        "line",
+        "arc",
+        "circle"
+      ],
+      "hole_profile_qualified": true,
+      "one_side_signed_volume_nm3": 24000000000000000000,
+      "symmetric_signed_volume_nm3": 48000000000000000000,
+      "support_frames": {
+        "cap_positive_z": {
+          "origin_nm": [
+            0,
+            0,
+            10000000
+          ],
+          "x_axis_millionths": [
+            1000000,
+            0,
+            0
+          ],
+          "y_axis_millionths": [
+            0,
+            1000000,
+            0
+          ],
+          "normal_millionths": [
+            0,
+            0,
+            1000000
+          ]
+        },
+        "cap_negative_z": {
+          "origin_nm": [
+            0,
+            0,
+            0
+          ],
+          "x_axis_millionths": [
+            1000000,
+            0,
+            0
+          ],
+          "y_axis_millionths": [
+            0,
+            -1000000,
+            0
+          ],
+          "normal_millionths": [
+            0,
+            0,
+            -1000000
+          ]
+        },
+        "side_positive_x": {
+          "origin_nm": [
+            10000000,
+            0,
+            0
+          ],
+          "x_axis_millionths": [
+            0,
+            1000000,
+            0
+          ],
+          "y_axis_millionths": [
+            0,
+            0,
+            1000000
+          ],
+          "normal_millionths": [
+            1000000,
+            0,
+            0
+          ]
+        }
+      },
+      "exact_coordinate_round_trips": {
+        "cap_positive_z": {
+          "local_nm": [
+            1000000,
+            2000000,
+            3000000
+          ],
+          "world_nm": [
+            1000000,
+            2000000,
+            13000000
+          ],
+          "recovered_local_nm": [
+            1000000,
+            2000000,
+            3000000
+          ],
+          "exact": true
+        },
+        "cap_negative_z": {
+          "local_nm": [
+            1000000,
+            2000000,
+            3000000
+          ],
+          "world_nm": [
+            1000000,
+            -2000000,
+            -3000000
+          ],
+          "recovered_local_nm": [
+            1000000,
+            2000000,
+            3000000
+          ],
+          "exact": true
+        },
+        "side_positive_x": {
+          "local_nm": [
+            1000000,
+            2000000,
+            3000000
+          ],
+          "world_nm": [
+            13000000,
+            1000000,
+            2000000
+          ],
+          "recovered_local_nm": [
+            1000000,
+            2000000,
+            3000000
+          ],
+          "exact": true
+        }
+      },
+      "geometry_oracles": {
+        "extrude-planar-face-orientation-matrix:cap_negative_z:negative": {
+          "aabb_nm": [
+            1000000.0,
+            -4000000.0,
+            0.0,
+            5000000.0,
+            -1000000.0,
+            2000000.0
+          ],
+          "analytic_classification": [
+            "plane"
+          ],
+          "body_count": 1,
+          "canonical_document_hash": "336065b9eb06bf9a3d78561391f00af22b79b60a01346fff812a9ce8a2ddc282",
+          "centroid_nm": [
+            3000000.0,
+            -2500000.0,
+            1000000.0
+          ],
+          "orientation": "outward",
+          "signed_volume_nm3": 2.4E+19,
+          "surface_area_nm2": 52000000000000.0
+        },
+        "extrude-planar-face-orientation-matrix:cap_negative_z:positive": {
+          "aabb_nm": [
+            1000000.0,
+            -4000000.0,
+            -2000000.0,
+            5000000.0,
+            -1000000.0,
+            0.0
+          ],
+          "analytic_classification": [
+            "plane"
+          ],
+          "body_count": 1,
+          "canonical_document_hash": "fa9695159cd49774cdd7e2f20fbf990ba98ab68c5951a29367b7c36f6e92c95e",
+          "centroid_nm": [
+            3000000.0,
+            -2500000.0,
+            -1000000.0
+          ],
+          "orientation": "outward",
+          "signed_volume_nm3": 2.4E+19,
+          "surface_area_nm2": 52000000000000.0
+        },
+        "extrude-planar-face-orientation-matrix:cap_negative_z:symmetric": {
+          "aabb_nm": [
+            1000000.0,
+            -4000000.0,
+            -2000000.0,
+            5000000.0,
+            -1000000.0,
+            2000000.0
+          ],
+          "analytic_classification": [
+            "plane"
+          ],
+          "body_count": 1,
+          "canonical_document_hash": "23d82da94b23043efd59a0efca1ff389b1f7c97f9ede5e0f40a30ef2054f2bad",
+          "centroid_nm": [
+            3000000.0,
+            -2500000.0,
+            0.0
+          ],
+          "orientation": "outward",
+          "signed_volume_nm3": 4.8E+19,
+          "surface_area_nm2": 80000000000000.0
+        },
+        "extrude-planar-face-orientation-matrix:cap_positive_z:negative": {
+          "aabb_nm": [
+            1000000.0,
+            1000000.0,
+            8000000.0,
+            5000000.0,
+            4000000.0,
+            10000000.0
+          ],
+          "analytic_classification": [
+            "plane"
+          ],
+          "body_count": 1,
+          "canonical_document_hash": "20fefb0e39dc46a87a0d1528ac8adb2926918f66943ac3dcf2e7bf11c25c5f5d",
+          "centroid_nm": [
+            3000000.0,
+            2500000.0,
+            9000000.0
+          ],
+          "orientation": "outward",
+          "signed_volume_nm3": 2.4E+19,
+          "surface_area_nm2": 52000000000000.0
+        },
+        "extrude-planar-face-orientation-matrix:cap_positive_z:positive": {
+          "aabb_nm": [
+            1000000.0,
+            1000000.0,
+            10000000.0,
+            5000000.0,
+            4000000.0,
+            12000000.0
+          ],
+          "analytic_classification": [
+            "plane"
+          ],
+          "body_count": 1,
+          "canonical_document_hash": "2d6c65900608b275af6b3e8b91d212798f0ef17df66d98d52fbc20e0a43973b2",
+          "centroid_nm": [
+            3000000.0,
+            2500000.0,
+            11000000.0
+          ],
+          "orientation": "outward",
+          "signed_volume_nm3": 2.4E+19,
+          "surface_area_nm2": 52000000000000.0
+        },
+        "extrude-planar-face-orientation-matrix:cap_positive_z:positive:circle_annulus_with_hole": {
+          "aabb_nm": [
+            2000000.0,
+            2000000.0,
+            10000000.0,
+            8000000.0,
+            8000000.0,
+            12000000.0
+          ],
+          "analytic_classification": [
+            "nurbs_surface",
+            "plane"
+          ],
+          "body_count": 1,
+          "canonical_document_hash": "2669f1df7d9ed60182e66dd61eb7fcfad3cf22c490cf48789c00e4eba49ed65b",
+          "centroid_nm": [
+            5000000.0,
+            5000000.0,
+            11000000.0
+          ],
+          "orientation": "outward",
+          "signed_volume_nm3": 5.0265482457437E+19,
+          "surface_area_nm2": 100530964914873.0
+        },
+        "extrude-planar-face-orientation-matrix:cap_positive_z:positive:line_arc_capsule": {
+          "aabb_nm": [
+            2000000.0,
+            4000000.0,
+            10000000.0,
+            8000000.0,
+            6000000.0,
+            12000000.0
+          ],
+          "analytic_classification": [
+            "nurbs_surface",
+            "plane"
+          ],
+          "body_count": 1,
+          "canonical_document_hash": "826abf1597f863cc505c972fe511ef5755a64e4e63ead3c00a542647f8168337",
+          "centroid_nm": [
+            5000000.0,
+            5000000.0,
+            11000000.0
+          ],
+          "orientation": "outward",
+          "signed_volume_nm3": 2.228318530718E+19,
+          "surface_area_nm2": 50849555921539.0
+        },
+        "extrude-planar-face-orientation-matrix:cap_positive_z:symmetric": {
+          "aabb_nm": [
+            1000000.0,
+            1000000.0,
+            8000000.0,
+            5000000.0,
+            4000000.0,
+            12000000.0
+          ],
+          "analytic_classification": [
+            "plane"
+          ],
+          "body_count": 1,
+          "canonical_document_hash": "1ef373873b875c0ca51b911a5e1e168213c9904d58551c5a7b2f2f437f1824f9",
+          "centroid_nm": [
+            3000000.0,
+            2500000.0,
+            10000000.0
+          ],
+          "orientation": "outward",
+          "signed_volume_nm3": 4.8E+19,
+          "surface_area_nm2": 80000000000000.0
+        },
+        "extrude-planar-face-orientation-matrix:side_positive_x:negative": {
+          "aabb_nm": [
+            8000000.0,
+            1000000.0,
+            1000000.0,
+            10000000.0,
+            5000000.0,
+            4000000.0
+          ],
+          "analytic_classification": [
+            "plane"
+          ],
+          "body_count": 1,
+          "canonical_document_hash": "9a52a9400aea6a262c879a5bb52ba27d3f286c4147975f2945330b9d7bf85142",
+          "centroid_nm": [
+            9000000.0,
+            3000000.0,
+            2500000.0
+          ],
+          "orientation": "outward",
+          "signed_volume_nm3": 2.4E+19,
+          "surface_area_nm2": 52000000000000.0
+        },
+        "extrude-planar-face-orientation-matrix:side_positive_x:positive": {
+          "aabb_nm": [
+            10000000.0,
+            1000000.0,
+            1000000.0,
+            12000000.0,
+            5000000.0,
+            4000000.0
+          ],
+          "analytic_classification": [
+            "plane"
+          ],
+          "body_count": 1,
+          "canonical_document_hash": "41a51d4b047b3058108d7f2747b4b7ff55b34dbec6a133fa9acf980c8b222f96",
+          "centroid_nm": [
+            11000000.0,
+            3000000.0,
+            2500000.0
+          ],
+          "orientation": "outward",
+          "signed_volume_nm3": 2.4E+19,
+          "surface_area_nm2": 52000000000000.0
+        },
+        "extrude-planar-face-orientation-matrix:side_positive_x:symmetric": {
+          "aabb_nm": [
+            8000000.0,
+            1000000.0,
+            1000000.0,
+            12000000.0,
+            5000000.0,
+            4000000.0
+          ],
+          "analytic_classification": [
+            "plane"
+          ],
+          "body_count": 1,
+          "canonical_document_hash": "e5d6965e2992867d8edd4fe88e3037bbc796d3649db36219841c3144662cbbbd",
+          "centroid_nm": [
+            10000000.0,
+            3000000.0,
+            2500000.0
+          ],
+          "orientation": "outward",
+          "signed_volume_nm3": 4.8E+19,
+          "surface_area_nm2": 80000000000000.0
+        }
+      }
+    }
+  },
+  "tolerances": {
+    "relative": 1E-09,
+    "aabb_nm": 1,
+    "signed_volume_nm3": 1000000,
+    "surface_area_nm2": 1000,
+    "centroid_nm": 1
+  },
+  "identity_sets": {
+    "retained": [
+      "body:part",
+      "feature:extrude"
+    ],
+    "replaced": []
+  },
+  "lifecycle_steps": [
+    "preview",
+    "cancel",
+    "commit",
+    "edit",
+    "save",
+    "reload",
+    "recompute"
+  ],
+  "evidence_test_ids": [
+    "planar-face-document-authority-contracts",
+    "native-planar-face-extrude",
+    "wasm-planar-face-extrude",
+    "planar-face-native-wasm-parity"
+  ],
+  "legacy_provenance": null
+}

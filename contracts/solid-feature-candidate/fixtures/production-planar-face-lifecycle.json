@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "fixture_id": "production-planar-face-lifecycle",
+  "story_ids": ["E3D-S4-01", "E3D-S4-02", "E3D-S4-03", "E3D-S4-04"],
+  "description": "The production generated worker executes selection-first and tool-first face-supported Extrude, edit, upstream recompute, broken-support retention, explicit repair preview/commit, undo/redo, and repaired reopen with screenshots and stable identity evidence.",
+  "units": { "length": "nanometer", "angle": "radian" },
+  "input": { "schema_version": 4, "kind": "production_planar_face_lifecycle_v4", "payload": { "runtime": "generated_release_wasm", "worker": "production_model_worker", "support_body": "body:part", "support_face": "cap_positive_z", "profile": "rectangle-4x3mm", "distance_nm": 2000000, "directions": ["positive", "negative", "symmetric"], "exercise_explicit_repair": true } },
+  "expected": { "kind": "success", "result": { "selection_first_tool_first_binding_equal": true, "preview_nonmutating": true, "commit_edit_reopen_equal": true, "upstream_recompute_transitive": true, "broken_state_retains_last_good": true, "repair_preview_actual": true, "repair_commit_atomic": true, "repair_undo_redo_reopen_equal": true, "generated_wasm_verified": true, "screenshots": ["accepted-face-extrude", "broken-last-good", "repair-preview", "repaired-reopen"] } },
+  "tolerances": { "relative": 1e-9, "aabb_nm": 1, "signed_volume_nm3": 1000000, "surface_area_nm2": 1000, "centroid_nm": 1 },
+  "identity_sets": { "retained": ["body:part", "sketch:face-profile", "region:geometry:face-rectangle", "feature:extrude:face-supported", "body:extrude:face-supported"], "replaced": ["topology:face-support:missing"] },
+  "lifecycle_steps": ["preview", "cancel", "commit", "edit", "recompute", "suppress", "unsuppress", "save", "reopen", "repair", "undo", "redo"],
+  "evidence_test_ids": ["planar-face-command-state", "production-planar-face-lifecycle", "planar-face-performance-regression"],
+  "legacy_provenance": null
+}

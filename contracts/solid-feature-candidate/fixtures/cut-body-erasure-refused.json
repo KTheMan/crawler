@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "fixture_id": "cut-body-erasure-refused",
+  "story_ids": [
+    "E3D-S5-02",
+    "E3D-S5-04"
+  ],
+  "description": "A Cut that would remove all target material is refused rather than changing target ownership or body cardinality.",
+  "units": {
+    "length": "nanometer",
+    "angle": "radian"
+  },
+  "input": {
+    "schema_version": 5,
+    "kind": "single_target_cut",
+    "payload": {
+      "result_mode": "cut",
+      "target_body_ids": [
+        "body:part"
+      ],
+      "target_component_id": "component:root",
+      "target_seed": {
+        "body_id": "body:part",
+        "component_id": "component:root",
+        "width_nm": 10000000,
+        "height_nm": 6000000,
+        "distance_nm": 4000000
+      },
+      "support": {
+        "kind": "origin_plane",
+        "plane": "xy"
+      },
+      "profile": {
+        "kind": "rectangle",
+        "min_nm": [
+          0,
+          0
+        ],
+        "max_nm": [
+          10000000,
+          6000000
+        ]
+      },
+      "distance_nm": 4000000,
+      "direction": "positive"
+    }
+  },
+  "expected": {
+    "kind": "structured_error",
+    "error": {
+      "category": "boolean",
+      "code": "remove_all_material",
+      "field_path": "operation.result",
+      "referenced_entity_ids": [
+        "body:part"
+      ]
+    },
+    "oracle_assertions": {
+      "explicit_target_required": true,
+      "implicit_target_used": false,
+      "accepted_state_unchanged": true,
+      "boolean_attempted": true,
+      "target_body_hash_unchanged": true,
+      "body_count_unchanged": true
+    }
+  },
+  "tolerances": {
+    "relative": 1e-9,
+    "aabb_nm": 1,
+    "signed_volume_nm3": 1000000,
+    "surface_area_nm2": 1000,
+    "centroid_nm": 1
+  },
+  "identity_sets": {
+    "retained": [],
+    "replaced": []
+  },
+  "lifecycle_steps": [
+    "preview",
+    "commit"
+  ],
+  "evidence_test_ids": [
+    "single-target-cut-contracts",
+    "native-single-target-cut",
+    "wasm-single-target-cut",
+    "single-target-cut-native-wasm-parity"
+  ],
+  "legacy_provenance": null
+}
